@@ -1,0 +1,53 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+use pollster::FutureExt;
+use wgpu::{
+    Adapter, Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
+    MemoryHints, PowerPreference, Queue, RequestAdapterOptionsBase, Trace,
+};
+
+#[derive(Debug)]
+pub(crate) struct GpuController {
+    pub(crate) instance: Instance,
+    pub(crate) adapter: Adapter,
+    pub(crate) device: Device,
+    pub(crate) queue: Queue,
+}
+
+impl GpuController {
+    pub(crate) fn new() -> Result<Self> {
+        // Initialize WGPU
+        let instance = Instance::new(&InstanceDescriptor {
+            backends: Backends::all(),
+            ..Default::default()
+        });
+
+        let adapter = instance
+            .request_adapter(&RequestAdapterOptionsBase {
+                power_preference: PowerPreference::HighPerformance,
+                force_fallback_adapter: false,
+                compatible_surface: None,
+            })
+            .block_on()?;
+
+        let (device, queue) = adapter
+            .request_device(&DeviceDescriptor {
+                label: Some("Device and Queue"),
+                required_features: Features::default(),
+                required_limits: Limits::default(),
+                memory_hints: MemoryHints::default(),
+                trace: Trace::default(),
+            })
+            .block_on()?;
+
+        // let (device, queue) = (Arc::new(device), Arc::new(queue));
+
+        Ok(Self {
+            instance,
+            adapter,
+            device,
+            queue,
+        })
+    }
+}
