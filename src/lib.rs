@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{fmt::Debug, path::Path, sync::Arc};
 
 use anyhow::Result;
+use element::model::Model;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -10,10 +11,24 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
 };
 
+pub use element::Element;
+
 mod element;
 mod gpu_utils;
 mod photon;
 mod utils;
+
+// Test struct
+#[derive(Debug)]
+pub struct TestElement {
+    model: Model,
+}
+
+impl Element for TestElement {
+    fn render(&self, render_pass: &mut wgpu::RenderPass) {
+        self.model.render(render_pass);
+    }
+}
 
 /// Main struct for the game engine app
 #[derive(Debug)]
@@ -23,20 +38,50 @@ pub struct Isotope {
 
     // Window and Rendering
     photon: Option<PhotonManager>,
+
+    // Elements and components
+    elements: Vec<Arc<dyn Element>>,
+
+    init_callback: fn(&mut Self),
 }
 
 impl Isotope {
-    pub fn new() -> Result<Self> {
+    pub fn new(init_callback: fn(&mut Self)) -> Result<Self> {
         let gpu_controller = Arc::new(GpuController::new()?);
 
         Ok(Self {
             gpu_controller,
             photon: None,
+            elements: Vec::new(),
+            init_callback,
         })
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
+
+        (self.init_callback)(self);
+
+        Ok(())
+    }
+
+    pub fn add_element(&mut self, element: Arc<dyn Element>) {
+        self.elements.push(element);
+    }
+
+    // Test function
+    pub fn add_from_obj<P>(&mut self, path: P) -> Result<()>
+    where
+        P: AsRef<Path>,
+    {
+        let model = Model::from_obj(
+            &path,
+            &self.gpu_controller,
+            &self.photon.as_ref().unwrap().renderer.layouts,
+        )?;
+
+        let test = Arc::new(TestElement { model });
+        self.elements.push(test);
 
         Ok(())
     }
@@ -64,6 +109,17 @@ impl ApplicationHandler for Isotope {
                     info!("Shutting Down Isotope");
                     event_loop.exit();
                 }
+                WindowEvent::RedrawRequested => {
+                    if let Some(photon) = &self.photon {
+                        match photon.render(&self.elements) {
+                            Ok(()) => {}
+                            Err(err) => {
+                                error!("Rendering failed with Error: {}", err);
+                                event_loop.exit();
+                            }
+                        }
+                    }
+                }
                 _ => {}
             }
         }
@@ -80,13 +136,12 @@ impl ApplicationHandler for Isotope {
     }
 }
 
-pub fn start_isotope() -> Result<()> {
+pub fn start_isotope(isotope: &mut Isotope) -> Result<()> {
     pretty_env_logger::init();
     let event_loop = EventLoop::new().unwrap();
 
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = Isotope::new()?;
-    _ = event_loop.run_app(&mut app);
+    _ = event_loop.run_app(isotope);
 
     Ok(())
 }

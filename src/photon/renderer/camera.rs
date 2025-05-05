@@ -1,0 +1,111 @@
+use std::convert::identity;
+
+use cgmath::{Deg, Matrix4, Point3, SquareMatrix, Vector3, perspective};
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
+    util::{BufferInitDescriptor, DeviceExt},
+};
+
+use crate::GpuController;
+
+use super::photon_layouts::PhotonLayoutsManager;
+
+pub(crate) type Vector4 = [f32; 4];
+pub(crate) type Matrix4x4 = [[f32; 4]; 4];
+
+pub const OPENGL_TO_WGPU_MATIX: Matrix4<f32> = Matrix4::new(
+    1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0,
+);
+
+#[derive(Debug)]
+pub enum PhotonCamera {
+    Camera2D,
+    Camera3D {
+        // Position and direction
+        eye: Point3<f32>,
+        target: Vector3<f32>,
+        up: Vector3<f32>,
+
+        // Camera view values
+        aspect: f32,
+        fovy: f32,
+        znear: f32,
+        zfar: f32,
+
+        camera_uniform: CameraUniform,
+        buffer: Buffer,
+        bind_group: BindGroup,
+    },
+}
+
+impl PhotonCamera {
+    pub fn create_new_camera_3d(
+        gpu_controller: &GpuController,
+        photon_layouts: &PhotonLayoutsManager,
+        eye: Point3<f32>,
+        target: Vector3<f32>,
+        up: Vector3<f32>,
+        aspect: f32,
+        fovy: f32,
+        znear: f32,
+        zfar: f32,
+    ) -> Self {
+        let view = Matrix4::look_at_rh(eye, eye + target, up);
+        let proj = perspective(Deg(fovy), aspect, znear, zfar);
+
+        let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+
+        let camera_uniform = CameraUniform {
+            view_position: eye.to_homogeneous().into(),
+            view_projection: view_proj.into(),
+        };
+
+        let buffer = gpu_controller
+            .device
+            .create_buffer_init(&BufferInitDescriptor {
+                label: Some("Camera Uniform Buffer"),
+                contents: bytemuck::cast_slice(&[camera_uniform]),
+                usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+            });
+
+        let bind_group = gpu_controller
+            .device
+            .create_bind_group(&BindGroupDescriptor {
+                label: Some("Photon Camera 3D Bind Group"),
+                layout: &photon_layouts.camera_layout,
+                entries: &[BindGroupEntry {
+                    binding: 0,
+                    resource: buffer.as_entire_binding(),
+                }],
+            });
+
+        Self::Camera3D {
+            eye,
+            target,
+            up,
+            aspect,
+            fovy,
+            znear,
+            zfar,
+            camera_uniform,
+            buffer,
+            bind_group,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct CameraUniform {
+    pub view_position: Vector4,
+    pub view_projection: Matrix4x4,
+}
+
+impl Default for CameraUniform {
+    fn default() -> Self {
+        Self {
+            view_position: [0.0; 4],
+            view_projection: Matrix4::identity().into(),
+        }
+    }
+}

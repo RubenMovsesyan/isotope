@@ -1,19 +1,32 @@
 use std::sync::Arc;
 
+use anyhow::Result;
+use camera::PhotonCamera;
+use cgmath::{Point3, Vector3};
 use photon_layouts::PhotonLayoutsManager;
-use wgpu::{RenderPipeline, SurfaceConfiguration, include_wgsl};
+use texture::{PhotonDepthTexture, View};
+use wgpu::{
+    Color, LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, StoreOp, Surface, SurfaceConfiguration,
+    TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
+};
 
-use crate::{GpuController, construct_render_pipeline};
+use crate::{GpuController, construct_render_pipeline, element::Element};
 
+pub mod camera;
 pub mod photon_layouts;
 mod render_macros;
 pub mod texture;
 
 #[derive(Debug)]
 pub struct PhotonRenderer {
-    gpu_controller: Arc<GpuController>,
-    layouts: PhotonLayoutsManager,
+    pub gpu_controller: Arc<GpuController>,
+    pub layouts: PhotonLayoutsManager,
     render_pipeline: RenderPipeline,
+
+    // Rendering requirements
+    depth_texture: PhotonDepthTexture,
+    camera: PhotonCamera,
 }
 
 impl PhotonRenderer {
@@ -21,6 +34,7 @@ impl PhotonRenderer {
         gpu_controller: Arc<GpuController>,
         surface_configuration: &SurfaceConfiguration,
     ) -> Self {
+        // Load in the shaders
         let vertex_shader = gpu_controller
             .device
             .create_shader_module(include_wgsl!("shaders/vert.wgsl"));
@@ -28,21 +42,119 @@ impl PhotonRenderer {
             .device
             .create_shader_module(include_wgsl!("shaders/frag.wgsl"));
 
+        // Initialie the layout manager
         let layouts = PhotonLayoutsManager::new(&gpu_controller);
 
+        // Create the render pipeline
         let render_pipeline = construct_render_pipeline!(
             &gpu_controller.device,
             surface_configuration,
             vertex_shader,
             fragment_shader,
             String::from("Photon"),
+            &layouts.camera_layout,
             &layouts.texture_layout
+        );
+
+        // Create the depth texture
+        let depth_texture =
+            PhotonDepthTexture::new_depth_texture(&gpu_controller, surface_configuration);
+
+        // Initialie the camera
+        let camera = PhotonCamera::create_new_camera_3d(
+            &gpu_controller,
+            &layouts,
+            Point3 {
+                x: 2.0,
+                y: 2.0,
+                z: 2.0,
+            },
+            Vector3 {
+                x: -1.0,
+                y: -1.0,
+                z: -1.0,
+            },
+            Vector3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            surface_configuration.width as f32 / surface_configuration.height as f32,
+            90.0,
+            0.1,
+            100.0,
         );
 
         Self {
             gpu_controller,
             layouts,
             render_pipeline,
+            depth_texture,
+            camera,
         }
+    }
+
+    // Renders all elements in the engine
+    pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
+        let output = surface.get_current_texture()?;
+
+        let view = output
+            .texture
+            .create_view(&TextureViewDescriptor::default());
+
+        let mut encoder =
+            self.gpu_controller
+                .device
+                .create_command_encoder(&CommandEncoderDescriptor {
+                    label: Some("Render Encoder"),
+                });
+
+        // Scene Render Pass
+        {
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("Scene Render Pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Clear(Color::BLACK),
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: self.depth_texture.view(),
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Clear(1.0),
+                        store: StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&self.render_pipeline);
+
+            // render_pass.set_vertex_buffer(1, /* Instance Buffer Maybe? */);
+
+            // Camera
+            render_pass.set_bind_group(
+                0,
+                match &self.camera {
+                    PhotonCamera::Camera2D => unimplemented!(),
+                    PhotonCamera::Camera3D { bind_group, .. } => bind_group,
+                },
+                &[],
+            );
+
+            for element in elements {
+                element.render(&mut render_pass);
+            }
+        }
+
+        self.gpu_controller.queue.submit(Some(encoder.finish()));
+        output.present();
+
+        Ok(())
     }
 }

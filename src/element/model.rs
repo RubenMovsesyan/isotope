@@ -19,6 +19,9 @@ use super::{
     mesh::{INDEX_FORMAT, Mesh},
 };
 
+// Set to 5 to allow for future expansion of bind groups for the shader
+pub(crate) const MODEL_BIND_GROUP: u32 = 1;
+
 #[derive(Debug)]
 pub struct Model {
     meshes: Vec<Mesh>,
@@ -145,14 +148,19 @@ impl Model {
                 }
                 // object using the material
                 "usemtl" => {
+                    debug!("Searching for material: {}", line_split[1]);
+                    debug!("Num Materials: {}", materials.len());
                     material_index = Some(
                         *materials
                             .iter()
                             .enumerate()
                             .filter_map(|(ind, m)| {
-                                if m.name == line_split[1] {
+                                info!("Searching: {}", m.name);
+                                if &m.name == line_split[1] {
+                                    info!("Found: {}", line_split[1]);
                                     Some(ind)
                                 } else {
+                                    warn!("Skipping: {}", line_split[1]);
                                     None
                                 }
                             })
@@ -163,17 +171,17 @@ impl Model {
                 }
                 _ => {}
             }
+        }
 
-            // Add the remaining object to the list
-            if let Some(name) = mesh_name.take() {
-                let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller);
+        // Add the remaining object to the list
+        if let Some(name) = mesh_name.take() {
+            let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller);
 
-                if let Some(mat_ind) = material_index.take() {
-                    new_mesh.material = Some(materials[mat_ind].clone());
-                }
-
-                meshes.push(new_mesh);
+            if let Some(mat_ind) = material_index.take() {
+                new_mesh.material = Some(materials[mat_ind].clone());
             }
+
+            meshes.push(new_mesh);
         }
 
         Ok(Self { meshes, materials })
@@ -187,7 +195,7 @@ impl Model {
             // Set the bind group for the material of the mesh
             // TODO: add optional texture support
             render_pass.set_bind_group(
-                0,
+                MODEL_BIND_GROUP,
                 &mesh
                     .material
                     .as_ref()

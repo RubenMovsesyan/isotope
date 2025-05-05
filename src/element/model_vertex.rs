@@ -30,7 +30,7 @@ impl ModelVertex {
 }
 
 impl Buffered for ModelVertex {
-    fn desc(&self) -> wgpu::VertexBufferLayout<'static> {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
         VertexBufferLayout {
             array_stride: mem::size_of::<ModelVertex>() as BufferAddress,
             step_mode: VertexStepMode::Vertex,

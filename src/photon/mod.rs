@@ -5,7 +5,7 @@ use renderer::PhotonRenderer;
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{event_loop::ActiveEventLoop, window::Window};
 
-use crate::gpu_utils::GpuController;
+use crate::{Element, gpu_utils::GpuController};
 
 pub mod renderer;
 pub mod window;
@@ -33,5 +33,9 @@ impl PhotonManager {
 
     pub fn window(&self) -> &Window {
         &self.window.window
+    }
+
+    pub fn render(&self, elements: &[Arc<dyn Element>]) -> Result<()> {
+        self.renderer.render(&self.window.surface, elements)
     }
 }

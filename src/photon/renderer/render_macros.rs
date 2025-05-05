@@ -9,6 +9,8 @@ macro_rules! construct_render_pipeline {
             };
 
             use crate::photon::renderer::texture::PHOTON_TEXTURE_DEPTH_FORMAT;
+            use crate::element::model_vertex::ModelVertex;
+            use crate::element::buffered::Buffered;
 
             let mut layouts = Vec::new();
 
@@ -18,18 +20,18 @@ macro_rules! construct_render_pipeline {
 
 
             let layout = $device.create_pipeline_layout(&PipelineLayoutDescriptor {
-                label: Some(&($name.clone() + "Render Pipeline Layout")),
+                label: Some(&($name.clone() + " Render Pipeline Layout")),
                 bind_group_layouts: layouts.as_slice(),
                 push_constant_ranges: &[],
             });
 
             let render_pipeline = $device.create_render_pipeline(&RenderPipelineDescriptor {
-                label: Some(&($name.clone() + "Render Pipeline")),
+                label: Some(&($name.clone() + " Render Pipeline")),
                 layout: Some(&layout),
                 vertex: VertexState {
                     module: &$vertex_shader,
                     entry_point: Some("main"),
-                    buffers: &[],
+                    buffers: &[ModelVertex::desc()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
                 fragment: Some(FragmentState {

@@ -1,4 +1,5 @@
 use anyhow::Result;
+use log::*;
 use pollster::FutureExt;
 use wgpu::{
     Adapter, Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
@@ -15,6 +16,7 @@ pub(crate) struct GpuController {
 
 impl GpuController {
     pub(crate) fn new() -> Result<Self> {
+        info!("Initializeing WGPU");
         // Initialize WGPU
         let instance = Instance::new(&InstanceDescriptor {
             backends: Backends::all(),
@@ -33,11 +35,16 @@ impl GpuController {
             .request_device(&DeviceDescriptor {
                 label: Some("Device and Queue"),
                 required_features: Features::default(),
-                required_limits: Limits::default(),
+                required_limits: Limits {
+                    max_bind_groups: 5,
+                    ..Default::default()
+                },
                 memory_hints: MemoryHints::default(),
                 trace: Trace::default(),
             })
             .block_on()?;
+
+        info!("WGPU Initialized");
 
         Ok(Self {
             instance,

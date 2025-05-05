@@ -57,6 +57,8 @@ where
                     name: line_split[1].to_string(),
                     diffuse_texture: None,
                 });
+
+                debug!("Found New Material: {}", line_split[1]);
             }
             "map_Kd" => {
                 if current_material.is_some() {
@@ -85,6 +87,12 @@ where
                 }
             }
             _ => {}
+        }
+    }
+
+    if current_material.is_some() {
+        unsafe {
+            materials.push(Arc::new(current_material.take().unwrap_unchecked()));
         }
     }
 
