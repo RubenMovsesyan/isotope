@@ -120,6 +120,11 @@ impl ApplicationHandler for Isotope {
                         }
                     }
                 }
+                WindowEvent::Resized(new_size) => {
+                    if let Some(photon) = &mut self.photon {
+                        photon.resize(new_size);
+                    }
+                }
                 _ => {}
             }
         }

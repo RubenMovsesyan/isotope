@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use renderer::PhotonRenderer;
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
-use winit::{event_loop::ActiveEventLoop, window::Window};
+use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
 use crate::{Element, gpu_utils::GpuController};
 
@@ -22,7 +22,7 @@ impl PhotonManager {
             event_loop,
             DEFAULT_WIDTH,
             DEFAULT_HEIGHT,
-            &gpu_controller,
+            gpu_controller.clone(),
             "Isotope",
         )?;
 
@@ -35,6 +35,12 @@ impl PhotonManager {
         &self.window.window
     }
 
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.window.resize(new_size);
+        self.renderer.resize(new_size);
+    }
+
+    // Call on request redraw
     pub fn render(&self, elements: &[Arc<dyn Element>]) -> Result<()> {
         self.renderer.render(&self.window.surface, elements)
     }

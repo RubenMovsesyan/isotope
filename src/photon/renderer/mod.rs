@@ -10,6 +10,7 @@ use wgpu::{
     RenderPassDescriptor, RenderPipeline, StoreOp, Surface, SurfaceConfiguration,
     TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
 };
+use winit::dpi::PhysicalSize;
 
 use crate::{GpuController, construct_render_pipeline, element::Element};
 
@@ -20,7 +21,7 @@ pub mod texture;
 
 #[derive(Debug)]
 pub struct PhotonRenderer {
-    pub gpu_controller: Arc<GpuController>,
+    gpu_controller: Arc<GpuController>,
     pub layouts: PhotonLayoutsManager,
     render_pipeline: RenderPipeline,
 
@@ -92,6 +93,16 @@ impl PhotonRenderer {
             depth_texture,
             camera,
         }
+    }
+
+    // Change the render configuration and camera and all other necessary items to resize the render
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.depth_texture =
+            PhotonDepthTexture::new_depth_texture_from_size(&self.gpu_controller, new_size);
+        self.camera.set_aspect(
+            &self.gpu_controller,
+            new_size.width as f32 / new_size.height as f32,
+        );
     }
 
     // Renders all elements in the engine

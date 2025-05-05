@@ -1,3 +1,5 @@
+use log::*;
+
 use std::sync::Arc;
 
 use anyhow::Result;
@@ -16,6 +18,7 @@ pub const DEFAULT_HEIGHT: u32 = 1080;
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct PhotonWindow {
+    gpu_controller: Arc<GpuController>,
     pub window: Arc<Window>,
     pub surface: Arc<Surface<'static>>,
     pub surface_configuration: SurfaceConfiguration,
@@ -26,7 +29,7 @@ impl PhotonWindow {
         event_loop: &ActiveEventLoop,
         width: u32,
         height: u32,
-        gpu_controller: &GpuController,
+        gpu_controller: Arc<GpuController>,
         title: &str,
     ) -> Result<Self> {
         // Create the window
@@ -64,9 +67,21 @@ impl PhotonWindow {
         surface.configure(&gpu_controller.device, &surface_configuration);
 
         Ok(Self {
+            gpu_controller,
             window,
             surface,
             surface_configuration,
         })
+    }
+
+    // Resizes the surface configuration of the window
+    pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
+        self.surface_configuration.width = new_size.width;
+        self.surface_configuration.height = new_size.height;
+
+        self.surface
+            .configure(&self.gpu_controller.device, &self.surface_configuration);
+
+        debug!("Window resized to: {:#?}", new_size);
     }
 }

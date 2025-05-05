@@ -1,5 +1,3 @@
-use std::convert::identity;
-
 use cgmath::{Deg, Matrix4, Point3, SquareMatrix, Vector3, perspective};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
@@ -90,6 +88,41 @@ impl PhotonCamera {
             camera_uniform,
             buffer,
             bind_group,
+        }
+    }
+
+    pub fn set_aspect(&mut self, gpu_controller: &GpuController, new_aspect: f32) {
+        match self {
+            Self::Camera2D => unimplemented!(),
+            Self::Camera3D {
+                eye,
+                target,
+                up,
+                aspect,
+                fovy,
+                znear,
+                zfar,
+                camera_uniform,
+                buffer,
+                ..
+            } => {
+                let view = Matrix4::look_at_rh(*eye, *eye + *target, *up);
+                let proj = perspective(Deg(*fovy), new_aspect, *znear, *zfar);
+
+                let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+
+                *aspect = new_aspect;
+                *camera_uniform = CameraUniform {
+                    view_position: eye.to_homogeneous().into(),
+                    view_projection: view_proj.into(),
+                };
+
+                gpu_controller.queue.write_buffer(
+                    buffer,
+                    0,
+                    bytemuck::cast_slice(&[*camera_uniform]),
+                );
+            }
         }
     }
 }
