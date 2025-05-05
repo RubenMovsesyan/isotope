@@ -13,11 +13,12 @@ use crate::GpuController;
 pub const DEFAULT_WIDTH: u32 = 1280;
 pub const DEFAULT_HEIGHT: u32 = 720;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct PhotonWindow {
     pub window: Arc<Window>,
     surface: Arc<Surface<'static>>,
-    surface_configuration: SurfaceConfiguration,
+    pub surface_configuration: SurfaceConfiguration,
 }
 
 impl PhotonWindow {

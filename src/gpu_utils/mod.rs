@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use anyhow::Result;
 use pollster::FutureExt;
 use wgpu::{
@@ -40,8 +38,6 @@ impl GpuController {
                 trace: Trace::default(),
             })
             .block_on()?;
-
-        // let (device, queue) = (Arc::new(device), Arc::new(queue));
 
         Ok(Self {
             instance,

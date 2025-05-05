@@ -13,6 +13,7 @@ use winit::{
 mod element;
 mod gpu_utils;
 mod photon;
+mod utils;
 
 /// Main struct for the game engine app
 #[derive(Debug)]
