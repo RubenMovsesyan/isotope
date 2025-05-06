@@ -1,4 +1,4 @@
-use isotope::{Isotope, start_isotope};
+use isotope::{Isotope, new_isotope, start_isotope};
 use log::*;
 
 fn init(isotope: &mut Isotope) {
@@ -10,9 +10,11 @@ fn init(isotope: &mut Isotope) {
             error!("Cube failed with error: {err}");
         }
     }
+
+    isotope.impulse().key_is_pressed(|key_code, iso| {});
 }
 
 fn main() {
-    let mut app = Isotope::new(init).expect("Failed");
+    let mut app = new_isotope(init).expect("Failed");
     _ = start_isotope(&mut app);
 }

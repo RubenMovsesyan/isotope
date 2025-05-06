@@ -16,24 +16,21 @@ pub const OPENGL_TO_WGPU_MATIX: Matrix4<f32> = Matrix4::new(
 );
 
 #[derive(Debug)]
-pub enum PhotonCamera {
-    Camera2D,
-    Camera3D {
-        // Position and direction
-        eye: Point3<f32>,
-        target: Vector3<f32>,
-        up: Vector3<f32>,
+pub struct PhotonCamera {
+    // Position and direction
+    eye: Point3<f32>,
+    target: Vector3<f32>,
+    up: Vector3<f32>,
 
-        // Camera view values
-        aspect: f32,
-        fovy: f32,
-        znear: f32,
-        zfar: f32,
+    // Camera view values
+    aspect: f32,
+    fovy: f32,
+    znear: f32,
+    zfar: f32,
 
-        camera_uniform: CameraUniform,
-        buffer: Buffer,
-        bind_group: BindGroup,
-    },
+    camera_uniform: CameraUniform,
+    buffer: Buffer,
+    pub(crate) bind_group: BindGroup,
 }
 
 impl PhotonCamera {
@@ -77,7 +74,7 @@ impl PhotonCamera {
                 }],
             });
 
-        Self::Camera3D {
+        Self {
             eye,
             target,
             up,
@@ -91,39 +88,23 @@ impl PhotonCamera {
         }
     }
 
-    pub fn set_aspect(&mut self, gpu_controller: &GpuController, new_aspect: f32) {
-        match self {
-            Self::Camera2D => unimplemented!(),
-            Self::Camera3D {
-                eye,
-                target,
-                up,
-                aspect,
-                fovy,
-                znear,
-                zfar,
-                camera_uniform,
-                buffer,
-                ..
-            } => {
-                let view = Matrix4::look_at_rh(*eye, *eye + *target, *up);
-                let proj = perspective(Deg(*fovy), new_aspect, *znear, *zfar);
+    pub(crate) fn set_aspect(&mut self, gpu_controller: &GpuController, new_aspect: f32) {
+        let view = Matrix4::look_at_rh(self.eye, self.eye + self.target, self.up);
+        let proj = perspective(Deg(self.fovy), new_aspect, self.znear, self.zfar);
 
-                let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+        let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
 
-                *aspect = new_aspect;
-                *camera_uniform = CameraUniform {
-                    view_position: eye.to_homogeneous().into(),
-                    view_projection: view_proj.into(),
-                };
+        self.aspect = new_aspect;
+        self.camera_uniform = CameraUniform {
+            view_position: self.eye.to_homogeneous().into(),
+            view_projection: view_proj.into(),
+        };
 
-                gpu_controller.queue.write_buffer(
-                    buffer,
-                    0,
-                    bytemuck::cast_slice(&[*camera_uniform]),
-                );
-            }
-        }
+        gpu_controller.queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 }
 

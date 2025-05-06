@@ -27,7 +27,7 @@ pub struct PhotonRenderer {
 
     // Rendering requirements
     depth_texture: PhotonDepthTexture,
-    camera: PhotonCamera,
+    pub(crate) camera: PhotonCamera,
 }
 
 impl PhotonRenderer {
@@ -149,14 +149,7 @@ impl PhotonRenderer {
             // render_pass.set_vertex_buffer(1, /* Instance Buffer Maybe? */);
 
             // Camera
-            render_pass.set_bind_group(
-                0,
-                match &self.camera {
-                    PhotonCamera::Camera2D => unimplemented!(),
-                    PhotonCamera::Camera3D { bind_group, .. } => bind_group,
-                },
-                &[],
-            );
+            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
 
             for element in elements {
                 element.render(&mut render_pass);
