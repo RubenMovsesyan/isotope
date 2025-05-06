@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::{Deg, Matrix4, Point3, SquareMatrix, Vector3, perspective};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3, perspective};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
     util::{BufferInitDescriptor, DeviceExt},
@@ -138,6 +138,8 @@ impl PhotonCamera {
 
         // Value clamping to prevent crashing
         self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
+        // Make sure to normalized the target
+        self.target = self.target.normalize();
 
         self.update();
     }
@@ -156,6 +158,9 @@ impl PhotonCamera {
         F: Fn(&mut Vector3<f32>),
     {
         callback(&mut self.target);
+
+        // Make sure to normalized the target
+        self.target = self.target.normalize();
 
         self.update();
     }

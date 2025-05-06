@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::InnerSpace;
+use cgmath::{InnerSpace, Quaternion, Rotation};
 use isotope::{Isotope, IsotopeState, KeyCode, new_isotope, start_isotope};
 use log::*;
 
@@ -10,9 +10,16 @@ pub struct GameState {
     pub s_pressed: bool,
     pub a_pressed: bool,
     pub d_pressed: bool,
+    pub shift_pressed: bool,
+    pub space_pressed: bool,
+
+    pub mouse_diff: (f64, f64),
+
+    pub mouse_focused: bool,
 }
 
-const CAMERA_SPEED: f32 = 5.0;
+const CAMERA_SPEED: f32 = 7.0;
+const CAMERA_LOOK_SPEED: f32 = 0.01;
 
 impl IsotopeState for GameState {
     fn update_with_camera(
@@ -44,6 +51,55 @@ impl IsotopeState for GameState {
             camera.modify(|eye, target, up, _, _, _, _| {
                 *eye -= up.clone().cross(*target).normalize() * dt * CAMERA_SPEED;
             });
+        }
+
+        if self.space_pressed {
+            camera.modify(|eye, _, up, _, _, _, _| {
+                *eye += up.normalize() * dt * CAMERA_SPEED;
+            });
+        }
+
+        if self.shift_pressed {
+            camera.modify(|eye, _, up, _, _, _, _| {
+                *eye -= up.normalize() * dt * CAMERA_SPEED;
+            });
+        }
+
+        // Change where the camera is looking
+        camera.modify(|_, target, up, _, _, _, _| {
+            // Change pitch
+            let forward_norm = target.normalize();
+            let right = forward_norm.cross(*up);
+
+            let rotation = Quaternion {
+                v: right * f32::sin(self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED / 2.0),
+                s: f32::cos(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
+            }
+            .normalize();
+
+            *target = rotation.rotate_vector(*target);
+
+            // Change yaw
+            let up_norm = up.normalize();
+            let rotation = Quaternion {
+                v: up_norm * f32::sin(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
+                s: f32::cos(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
+            }
+            .normalize();
+
+            *target = rotation.rotate_vector(*target);
+        });
+
+        self.mouse_diff = (0.0, 0.0);
+    }
+
+    fn update_with_window(&mut self, window: &winit::window::Window, delta_t: &std::time::Instant) {
+        if self.mouse_focused {
+            _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+            window.set_cursor_visible(false);
+        } else {
+            _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
+            window.set_cursor_visible(true);
         }
     }
 
@@ -91,6 +147,21 @@ fn init(isotope: &mut Isotope) {
                     game_state.d_pressed = true;
                 });
             }
+            KeyCode::Escape => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.mouse_focused = !game_state.mouse_focused;
+                });
+            }
+            KeyCode::Space => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.space_pressed = true;
+                });
+            }
+            KeyCode::ShiftLeft => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.shift_pressed = true;
+                });
+            }
             _ => {}
         })
         .key_is_released(|key_code, iso| match key_code {
@@ -114,7 +185,24 @@ fn init(isotope: &mut Isotope) {
                     game_state.d_pressed = false;
                 });
             }
+            KeyCode::Space => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.space_pressed = false;
+                });
+            }
+            KeyCode::ShiftLeft => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.shift_pressed = false;
+                });
+            }
             _ => {}
+        })
+        .mouse_is_moved(|delta, iso| {
+            iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                if game_state.mouse_focused {
+                    game_state.mouse_diff = (-delta.0, -delta.1);
+                }
+            });
         });
 }
 

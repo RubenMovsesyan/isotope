@@ -13,8 +13,9 @@ use log::*;
 use photon::PhotonManager;
 use winit::{
     application::ApplicationHandler,
-    event::{ElementState, KeyEvent, WindowEvent},
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    window::Window,
 };
 
 // Publicly exposed types
@@ -210,6 +211,16 @@ impl Isotope {
 
         Ok(())
     }
+
+    /// Modifying window characteristics
+    pub fn modify_window<F>(&self, callback: F)
+    where
+        F: FnOnce(&Window),
+    {
+        if let Some(photon) = &self.photon {
+            callback(&photon.window.window);
+        }
+    }
 }
 
 impl ApplicationHandler for Isotope {
@@ -249,6 +260,15 @@ impl ApplicationHandler for Isotope {
             }
         }
 
+        // Run the fixed update for the window
+        if let Some(photon) = &self.photon {
+            if let Some(state) = &self.state {
+                if let Ok(mut state_guard) = state.write() {
+                    state_guard.update_with_window(&photon.window.window, &self.delta);
+                }
+            }
+        }
+
         // Update delta for the next go-around
         self.delta = Instant::now();
 
@@ -263,7 +283,7 @@ impl ApplicationHandler for Isotope {
                     }
 
                     if let Some(thread) = self.thread_handle.take() {
-                        thread.join();
+                        _ = thread.join();
                     }
 
                     event_loop.exit();
@@ -316,8 +336,64 @@ impl ApplicationHandler for Isotope {
                         },
                     }
                 }
+                WindowEvent::CursorMoved { position, .. } => {
+                    // Run the callback of the Impulse manager for cursor movement
+                    if let Some(callback) = self.impulse.cursor_moved {
+                        callback(position, self);
+                    }
+                }
                 _ => {}
             }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        // Run the fixed update
+        // TODO: extract into thread
+        (self.update_callback)(self);
+
+        // Run the fixed update for the camera
+        if let Some(camera) = self.camera() {
+            // Store the camera pointer temporarily
+            let camera_ptr = camera as *mut PhotonCamera;
+
+            // Now access the state without the camera borrow active
+            if let Some(state) = &self.state {
+                if let Ok(mut state_guard) = state.write() {
+                    // This is safe because we are ensuring no other references
+                    // to the camera exist
+                    unsafe {
+                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta);
+                    }
+                }
+            }
+        }
+
+        // Run the fixed update for the window
+        if let Some(photon) = &self.photon {
+            if let Some(state) = &self.state {
+                if let Ok(mut state_guard) = state.write() {
+                    state_guard.update_with_window(&photon.window.window, &self.delta);
+                }
+            }
+        }
+
+        // Update delta for the next go-around
+        self.delta = Instant::now();
+
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                // Run the callback for mouse movement
+                if let Some(callback) = self.impulse.mouse_is_moved {
+                    callback(delta, self);
+                }
+            }
+            _ => {}
         }
     }
 
