@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use cgmath::{Deg, Matrix4, Point3, SquareMatrix, Vector3, perspective};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
@@ -15,6 +17,9 @@ pub const OPENGL_TO_WGPU_MATIX: Matrix4<f32> = Matrix4::new(
     1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 1.0,
 );
 
+// Clamping constants
+const FOVY_CLAMP: (f32, f32) = (0.1, 179.9);
+
 #[derive(Debug)]
 pub struct PhotonCamera {
     // Position and direction
@@ -30,12 +35,13 @@ pub struct PhotonCamera {
 
     camera_uniform: CameraUniform,
     buffer: Buffer,
+    gpu_controller: Arc<GpuController>,
     pub(crate) bind_group: BindGroup,
 }
 
 impl PhotonCamera {
-    pub fn create_new_camera_3d(
-        gpu_controller: &GpuController,
+    pub(crate) fn create_new_camera_3d(
+        gpu_controller: Arc<GpuController>,
         photon_layouts: &PhotonLayoutsManager,
         eye: Point3<f32>,
         target: Vector3<f32>,
@@ -85,10 +91,39 @@ impl PhotonCamera {
             camera_uniform,
             buffer,
             bind_group,
+            gpu_controller,
         }
     }
 
-    pub(crate) fn set_aspect(&mut self, gpu_controller: &GpuController, new_aspect: f32) {
+    // Call after changing anything
+    fn update(&mut self) {
+        let view = Matrix4::look_at_rh(self.eye, self.eye + self.target, self.up);
+        let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+        let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+
+        self.camera_uniform = CameraUniform {
+            view_position: self.eye.to_homogeneous().into(),
+            view_projection: view_proj.into(),
+        };
+
+        self.gpu_controller.queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+    }
+
+    pub fn set_fovy(&mut self, callback: fn(&mut f32)) {
+        callback(&mut self.fovy);
+
+        // Value clamping to prevent crashing
+        self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
+
+        self.update();
+    }
+
+    pub(crate) fn set_aspect(&mut self, new_aspect: f32) {
         let view = Matrix4::look_at_rh(self.eye, self.eye + self.target, self.up);
         let proj = perspective(Deg(self.fovy), new_aspect, self.znear, self.zfar);
 
@@ -100,7 +135,7 @@ impl PhotonCamera {
             view_projection: view_proj.into(),
         };
 
-        gpu_controller.queue.write_buffer(
+        self.gpu_controller.queue.write_buffer(
             &self.buffer,
             0,
             bytemuck::cast_slice(&[self.camera_uniform]),

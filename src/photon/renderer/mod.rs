@@ -63,7 +63,7 @@ impl PhotonRenderer {
 
         // Initialie the camera
         let camera = PhotonCamera::create_new_camera_3d(
-            &gpu_controller,
+            gpu_controller.clone(),
             &layouts,
             Point3 {
                 x: 2.0,
@@ -99,10 +99,8 @@ impl PhotonRenderer {
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.depth_texture =
             PhotonDepthTexture::new_depth_texture_from_size(&self.gpu_controller, new_size);
-        self.camera.set_aspect(
-            &self.gpu_controller,
-            new_size.width as f32 / new_size.height as f32,
-        );
+        self.camera
+            .set_aspect(new_size.width as f32 / new_size.height as f32);
     }
 
     // Renders all elements in the engine

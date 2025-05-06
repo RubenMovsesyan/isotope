@@ -11,9 +11,11 @@ use winit::{
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
 };
 
+// Publicly exposed types
 pub use element::Element;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::renderer::camera::PhotonCamera;
+pub use winit::keyboard::KeyCode;
 
 mod element;
 mod gpu_utils;

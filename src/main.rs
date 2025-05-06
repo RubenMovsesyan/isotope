@@ -1,4 +1,4 @@
-use isotope::{Isotope, new_isotope, start_isotope};
+use isotope::{Isotope, KeyCode, new_isotope, start_isotope};
 use log::*;
 
 fn init(isotope: &mut Isotope) {
@@ -11,7 +11,25 @@ fn init(isotope: &mut Isotope) {
         }
     }
 
-    isotope.impulse().key_is_pressed(|key_code, iso| {});
+    isotope
+        .impulse()
+        .key_is_pressed(|key_code, iso| match key_code {
+            KeyCode::KeyW => {
+                if let Some(camera) = iso.camera() {
+                    camera.set_fovy(|fovy| {
+                        *fovy += 1.0;
+                    });
+                }
+            }
+            KeyCode::KeyS => {
+                if let Some(camera) = iso.camera() {
+                    camera.set_fovy(|fovy| {
+                        *fovy -= 1.0;
+                    });
+                }
+            }
+            _ => {}
+        });
 }
 
 fn main() {
