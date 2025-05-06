@@ -1,4 +1,10 @@
-use std::{any::Any, fmt::Debug, path::Path, sync::Arc};
+use std::{
+    fmt::Debug,
+    path::Path,
+    sync::{Arc, RwLock},
+    thread::{self, JoinHandle},
+    time::Instant,
+};
 
 use anyhow::Result;
 use element::model::Model;
@@ -18,6 +24,7 @@ pub use photon::renderer::camera::PhotonCamera;
 pub use state::IsotopeState;
 pub use winit::keyboard::KeyCode;
 
+mod compound;
 mod element;
 mod gpu_utils;
 mod impulse;
@@ -54,13 +61,21 @@ pub struct Isotope {
     impulse: ImpulseManager,
 
     // Keeping User defined variables
-    state: Option<IsotopeState>,
+    // state: Option<IsotopeState>,
+    state: Option<Arc<RwLock<dyn IsotopeState>>>,
 
     // Isotope start function
     init_callback: fn(&mut Self),
 
     // Isotope update function
     update_callback: fn(&mut Self),
+
+    // Delta for updating
+    pub delta: Instant,
+
+    // Bool and thread handle for multithreading
+    running: Arc<RwLock<bool>>,
+    thread_handle: Option<JoinHandle<()>>,
 }
 
 pub fn new_isotope(
@@ -77,6 +92,9 @@ pub fn new_isotope(
         state: None,
         init_callback,
         update_callback,
+        delta: Instant::now(),
+        running: Arc::new(RwLock::new(false)),
+        thread_handle: None,
     })
 }
 
@@ -105,19 +123,74 @@ impl Isotope {
     }
 
     /// Add a state to the isotope engine
-    pub fn add_state(&mut self, state: IsotopeState) {
-        self.state.replace(state);
+    pub fn add_state<S: IsotopeState + 'static>(&mut self, state: S) {
+        self.state.replace(Arc::new(RwLock::new(state)));
         info!("Added Game State: {:#?}", self.state);
+        info!("Starting State Update Thread");
+
+        let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
+        let running_clone = self.running.clone();
+
+        // Start an update thread that will run however fast it feels like
+        self.thread_handle = Some(thread::spawn(move || {
+            let mut delta_t = Instant::now();
+            loop {
+                if let Ok(mut state) = state_clone.write() {
+                    state.update(&delta_t);
+                }
+
+                // update delta_t
+                delta_t = Instant::now();
+
+                if let Ok(running) = running_clone.read() {
+                    if !*running {
+                        break;
+                    }
+                }
+            }
+        }));
     }
 
     /// Immutable access to the state
-    pub fn state(&self) -> Option<&IsotopeState> {
-        self.state.as_ref()
+    pub fn with_state<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&dyn IsotopeState) -> R,
+    {
+        let state_guard = self.state.as_ref()?.read().ok()?;
+        Some(f(&*state_guard))
     }
 
     /// Mutable access to the state
-    pub fn state_mut(&mut self) -> Option<&mut IsotopeState> {
-        self.state.as_mut()
+    pub fn with_state_mut<F, R>(&self, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut dyn IsotopeState) -> R,
+    {
+        let mut state_guard = self.state.as_ref()?.write().ok()?;
+        Some(f(&mut *state_guard))
+    }
+
+    /// Immutable access to the typed state
+    pub fn with_state_typed<S, F, R>(&self, f: F) -> Option<R>
+    where
+        S: 'static,
+        F: FnOnce(&S) -> R,
+    {
+        self.with_state(|state| {
+            let typed_state = state.as_any().downcast_ref::<S>()?;
+            Some(f(typed_state))
+        })?
+    }
+
+    /// Mutable access to the typed state
+    pub fn with_state_typed_mut<S, F, R>(&self, f: F) -> Option<R>
+    where
+        S: 'static,
+        F: FnOnce(&mut S) -> R,
+    {
+        self.with_state_mut(|state| {
+            let typed_state = state.as_any_mut().downcast_mut::<S>()?;
+            Some(f(typed_state))
+        })?
     }
 
     // Test function
@@ -155,10 +228,44 @@ impl ApplicationHandler for Isotope {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
+        // Run the fixed update
+        // TODO: extract into thread
+        (self.update_callback)(self);
+
+        // Run the fixed update for the camera
+        if let Some(camera) = self.camera() {
+            // Store the camera pointer temporarily
+            let camera_ptr = camera as *mut PhotonCamera;
+
+            // Now access the state without the camera borrow active
+            if let Some(state) = &self.state {
+                if let Ok(mut state_guard) = state.write() {
+                    // This is safe because we are ensuring no other references
+                    // to the camera exist
+                    unsafe {
+                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta);
+                    }
+                }
+            }
+        }
+
+        // Update delta for the next go-around
+        self.delta = Instant::now();
+
         if unsafe { self.photon.as_ref().unwrap_unchecked().window().id() } == window_id {
             match event {
                 WindowEvent::CloseRequested => {
                     info!("Shutting Down Isotope");
+
+                    // Change running to false
+                    if let Ok(mut running) = self.running.write() {
+                        *running = false;
+                    }
+
+                    if let Some(thread) = self.thread_handle.take() {
+                        thread.join();
+                    }
+
                     event_loop.exit();
                 }
                 WindowEvent::RedrawRequested => {
@@ -212,13 +319,10 @@ impl ApplicationHandler for Isotope {
                 _ => {}
             }
         }
-
-        // Run the fixed update
-        // TODO: extract into thread
-        (self.update_callback)(self);
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        // Safety: This is safe because we know photo exists at this point
         unsafe {
             self.photon
                 .as_ref()

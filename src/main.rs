@@ -1,3 +1,6 @@
+use std::sync::Arc;
+
+use cgmath::InnerSpace;
 use isotope::{Isotope, IsotopeState, KeyCode, new_isotope, start_isotope};
 use log::*;
 
@@ -5,6 +8,52 @@ use log::*;
 pub struct GameState {
     pub w_pressed: bool,
     pub s_pressed: bool,
+    pub a_pressed: bool,
+    pub d_pressed: bool,
+}
+
+const CAMERA_SPEED: f32 = 5.0;
+
+impl IsotopeState for GameState {
+    fn update_with_camera(
+        &mut self,
+        camera: &mut isotope::PhotonCamera,
+        delta_t: &std::time::Instant,
+    ) {
+        let dt = delta_t.elapsed().as_secs_f32();
+
+        if self.w_pressed {
+            camera.modify(|eye, target, _, _, _, _, _| {
+                *eye += target.normalize() * dt * CAMERA_SPEED;
+            });
+        }
+
+        if self.s_pressed {
+            camera.modify(|eye, target, _, _, _, _, _| {
+                *eye -= target.normalize() * dt * CAMERA_SPEED;
+            });
+        }
+
+        if self.a_pressed {
+            camera.modify(|eye, target, up, _, _, _, _| {
+                *eye += up.clone().cross(*target).normalize() * dt * CAMERA_SPEED;
+            });
+        }
+
+        if self.d_pressed {
+            camera.modify(|eye, target, up, _, _, _, _| {
+                *eye -= up.clone().cross(*target).normalize() * dt * CAMERA_SPEED;
+            });
+        }
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self as &dyn std::any::Any
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self as &mut dyn std::any::Any
+    }
 }
 
 fn init(isotope: &mut Isotope) {
@@ -17,66 +66,59 @@ fn init(isotope: &mut Isotope) {
         }
     }
 
-    isotope.add_state(IsotopeState {
-        w_pressed: false,
-        s_pressed: false,
-    });
+    isotope.add_state(GameState::default());
 
     isotope
         .impulse()
         .key_is_pressed(|key_code, iso| match key_code {
             KeyCode::KeyW => {
-                if let Some(state) = iso.state_mut() {
-                    state.w_pressed = true;
-                }
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.w_pressed = true;
+                });
             }
             KeyCode::KeyS => {
-                if let Some(state) = iso.state_mut() {
-                    state.s_pressed = true;
-                }
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.s_pressed = true;
+                });
+            }
+            KeyCode::KeyA => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.a_pressed = true;
+                });
+            }
+            KeyCode::KeyD => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.d_pressed = true;
+                });
             }
             _ => {}
         })
         .key_is_released(|key_code, iso| match key_code {
             KeyCode::KeyW => {
-                if let Some(state) = iso.state_mut() {
-                    state.w_pressed = false;
-                }
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.w_pressed = false;
+                });
             }
             KeyCode::KeyS => {
-                if let Some(state) = iso.state_mut() {
-                    state.s_pressed = false;
-                }
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.s_pressed = false;
+                });
+            }
+            KeyCode::KeyA => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.a_pressed = false;
+                });
+            }
+            KeyCode::KeyD => {
+                iso.with_state_typed_mut::<GameState, _, _>(|game_state| {
+                    game_state.d_pressed = false;
+                });
             }
             _ => {}
         });
 }
 
-fn update(isotope: &mut Isotope) {
-    let mut w_pressed: bool = false;
-    let mut s_pressed: bool = false;
-
-    if let Some(state) = isotope.state() {
-        w_pressed = state.w_pressed;
-        s_pressed = state.s_pressed;
-    }
-
-    if w_pressed {
-        if let Some(cam) = isotope.camera() {
-            cam.set_fovy(|fovy| {
-                *fovy += 0.1;
-            });
-        }
-    }
-
-    if s_pressed {
-        if let Some(cam) = isotope.camera() {
-            cam.set_fovy(|fovy| {
-                *fovy -= 0.1;
-            });
-        }
-    }
-}
+fn update(isotope: &mut Isotope) {}
 
 fn main() {
     let mut app = new_isotope(init, update).expect("Failed");

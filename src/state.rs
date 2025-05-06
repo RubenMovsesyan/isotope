@@ -1,7 +1,19 @@
-use std::fmt::Debug;
+use std::{any::Any, fmt::Debug, sync::Arc, time::Instant};
 
-#[derive(Debug)]
-pub struct IsotopeState {
-    pub w_pressed: bool,
-    pub s_pressed: bool,
+use crate::{Element, PhotonCamera};
+
+pub trait IsotopeState: Debug + Send + Sync {
+    #[allow(unused_variables)]
+    fn update(&mut self, delta_t: &Instant) {}
+
+    fn render_elements(&self) -> Vec<Arc<dyn Element>> {
+        Vec::new()
+    }
+
+    #[allow(unused_variables)]
+    fn update_with_camera(&mut self, camera: &mut PhotonCamera, delta_t: &Instant) {}
+
+    fn as_any(&self) -> &dyn Any;
+
+    fn as_any_mut(&mut self) -> &mut dyn Any;
 }

@@ -114,7 +114,74 @@ impl PhotonCamera {
         );
     }
 
-    pub fn set_fovy(&mut self, callback: fn(&mut f32)) {
+    pub fn modify<F>(&mut self, callback: F)
+    where
+        F: Fn(
+            &mut Point3<f32>,
+            &mut Vector3<f32>,
+            &mut Vector3<f32>,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+        ),
+    {
+        callback(
+            &mut self.eye,
+            &mut self.target,
+            &mut self.up,
+            &mut self.aspect,
+            &mut self.fovy,
+            &mut self.znear,
+            &mut self.zfar,
+        );
+
+        // Value clamping to prevent crashing
+        self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
+
+        self.update();
+    }
+
+    pub fn modify_eye<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut Point3<f32>),
+    {
+        callback(&mut self.eye);
+
+        self.update();
+    }
+
+    pub fn modify_target<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut Vector3<f32>),
+    {
+        callback(&mut self.target);
+
+        self.update();
+    }
+
+    pub fn modify_up<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut Vector3<f32>),
+    {
+        callback(&mut self.up);
+
+        self.update();
+    }
+
+    pub fn modify_aspect<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut f32),
+    {
+        callback(&mut self.aspect);
+
+        self.update();
+    }
+
+    pub fn modify_fovy<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut f32),
+    {
         callback(&mut self.fovy);
 
         // Value clamping to prevent crashing
@@ -123,6 +190,25 @@ impl PhotonCamera {
         self.update();
     }
 
+    pub fn modify_znear<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut f32),
+    {
+        callback(&mut self.znear);
+
+        self.update();
+    }
+
+    pub fn modify_zfar<F>(&mut self, callback: F)
+    where
+        F: Fn(&mut f32),
+    {
+        callback(&mut self.zfar);
+
+        self.update();
+    }
+
+    // Used internally for changing the screen size
     pub(crate) fn set_aspect(&mut self, new_aspect: f32) {
         let view = Matrix4::look_at_rh(self.eye, self.eye + self.target, self.up);
         let proj = perspective(Deg(self.fovy), new_aspect, self.znear, self.zfar);
