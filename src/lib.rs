@@ -1,4 +1,4 @@
-use std::{fmt::Debug, path::Path, sync::Arc};
+use std::{any::Any, fmt::Debug, path::Path, sync::Arc};
 
 use anyhow::Result;
 use element::model::Model;
@@ -7,7 +7,7 @@ use log::*;
 use photon::PhotonManager;
 use winit::{
     application::ApplicationHandler,
-    event::{KeyEvent, WindowEvent},
+    event::{ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
 };
 
@@ -15,12 +15,14 @@ use winit::{
 pub use element::Element;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::renderer::camera::PhotonCamera;
+pub use state::IsotopeState;
 pub use winit::keyboard::KeyCode;
 
 mod element;
 mod gpu_utils;
-pub mod impulse;
+mod impulse;
 mod photon;
+mod state;
 mod utils;
 
 // Test struct
@@ -51,11 +53,20 @@ pub struct Isotope {
     // User Input
     impulse: ImpulseManager,
 
+    // Keeping User defined variables
+    state: Option<IsotopeState>,
+
     // Isotope start function
     init_callback: fn(&mut Self),
+
+    // Isotope update function
+    update_callback: fn(&mut Self),
 }
 
-pub fn new_isotope(init_callback: fn(&mut Isotope)) -> Result<Isotope> {
+pub fn new_isotope(
+    init_callback: fn(&mut Isotope),
+    update_callback: fn(&mut Isotope),
+) -> Result<Isotope> {
     let gpu_controller = Arc::new(GpuController::new()?);
 
     Ok(Isotope {
@@ -63,7 +74,9 @@ pub fn new_isotope(init_callback: fn(&mut Isotope)) -> Result<Isotope> {
         photon: None,
         elements: Vec::new(),
         impulse: ImpulseManager::default(),
+        state: None,
         init_callback,
+        update_callback,
     })
 }
 
@@ -76,16 +89,35 @@ impl Isotope {
         Ok(())
     }
 
+    /// Add Elements to isotope
     pub fn add_element(&mut self, element: Arc<dyn Element>) {
         self.elements.push(element);
     }
 
+    /// For handling input
     pub fn impulse(&mut self) -> &mut ImpulseManager {
         &mut self.impulse
     }
 
+    /// Access the the engine camera
     pub fn camera(&mut self) -> Option<&mut PhotonCamera> {
         Some(&mut self.photon.as_mut()?.renderer.camera)
+    }
+
+    /// Add a state to the isotope engine
+    pub fn add_state(&mut self, state: IsotopeState) {
+        self.state.replace(state);
+        info!("Added Game State: {:#?}", self.state);
+    }
+
+    /// Immutable access to the state
+    pub fn state(&self) -> Option<&IsotopeState> {
+        self.state.as_ref()
+    }
+
+    /// Mutable access to the state
+    pub fn state_mut(&mut self) -> Option<&mut IsotopeState> {
+        self.state.as_mut()
     }
 
     // Test function
@@ -147,20 +179,43 @@ impl ApplicationHandler for Isotope {
                 }
                 WindowEvent::KeyboardInput { event, .. } => {
                     // Run the callback of the Impulse Manager
-                    if let Some(callback) = self.impulse.key_is_pressed {
-                        match event {
-                            KeyEvent { physical_key, .. } => match physical_key {
-                                winit::keyboard::PhysicalKey::Code(code) => {
-                                    callback(code, self);
+                    match event {
+                        KeyEvent {
+                            physical_key,
+                            state,
+                            ..
+                        } => match state {
+                            ElementState::Pressed => {
+                                if let Some(callback) = self.impulse.key_is_pressed {
+                                    match physical_key {
+                                        winit::keyboard::PhysicalKey::Code(code) => {
+                                            callback(code, self);
+                                        }
+                                        _ => {}
+                                    }
                                 }
-                                _ => {}
-                            },
-                        }
+                            }
+                            ElementState::Released => {
+                                if let Some(callback) = self.impulse.key_is_released {
+                                    match physical_key {
+                                        winit::keyboard::PhysicalKey::Code(code) => {
+                                            callback(code, self);
+                                        }
+                                        _ => {}
+                                    }
+                                }
+                            }
+                            _ => {}
+                        },
                     }
                 }
                 _ => {}
             }
         }
+
+        // Run the fixed update
+        // TODO: extract into thread
+        (self.update_callback)(self);
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
