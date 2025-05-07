@@ -5,12 +5,11 @@ use log::*;
 use wgpu::RenderPass;
 
 use crate::{
-    GpuController,
+    Isotope,
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
     },
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
     utils::file_io::read_lines,
 };
 
@@ -31,8 +30,9 @@ pub struct Model {
 impl Model {
     pub fn from_obj<P>(
         path: P,
-        gpu_controller: &GpuController,
-        photon_layouts_manager: &PhotonLayoutsManager,
+        isotope: &Isotope,
+        // gpu_controller: &GpuController,
+        // photon_layouts_manager: &PhotonLayoutsManager,
     ) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -43,6 +43,13 @@ impl Model {
                 .to_str()
                 .ok_or(anyhow!("Object Path Not Valid"))?
         );
+
+        let gpu_controller = &isotope.gpu_controller;
+        let photon_layouts_manager = if let Some(photon) = isotope.photon.as_ref() {
+            &photon.renderer.layouts
+        } else {
+            return Err(anyhow!("Photon not initialzed"));
+        };
 
         // Obj file reading variables
         let mut mesh_name: Option<String> = None;

@@ -1,13 +1,11 @@
 use std::{
     fmt::Debug,
-    path::Path,
     sync::{Arc, RwLock},
     thread::{self, JoinHandle},
     time::Instant,
 };
 
 use anyhow::Result;
-use element::model::Model;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -20,6 +18,7 @@ use winit::{
 
 // Publicly exposed types
 pub use element::Element;
+pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::renderer::camera::PhotonCamera;
 pub use state::IsotopeState;
@@ -32,19 +31,6 @@ mod impulse;
 mod photon;
 mod state;
 mod utils;
-
-// Test struct
-#[deprecated]
-#[derive(Debug)]
-pub struct TestElement {
-    model: Model,
-}
-
-impl Element for TestElement {
-    fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        self.model.render(render_pass);
-    }
-}
 
 /// Main struct for the game engine app
 #[derive(Debug)]
@@ -195,22 +181,22 @@ impl Isotope {
     }
 
     // Test function
-    #[deprecated]
-    pub fn add_from_obj<P>(&mut self, path: P) -> Result<()>
-    where
-        P: AsRef<Path>,
-    {
-        let model = Model::from_obj(
-            &path,
-            &self.gpu_controller,
-            &self.photon.as_ref().unwrap().renderer.layouts,
-        )?;
+    // #[deprecated]
+    // pub fn add_from_obj<P>(&mut self, path: P) -> Result<()>
+    // where
+    //     P: AsRef<Path>,
+    // {
+    //     let model = Model::from_obj(
+    //         &path,
+    //         &self.gpu_controller,
+    //         &self.photon.as_ref().unwrap().renderer.layouts,
+    //     )?;
 
-        let test = Arc::new(TestElement { model });
-        self.elements.push(test);
+    //     let test = Arc::new(TestElement { model });
+    //     self.elements.push(test);
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     /// Modifying window characteristics
     pub fn modify_window<F>(&self, callback: F)
@@ -290,11 +276,16 @@ impl ApplicationHandler for Isotope {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(photon) = &self.photon {
-                        match photon.render(&self.elements) {
-                            Ok(()) => {}
-                            Err(err) => {
-                                error!("Rendering failed with Error: {}", err);
-                                event_loop.exit();
+                        // match photon.render(&self.elements) {
+                        //     Ok(()) => {}
+                        //     Err(err) => {
+                        //         error!("Rendering failed with Error: {}", err);
+                        //         event_loop.exit();
+                        //     }
+                        // }
+                        if let Some(state) = &self.state {
+                            if let Ok(state) = state.read() {
+                                _ = photon.render(state.render_elements());
                             }
                         }
                     }
@@ -349,8 +340,8 @@ impl ApplicationHandler for Isotope {
 
     fn device_event(
         &mut self,
-        event_loop: &ActiveEventLoop,
-        device_id: winit::event::DeviceId,
+        _event_loop: &ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
         event: winit::event::DeviceEvent,
     ) {
         // Run the fixed update

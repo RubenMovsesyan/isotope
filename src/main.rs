@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Quaternion, Rotation};
-use isotope::{Isotope, IsotopeState, KeyCode, new_isotope, start_isotope};
+use isotope::{Element, Isotope, IsotopeState, KeyCode, Model, new_isotope, start_isotope};
 use log::*;
 
 #[derive(Debug, Default)]
@@ -16,6 +16,19 @@ pub struct GameState {
     pub mouse_diff: (f64, f64),
 
     pub mouse_focused: bool,
+
+    pub elements: Vec<Arc<dyn Element>>,
+}
+
+#[derive(Debug)]
+pub struct TestElement {
+    model: Model,
+}
+
+impl Element for TestElement {
+    fn render(&self, render_pass: &mut wgpu::RenderPass) {
+        self.model.render(render_pass);
+    }
 }
 
 const CAMERA_SPEED: f32 = 7.0;
@@ -103,6 +116,10 @@ impl IsotopeState for GameState {
         }
     }
 
+    fn render_elements(&self) -> &[Arc<dyn Element>] {
+        &self.elements
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self as &dyn std::any::Any
     }
@@ -113,16 +130,13 @@ impl IsotopeState for GameState {
 }
 
 fn init(isotope: &mut Isotope) {
-    match isotope.add_from_obj("test_files/cube.obj") {
-        Ok(()) => {
-            info!("Cube Added successfully");
-        }
-        Err(err) => {
-            error!("Cube failed with error: {err}");
-        }
-    }
-
-    isotope.add_state(GameState::default());
+    isotope.add_state({
+        let mut state = GameState::default();
+        state.elements.push(Arc::new(TestElement {
+            model: Model::from_obj("test_files/cube.obj", &isotope).expect("Failed"),
+        }));
+        state
+    });
 
     isotope
         .impulse()
