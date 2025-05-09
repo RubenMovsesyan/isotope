@@ -3,7 +3,7 @@ use wgpu::{
     BufferBindingType, Device, ShaderStages,
 };
 
-pub const BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor = BindGroupLayoutDescriptor {
+const BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor = BindGroupLayoutDescriptor {
     label: Some("Photon Camera Bind Group Layout"),
     entries: &[BindGroupLayoutEntry {
         binding: 0,

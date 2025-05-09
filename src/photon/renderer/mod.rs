@@ -3,6 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use camera::PhotonCamera;
 use cgmath::{Point3, Vector3};
+use lights::{Lights, light::Light};
 use photon_layouts::PhotonLayoutsManager;
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
@@ -15,9 +16,11 @@ use winit::dpi::PhysicalSize;
 use crate::{GpuController, construct_render_pipeline, element::Element};
 
 pub mod camera;
+pub mod lights;
 pub mod photon_layouts;
-mod render_macros;
 pub mod texture;
+
+mod render_macros;
 
 #[derive(Debug)]
 pub struct PhotonRenderer {
@@ -28,6 +31,7 @@ pub struct PhotonRenderer {
     // Rendering requirements
     depth_texture: PhotonDepthTexture,
     pub(crate) camera: PhotonCamera,
+    pub(crate) lights: Lights,
 }
 
 impl PhotonRenderer {
@@ -54,6 +58,7 @@ impl PhotonRenderer {
             fragment_shader,
             String::from("Photon"),
             &layouts.camera_layout,
+            &layouts.lights_layout,
             &layouts.texture_layout
         );
 
@@ -86,13 +91,23 @@ impl PhotonRenderer {
             100.0,
         );
 
+        // Initialize with no lights
+        let lights = Lights::new_with_lights(&gpu_controller, &layouts, &[]);
+
         Self {
             gpu_controller,
             layouts,
             render_pipeline,
             depth_texture,
             camera,
+            lights,
         }
+    }
+
+    // Function to modify the lights in the scene
+    pub fn update_lights(&mut self, lights: &[Light]) {
+        self.lights
+            .update(&self.gpu_controller, &self.layouts, lights);
     }
 
     // Change the render configuration and camera and all other necessary items to resize the render
@@ -148,6 +163,7 @@ impl PhotonRenderer {
 
             // Camera
             render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(1, &self.lights.bind_group, &[]);
 
             for element in elements {
                 element.render(&mut render_pass);

@@ -20,7 +20,7 @@ use winit::{
 pub use element::Element;
 pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
-pub use photon::renderer::camera::PhotonCamera;
+pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};
 pub use state::IsotopeState;
 pub use winit::keyboard::KeyCode;
 
@@ -89,6 +89,10 @@ impl Isotope {
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
 
+        if let Ok(mut running) = self.running.write() {
+            *running = true;
+        }
+
         (self.init_callback)(self);
 
         Ok(())
@@ -120,10 +124,12 @@ impl Isotope {
 
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
+            info!("Running Thread");
             let mut delta_t = Instant::now();
+            let t = Instant::now();
             loop {
                 if let Ok(mut state) = state_clone.write() {
-                    state.update(&delta_t);
+                    state.update(&delta_t, &t);
                 }
 
                 // update delta_t
@@ -179,24 +185,6 @@ impl Isotope {
             Some(f(typed_state))
         })?
     }
-
-    // Test function
-    // #[deprecated]
-    // pub fn add_from_obj<P>(&mut self, path: P) -> Result<()>
-    // where
-    //     P: AsRef<Path>,
-    // {
-    //     let model = Model::from_obj(
-    //         &path,
-    //         &self.gpu_controller,
-    //         &self.photon.as_ref().unwrap().renderer.layouts,
-    //     )?;
-
-    //     let test = Arc::new(TestElement { model });
-    //     self.elements.push(test);
-
-    //     Ok(())
-    // }
 
     /// Modifying window characteristics
     pub fn modify_window<F>(&self, callback: F)
@@ -275,17 +263,10 @@ impl ApplicationHandler for Isotope {
                     event_loop.exit();
                 }
                 WindowEvent::RedrawRequested => {
-                    if let Some(photon) = &self.photon {
-                        // match photon.render(&self.elements) {
-                        //     Ok(()) => {}
-                        //     Err(err) => {
-                        //         error!("Rendering failed with Error: {}", err);
-                        //         event_loop.exit();
-                        //     }
-                        // }
-                        if let Some(state) = &self.state {
-                            if let Ok(state) = state.read() {
-                                _ = photon.render(state.render_elements());
+                    if let Some(photon) = &mut self.photon {
+                        if let Some(state) = &mut self.state {
+                            if let Ok(state) = state.write() {
+                                _ = photon.render(state.render_elements(), state.get_lights());
                             }
                         }
                     }

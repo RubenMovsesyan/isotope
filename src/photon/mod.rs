@@ -5,7 +5,7 @@ use renderer::PhotonRenderer;
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
-use crate::{Element, gpu_utils::GpuController};
+use crate::{Element, Light, gpu_utils::GpuController};
 
 pub mod renderer;
 pub mod window;
@@ -41,7 +41,8 @@ impl PhotonManager {
     }
 
     // Call on request redraw
-    pub fn render(&self, elements: &[Arc<dyn Element>]) -> Result<()> {
+    pub fn render(&mut self, elements: &[Arc<dyn Element>], lights: &[Light]) -> Result<()> {
+        self.renderer.update_lights(lights);
         self.renderer.render(&self.window.surface, elements)
     }
 }

@@ -1,25 +1,29 @@
 use wgpu::{
-    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, Device,
-    SamplerBindingType, ShaderStages, TextureSampleType, TextureViewDimension,
+    BindGroupLayout, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType,
+    BufferBindingType, Device, ShaderStages,
 };
 
 const BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor = BindGroupLayoutDescriptor {
-    label: Some("Photon Texture Bind Group Layout"),
+    label: Some("Photon Lights Bind Group Layout"),
     entries: &[
         BindGroupLayoutEntry {
             binding: 0,
             visibility: ShaderStages::FRAGMENT,
-            ty: BindingType::Texture {
-                multisampled: false,
-                view_dimension: TextureViewDimension::D2,
-                sample_type: TextureSampleType::Float { filterable: true },
+            ty: BindingType::Buffer {
+                ty: BufferBindingType::Storage { read_only: true },
+                has_dynamic_offset: false,
+                min_binding_size: None,
             },
             count: None,
         },
         BindGroupLayoutEntry {
             binding: 1,
             visibility: ShaderStages::FRAGMENT,
-            ty: BindingType::Sampler(SamplerBindingType::Filtering),
+            ty: BindingType::Buffer {
+                ty: BufferBindingType::Uniform,
+                has_dynamic_offset: false,
+                min_binding_size: None,
+            },
             count: None,
         },
     ],

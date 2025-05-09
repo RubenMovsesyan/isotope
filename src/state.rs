@@ -2,11 +2,11 @@ use std::{any::Any, fmt::Debug, sync::Arc, time::Instant};
 
 use winit::window::Window;
 
-use crate::{Element, PhotonCamera, photon::renderer::PhotonRenderer};
+use crate::{Element, Light, PhotonCamera};
 
 pub trait IsotopeState: Debug + Send + Sync {
     #[allow(unused_variables)]
-    fn update(&mut self, delta_t: &Instant) {}
+    fn update(&mut self, delta_t: &Instant, t: &Instant) {}
 
     #[allow(unused_variables)]
     fn render_elements(&self) -> &[Arc<dyn Element>] {
@@ -18,6 +18,10 @@ pub trait IsotopeState: Debug + Send + Sync {
 
     #[allow(unused_variables)]
     fn update_with_window(&mut self, window: &Window, delta_t: &Instant) {}
+
+    fn get_lights(&self) -> &[Light] {
+        &[]
+    }
 
     fn as_any(&self) -> &dyn Any;
 

@@ -19,7 +19,7 @@ use super::{
 };
 
 // Set to 5 to allow for future expansion of bind groups for the shader
-pub(crate) const MODEL_BIND_GROUP: u32 = 1;
+pub(crate) const MODEL_BIND_GROUP: u32 = 2;
 
 #[derive(Debug)]
 pub struct Model {
@@ -28,12 +28,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_obj<P>(
-        path: P,
-        isotope: &Isotope,
-        // gpu_controller: &GpuController,
-        // photon_layouts_manager: &PhotonLayoutsManager,
-    ) -> Result<Self>
+    pub fn from_obj<P>(path: P, isotope: &Isotope) -> Result<Self>
     where
         P: AsRef<Path>,
     {

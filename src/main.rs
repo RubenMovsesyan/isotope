@@ -1,7 +1,9 @@
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Quaternion, Rotation};
-use isotope::{Element, Isotope, IsotopeState, KeyCode, Model, new_isotope, start_isotope};
+use isotope::{Element, Isotope, IsotopeState, KeyCode, Light, Model, new_isotope, start_isotope};
+
+#[allow(unused_imports)]
 use log::*;
 
 #[derive(Debug, Default)]
@@ -18,6 +20,8 @@ pub struct GameState {
     pub mouse_focused: bool,
 
     pub elements: Vec<Arc<dyn Element>>,
+
+    pub lights: [Light; 2],
 }
 
 #[derive(Debug)]
@@ -106,6 +110,25 @@ impl IsotopeState for GameState {
         self.mouse_diff = (0.0, 0.0);
     }
 
+    fn get_lights(&self) -> &[Light] {
+        debug!("Lights: {:#?}", self.lights);
+        &self.lights
+    }
+
+    fn update(&mut self, _delta_t: &std::time::Instant, t: &std::time::Instant) {
+        self.lights[0].pos(|x, y, z| {
+            *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+            *y = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+            *z = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        });
+
+        self.lights[1].pos(|x, y, z| {
+            *x = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+            *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+            *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        });
+    }
+
     fn update_with_window(&mut self, window: &winit::window::Window, delta_t: &std::time::Instant) {
         if self.mouse_focused {
             _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
@@ -135,6 +158,10 @@ fn init(isotope: &mut Isotope) {
         state.elements.push(Arc::new(TestElement {
             model: Model::from_obj("test_files/cube.obj", &isotope).expect("Failed"),
         }));
+        state.lights[0].color = [1.0, 0.0, 0.0];
+        state.lights[0].intensity = 1.0;
+        state.lights[1].color = [0.0, 0.0, 1.0];
+        state.lights[1].intensity = 1.0;
         state
     });
 
