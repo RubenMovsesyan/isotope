@@ -1,7 +1,0 @@
-[
-    {
-        "label": "Run",
-        "command": "cargo run"
-        // "cwd": "$ZED_WORKTREE_ROOT"
-    }
-]
