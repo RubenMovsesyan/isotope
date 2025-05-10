@@ -18,6 +18,7 @@ use winit::{
 
 // Publicly exposed types
 pub use element::Element;
+pub use element::mesh::ModelInstance;
 pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};

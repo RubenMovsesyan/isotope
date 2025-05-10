@@ -18,6 +18,8 @@ use super::{
     mesh::{INDEX_FORMAT, Mesh},
 };
 
+pub use super::mesh::ModelInstance;
+
 // Set to 5 to allow for future expansion of bind groups for the shader
 pub(crate) const MODEL_BIND_GROUP: u32 = 2;
 
@@ -39,7 +41,7 @@ impl Model {
                 .ok_or(anyhow!("Object Path Not Valid"))?
         );
 
-        let gpu_controller = &isotope.gpu_controller;
+        let gpu_controller = isotope.gpu_controller.clone();
         let photon_layouts_manager = if let Some(photon) = isotope.photon.as_ref() {
             &photon.renderer.layouts
         } else {
@@ -75,7 +77,7 @@ impl Model {
                     // If there is a mesh currently in the buffer then add it to the model
                     if let Some(name) = mesh_name.take() {
                         let mut new_mesh =
-                            Mesh::new(name, &model_vertices, &indices, gpu_controller);
+                            Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
 
                         if let Some(mat_ind) = material_index.take() {
                             new_mesh.material = Some(materials[mat_ind].clone());
@@ -143,7 +145,7 @@ impl Model {
 
                     // Add all the found materials to the materials
                     materials.append(&mut load_materials(
-                        gpu_controller,
+                        &gpu_controller,
                         photon_layouts_manager,
                         path_to_material,
                     )?);
@@ -177,7 +179,7 @@ impl Model {
 
         // Add the remaining object to the list
         if let Some(name) = mesh_name.take() {
-            let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller);
+            let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
 
             if let Some(mat_ind) = material_index.take() {
                 new_mesh.material = Some(materials[mat_ind].clone());
@@ -189,10 +191,21 @@ impl Model {
         Ok(Self { meshes, materials })
     }
 
+    pub fn set_instances(&mut self, instances: &[ModelInstance]) {
+        // Set the instance buffer for all the meshes
+        for mesh in self.meshes.iter_mut() {
+            mesh.set_instance_buffer(instances);
+        }
+    }
+
     pub fn render(&self, render_pass: &mut RenderPass) {
         for mesh in self.meshes.iter() {
+            // Vertices
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+            // Vertex Indices
             render_pass.set_index_buffer(mesh.index_buffer.slice(..), INDEX_FORMAT);
+            // Instances
+            render_pass.set_vertex_buffer(1, mesh.instance_buffer.slice(..));
 
             // Set the bind group for the material of the mesh
             // TODO: add optional texture support
@@ -210,7 +223,7 @@ impl Model {
             );
 
             // TODO: Add Gpu Instancing to the Mesh
-            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..1);
+            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
         }
     }
 }

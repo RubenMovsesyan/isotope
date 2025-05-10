@@ -10,6 +10,7 @@ macro_rules! construct_render_pipeline {
 
             use crate::photon::renderer::texture::PHOTON_TEXTURE_DEPTH_FORMAT;
             use crate::element::model_vertex::ModelVertex;
+            use crate::element::mesh::ModelInstance;
             use crate::element::buffered::Buffered;
 
             let mut layouts = Vec::new();
@@ -31,7 +32,7 @@ macro_rules! construct_render_pipeline {
                 vertex: VertexState {
                     module: &$vertex_shader,
                     entry_point: Some("main"),
-                    buffers: &[ModelVertex::desc()],
+                    buffers: &[ModelVertex::desc(), ModelInstance::desc()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
                 fragment: Some(FragmentState {

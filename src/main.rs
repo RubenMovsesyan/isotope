@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use cgmath::{InnerSpace, Quaternion, Rotation};
-use isotope::{Element, Isotope, IsotopeState, KeyCode, Light, Model, new_isotope, start_isotope};
+use isotope::{
+    Element, Isotope, IsotopeState, KeyCode, Light, Model, ModelInstance, new_isotope,
+    start_isotope,
+};
 
 #[allow(unused_imports)]
 use log::*;
@@ -111,7 +114,6 @@ impl IsotopeState for GameState {
     }
 
     fn get_lights(&self) -> &[Light] {
-        debug!("Lights: {:#?}", self.lights);
         &self.lights
     }
 
@@ -155,9 +157,25 @@ impl IsotopeState for GameState {
 fn init(isotope: &mut Isotope) {
     isotope.add_state({
         let mut state = GameState::default();
-        state.elements.push(Arc::new(TestElement {
-            model: Model::from_obj("test_files/cube.obj", &isotope).expect("Failed"),
-        }));
+        state.elements.push({
+            let mut model = Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
+            model.set_instances(&[
+                ModelInstance {
+                    position: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 0.0],
+                },
+                ModelInstance {
+                    position: [5.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 0.0],
+                },
+                ModelInstance {
+                    position: [0.0, 0.0, 5.0],
+                    rotation: [0.0, 0.0, 0.0, 0.0],
+                },
+            ]);
+
+            Arc::new(TestElement { model })
+        });
         state.lights[0].color = [1.0, 0.0, 0.0];
         state.lights[0].intensity = 1.0;
         state.lights[1].color = [0.0, 0.0, 1.0];
