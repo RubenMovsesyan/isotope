@@ -24,6 +24,19 @@ struct CameraUniform {
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
 
+fn hamilton_prod(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    );
+}
+
+fn quat_conj(q: vec4<f32>) -> vec4<f32> {
+    return q * vec4<f32>(-1.0, -1.0, -1.0, 1.0);
+}
+
 // Vertex Shader
 @vertex
 fn main(
@@ -32,8 +45,31 @@ fn main(
 ) -> VertexOutput {
     var out: VertexOutput;
     out.uv_coords = model.uv_coords;
-    out.world_normal = model.normal;
-    var world_position: vec4<f32> = vec4<f32>(model.position + instance.position, 1.0);
+
+    // Rotate the point first
+
+    let conj = quat_conj(instance.rotation);
+
+    let rot_normal: vec4<f32> = hamilton_prod(
+        hamilton_prod(
+            instance.rotation,
+            vec4<f32>(model.normal, 0.0),
+        ),
+        conj
+    );
+    out.world_normal = normalize(rot_normal.xyz);
+
+    let rot: vec4<f32> = hamilton_prod(
+        hamilton_prod(
+            instance.rotation,
+            vec4<f32>(model.position, 0.0),
+        ),
+        conj
+    );
+
+    // Offset the point
+    let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position, 1.0);
+
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
     return out;

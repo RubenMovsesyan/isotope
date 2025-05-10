@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::{InnerSpace, Quaternion, Rotation};
+use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3};
 use isotope::{
     Element, Isotope, IsotopeState, KeyCode, Light, Model, ModelInstance, new_isotope,
     start_isotope,
@@ -162,15 +162,21 @@ fn init(isotope: &mut Isotope) {
             model.set_instances(&[
                 ModelInstance {
                     position: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0, 0.0],
+                    rotation: Quaternion::from_axis_angle(Vector3::unit_x(), Deg(45.0))
+                        .normalize()
+                        .into(),
                 },
                 ModelInstance {
                     position: [5.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0, 0.0],
+                    rotation: Quaternion::from_axis_angle(Vector3::unit_y(), Deg(45.0))
+                        .normalize()
+                        .into(),
                 },
                 ModelInstance {
                     position: [0.0, 0.0, 5.0],
-                    rotation: [0.0, 0.0, 0.0, 0.0],
+                    rotation: Quaternion::from_axis_angle(Vector3::unit_z(), Deg(45.0))
+                        .normalize()
+                        .into(),
                 },
             ]);
 
