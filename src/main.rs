@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3};
 use isotope::{
@@ -24,17 +24,26 @@ pub struct GameState {
 
     pub elements: Vec<Arc<dyn Element>>,
 
-    pub lights: [Light; 2],
+    pub lights: [Light; 3],
 }
 
 #[derive(Debug)]
 pub struct TestElement {
-    model: Model,
+    model: RwLock<Model>,
 }
 
 impl Element for TestElement {
     fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        self.model.render(render_pass);
+        let model = self.model.read().unwrap();
+        model.render(render_pass);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self as &dyn std::any::Any
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self as &mut dyn std::any::Any
     }
 }
 
@@ -129,6 +138,50 @@ impl IsotopeState for GameState {
             *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
             *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
         });
+
+        self.lights[2].pos(|x, y, z| {
+            *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+            *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+            *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        });
+
+        for element in self.elements.iter() {
+            if let Some(element) = element.as_any().downcast_ref::<TestElement>() {
+                const SCALAR: f32 = 30.0;
+
+                element.model.write().unwrap().set_instances(&[
+                    ModelInstance {
+                        position: [0.0, 0.0, 0.0],
+                        rotation: Quaternion::from_axis_angle(
+                            Vector3::unit_x(),
+                            Deg(SCALAR * t.elapsed().as_secs_f32()),
+                        )
+                        .normalize()
+                        .into(),
+                    },
+                    ModelInstance {
+                        position: [5.0, 0.0, 0.0],
+                        rotation: Quaternion::from_axis_angle(
+                            Vector3::unit_y(),
+                            Deg(SCALAR * t.elapsed().as_secs_f32()),
+                        )
+                        .normalize()
+                        .into(),
+                    },
+                    ModelInstance {
+                        position: [0.0, 0.0, 5.0],
+                        rotation: Quaternion::from_axis_angle(
+                            Vector3::unit_z(),
+                            Deg(SCALAR * t.elapsed().as_secs_f32()),
+                        )
+                        .normalize()
+                        .into(),
+                    },
+                ]);
+            } else {
+                debug!("Failed to cast");
+            }
+        }
     }
 
     fn update_with_window(&mut self, window: &winit::window::Window, delta_t: &std::time::Instant) {
@@ -180,12 +233,16 @@ fn init(isotope: &mut Isotope) {
                 },
             ]);
 
-            Arc::new(TestElement { model })
+            Arc::new(TestElement {
+                model: RwLock::new(model),
+            })
         });
         state.lights[0].color = [1.0, 0.0, 0.0];
         state.lights[0].intensity = 1.0;
         state.lights[1].color = [0.0, 0.0, 1.0];
         state.lights[1].intensity = 1.0;
+        state.lights[2].color = [0.0, 1.0, 0.0];
+        state.lights[2].intensity = 1.0;
         state
     });
 
