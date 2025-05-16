@@ -27,6 +27,7 @@ pub(crate) const MODEL_BIND_GROUP: u32 = 2;
 pub struct Model {
     meshes: Vec<Mesh>,
     materials: Vec<Arc<Material>>,
+    instances: Vec<ModelInstance>,
 }
 
 impl Model {
@@ -188,13 +189,57 @@ impl Model {
             meshes.push(new_mesh);
         }
 
-        Ok(Self { meshes, materials })
+        Ok(Self {
+            meshes,
+            materials,
+            instances: Vec::new(),
+        })
+    }
+
+    // Functino to modify the instance rather than set new ones
+    pub fn modify_instances<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut [ModelInstance]),
+    {
+        callback(&mut self.instances);
+
+        // Set the instance buffer for all the meshes
+        for mesh in self.meshes.iter_mut() {
+            mesh.set_instance_buffer(&self.instances);
+        }
     }
 
     pub fn set_instances(&mut self, instances: &[ModelInstance]) {
+        // If the instance buffer is a different size update the instances to match the size
+        // if the new buffer is lonver then clear the instances and start anew
+        if instances.len() > self.instances.len() {
+            if self.instances.capacity() < instances.len() {
+                self.instances = Vec::with_capacity(instances.len());
+            }
+
+            for (index, instance) in instances.iter().enumerate() {
+                if index < self.instances.len() {
+                    self.instances[index] = *instance;
+                } else {
+                    self.instances.push(*instance);
+                }
+            }
+        // if it is shorter then pop from the current buffer and push until finished
+        } else if instances.len() <= self.instances.len() {
+            while self.instances.len() > instances.len() {
+                _ = self.instances.pop();
+            }
+
+            for (index, instance) in instances.iter().enumerate() {
+                self.instances[index] = *instance;
+            }
+        }
+
+        warn!("Self Instances: {:#?}", self.instances);
+
         // Set the instance buffer for all the meshes
         for mesh in self.meshes.iter_mut() {
-            mesh.set_instance_buffer(instances);
+            mesh.set_instance_buffer(&self.instances);
         }
     }
 

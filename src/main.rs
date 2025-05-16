@@ -149,42 +149,43 @@ impl IsotopeState for GameState {
             if let Some(element) = element.as_any().downcast_ref::<TestElement>() {
                 const SCALAR: f32 = 30.0;
 
-                element.model.write().unwrap().set_instances(&[
-                    ModelInstance {
-                        position: [0.0, 0.0, 0.0],
-                        rotation: Quaternion::from_axis_angle(
+                _ = element.model.write().and_then(|mut m| {
+                    m.modify_instances(|instances| {
+                        instances[0].rotation = Quaternion::from_axis_angle(
                             Vector3::unit_x(),
                             Deg(SCALAR * t.elapsed().as_secs_f32()),
                         )
                         .normalize()
-                        .into(),
-                    },
-                    ModelInstance {
-                        position: [5.0, 0.0, 0.0],
-                        rotation: Quaternion::from_axis_angle(
+                        .into();
+
+                        instances[1].rotation = Quaternion::from_axis_angle(
                             Vector3::unit_y(),
                             Deg(SCALAR * t.elapsed().as_secs_f32()),
                         )
                         .normalize()
-                        .into(),
-                    },
-                    ModelInstance {
-                        position: [0.0, 0.0, 5.0],
-                        rotation: Quaternion::from_axis_angle(
+                        .into();
+
+                        instances[2].rotation = Quaternion::from_axis_angle(
                             Vector3::unit_z(),
                             Deg(SCALAR * t.elapsed().as_secs_f32()),
                         )
                         .normalize()
-                        .into(),
-                    },
-                ]);
+                        .into();
+                    });
+
+                    Ok(())
+                });
             } else {
                 debug!("Failed to cast");
             }
         }
     }
 
-    fn update_with_window(&mut self, window: &winit::window::Window, delta_t: &std::time::Instant) {
+    fn update_with_window(
+        &mut self,
+        window: &winit::window::Window,
+        _delta_t: &std::time::Instant,
+    ) {
         if self.mouse_focused {
             _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
             window.set_cursor_visible(false);
