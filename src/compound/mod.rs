@@ -1,97 +1,116 @@
 use std::{
-    any::Any,
-    sync::{Arc, Mutex},
+    any::{Any, TypeId},
+    collections::HashMap,
+    ops::{Deref, DerefMut},
+    sync::{
+        Arc, RwLock,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
-use anyhow::{Result, anyhow};
+type EntityId = AtomicU64;
+pub type Entity = u64;
 
-pub trait ComponentVec {
-    fn push_none(&self);
-    fn as_any(&self) -> &dyn Any;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
+// Component Wrapper that allows safe concurrent access
+pub struct MoleculeCell<T: Send + Sync + 'static> {
+    data: RwLock<T>,
 }
 
-impl<T: 'static> ComponentVec for Mutex<Vec<Option<T>>> {
-    fn push_none(&self) {
-        self.lock().unwrap().push(None);
+impl<T: Send + Sync + 'static> MoleculeCell<T> {
+    fn new(data: T) -> Self {
+        Self {
+            data: RwLock::new(data),
+        }
     }
 
-    fn as_any(&self) -> &dyn Any {
-        self as &dyn Any
+    fn get_mut(&self) -> impl DerefMut<Target = T> + '_ {
+        self.data.write().unwrap()
     }
 
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self as &mut dyn Any
+    fn get(&self) -> impl Deref<Target = T> + '_ {
+        self.data.read().unwrap()
+    }
+}
+
+// Storage for a single component type
+pub struct MoleculeStorage<T: Send + Sync + 'static> {
+    compounds: HashMap<Entity, MoleculeCell<T>>,
+}
+
+impl<T: Send + Sync + 'static> MoleculeStorage<T> {
+    fn new() -> Self {
+        Self {
+            compounds: HashMap::new(),
+        }
     }
 }
 
 pub struct Compound {
-    element_count: usize,
-    component_vecs: Vec<Arc<dyn ComponentVec>>,
+    num_entities: EntityId,
+    storages: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,
 }
 
 impl Compound {
     pub fn new() -> Self {
         Self {
-            element_count: 0,
-            component_vecs: Vec::new(),
+            num_entities: AtomicU64::new(0),
+            storages: RwLock::new(HashMap::new()),
         }
     }
 
-    pub fn new_entity(&mut self) -> usize {
-        let entity_id = self.element_count;
-
-        for component_vec in self.component_vecs.iter() {
-            // component_vec.lock().unwrap().push_none();
-            component_vec.push_none();
-        }
-        self.element_count += 1;
+    pub fn create_entity(&mut self) -> Entity {
+        let entity_id = self.num_entities.fetch_add(1, Ordering::Relaxed);
 
         entity_id
     }
 
-    pub fn add_component<T: 'static>(&mut self, element: usize, component: T) {
-        for component_type in self.component_vecs.iter() {
-            if let Some(component_vec) = component_type
-                .as_any()
-                .downcast_ref::<Mutex<Vec<Option<T>>>>()
-            {
-                if let Ok(mut component_vec) = component_vec.lock() {
-                    component_vec[element] = Some(component);
-                    return;
-                }
-            }
+    // Get or create storage for a component type
+    fn get_or_create_storage<T: Send + Sync + 'static>(&self) -> Arc<RwLock<MoleculeStorage<T>>> {
+        let mut storages = self.storages.write().unwrap();
+        let type_id = TypeId::of::<T>();
+
+        if !storages.contains_key(&type_id) {
+            let storage = MoleculeStorage::<T>::new();
+            storages.insert(type_id, Box::new(Arc::new(RwLock::new(storage))));
         }
 
-        let mut new_component_vec: Mutex<Vec<Option<T>>> =
-            Mutex::new(Vec::with_capacity(self.element_count));
+        let any_storage = unsafe {
+            // Safe because we create it if it doesn't exist
+            storages.get(&type_id).unwrap_unchecked()
+        };
 
-        for _ in 0..self.element_count {
-            new_component_vec.push_none();
-        }
+        let storage = unsafe {
+            // Safe because we create it if it doesn't exist
+            any_storage
+                .downcast_ref::<Arc<RwLock<MoleculeStorage<T>>>>()
+                .unwrap_unchecked()
+        };
 
-        new_component_vec
-            .as_any_mut()
-            .downcast_mut::<Mutex<Vec<Option<T>>>>()
-            .unwrap()
-            .lock()
-            .unwrap()[element] = Some(component);
-        self.component_vecs.push(Arc::new(new_component_vec));
+        storage.clone()
     }
 
-    pub fn query<T: 'static>(&mut self) -> Option<Arc<dyn ComponentVec>> {
-        for component_type in self.component_vecs.iter() {
-            if let Some(_component_vec) = component_type
-                .as_any()
-                .downcast_ref::<Mutex<Vec<Option<T>>>>()
-            {
-                // drop(component_vec);
+    pub fn add_molecule<T: Send + Sync + 'static>(&self, entity: Entity, molecule: T) {
+        unsafe {
+            self.get_or_create_storage::<T>()
+                .write()
+                .unwrap_unchecked()
+                .compounds
+                .insert(entity, MoleculeCell::new(molecule));
+        };
+    }
 
-                return Some(component_type.clone());
-            }
+    pub fn for_each_molecule<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = unsafe { storage.read().unwrap_unchecked() };
+
+        for (entity, cell) in &storage_guard.compounds {
+            let mut data = cell.get_mut();
+            f(*entity, &mut *data);
         }
-
-        None
     }
 }
 
@@ -100,65 +119,62 @@ mod ecs_test {
     use super::*;
 
     #[test]
-    fn test_query() {
-        let mut ecs = Compound::new();
-
-        let dog = ecs.new_entity();
-        let cat = ecs.new_entity();
-
-        struct Animal {
+    fn test_ecs_basics() {
+        struct Label {
             name: String,
-            ty: String,
+            id: u32,
         }
 
         struct Collar {
             name: String,
+            address: String,
         }
 
         struct Whiskers {
-            count: u32,
+            color: String,
+            number: u32,
         }
 
-        println!("here");
-        ecs.add_component(
-            dog,
-            Animal {
-                name: String::from("Sparky"),
-                ty: String::from("dog"),
-            },
-        );
+        let mut compound = Compound::new();
 
-        println!("here 2");
-        ecs.add_component(
+        let cat = compound.create_entity();
+        let dog = compound.create_entity();
+
+        compound.add_molecule(
             cat,
-            Animal {
-                name: String::from("Luna"),
-                ty: String::from("cat"),
+            Label {
+                name: "John".to_string(),
+                id: 0,
             },
         );
 
-        println!("here 3");
-        ecs.add_component(
+        compound.add_molecule(
+            cat,
+            Whiskers {
+                color: "Black".to_string(),
+                number: 8,
+            },
+        );
+
+        compound.add_molecule(
+            dog,
+            Label {
+                name: "Sparky".to_string(),
+                id: 1,
+            },
+        );
+
+        compound.add_molecule(
             dog,
             Collar {
-                name: String::from("Sparky"),
+                name: "Sparky".to_string(),
+                address: "1 main St.".to_string(),
             },
         );
 
-        println!("here 4");
-        ecs.add_component(cat, Whiskers { count: 10 });
-
-        let animals = ecs.query::<Animal>().unwrap();
-
-        println!(
-            "Num animals: {}",
-            animals
-                .as_any()
-                .downcast_ref::<Mutex<Vec<Option<Animal>>>>()
-                .unwrap()
-                .lock()
-                .unwrap()
-                .len()
-        );
+        compound.for_each_molecule(|entity, label: &mut Label| {
+            println!("Name: {}", label.name);
+            println!("Id: {}", label.id);
+        });
     }
 }
