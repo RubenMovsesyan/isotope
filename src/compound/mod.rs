@@ -8,6 +8,39 @@ use std::{
     },
 };
 
+pub struct AtomicMolecule<T> {
+    molecule: T,
+    version: AtomicU64,
+}
+
+impl<T> AtomicMolecule<T> {
+    fn new(molecule: T) -> Self {
+        Self {
+            molecule,
+            version: AtomicU64::new(0),
+        }
+    }
+}
+
+pub struct MoleculeMutator<'a, T> {
+    molcule: &'a mut T,
+    version: &'a AtomicU64,
+}
+
+impl<'a, T> Drop for MoleculeMutator<'a, T> {
+    fn drop(&mut self) {
+        // Increment the version when modification is complete
+        self.version.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+fn get_molecule_mut<'a, T>(molecule: &'a mut AtomicMolecule<T>) -> MoleculeMutator<'a, T> {
+    MoleculeMutator {
+        molcule: &mut molecule.molecule,
+        version: &molecule.version,
+    }
+}
+
 type EntityId = AtomicU64;
 pub type Entity = u64;
 
@@ -176,5 +209,34 @@ mod ecs_test {
             println!("Name: {}", label.name);
             println!("Id: {}", label.id);
         });
+    }
+
+    #[test]
+    fn test_versioning() {
+        struct Label {
+            name: String,
+            id: u32,
+        }
+
+        let mut am = AtomicMolecule::new(Label {
+            name: "bleh".to_string(),
+            id: 0,
+        });
+
+        let mutator = get_molecule_mut(&mut am);
+
+        println!("name: {}", mutator.molcule.name);
+        println!("id: {}", mutator.molcule.id);
+        println!("version: {:#?}", mutator.version);
+
+        mutator.molcule.name = "helb".to_string();
+
+        drop(mutator);
+
+        let mutator = get_molecule_mut(&mut am);
+
+        println!("name: {}", mutator.molcule.name);
+        println!("id: {}", mutator.molcule.id);
+        println!("version: {:#?}", mutator.version);
     }
 }
