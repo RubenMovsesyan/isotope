@@ -2,8 +2,8 @@ use std::{mem, sync::Arc};
 
 use log::*;
 use wgpu::{
-    Buffer, BufferAddress, BufferDescriptor, BufferUsages, IndexFormat, VertexAttribute,
-    VertexBufferLayout, VertexFormat, VertexStepMode,
+    Buffer, BufferAddress, BufferUsages, IndexFormat, VertexAttribute, VertexBufferLayout,
+    VertexFormat, VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -43,6 +43,7 @@ impl Buffered for ModelInstance {
     }
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Mesh {
     label: String,

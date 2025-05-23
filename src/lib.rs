@@ -25,7 +25,7 @@ pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};
 pub use state::IsotopeState;
 pub use winit::keyboard::KeyCode;
 
-mod compound;
+pub mod compound;
 mod element;
 mod gpu_utils;
 mod impulse;
@@ -60,6 +60,7 @@ pub struct Isotope {
 
     // Delta for updating
     pub delta: Instant,
+    pub t: Arc<Instant>,
 
     // Bool and thread handle for multithreading
     running: Arc<RwLock<bool>>,
@@ -81,6 +82,7 @@ pub fn new_isotope(
         init_callback,
         update_callback,
         delta: Instant::now(),
+        t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
         thread_handle: None,
     })
@@ -117,20 +119,27 @@ impl Isotope {
     /// Add a state to the isotope engine
     pub fn add_state<S: IsotopeState + 'static>(&mut self, state: S) {
         self.state.replace(Arc::new(RwLock::new(state)));
+
+        if let Some(state) = self.state.as_mut() {
+            if let Ok(mut state) = state.write() {
+                state.init(&self.t);
+            }
+        }
+
         info!("Added Game State: {:#?}", self.state);
         info!("Starting State Update Thread");
 
         let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
+        let t_clone = self.t.clone();
         let running_clone = self.running.clone();
 
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
             info!("Running Thread");
             let mut delta_t = Instant::now();
-            let t = Instant::now();
             loop {
                 if let Ok(mut state) = state_clone.write() {
-                    state.update(&delta_t, &t);
+                    state.update(&delta_t, &t_clone);
                 }
 
                 // update delta_t
@@ -229,7 +238,7 @@ impl ApplicationHandler for Isotope {
                     // This is safe because we are ensuring no other references
                     // to the camera exist
                     unsafe {
-                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta);
+                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta, &self.t);
                     }
                 }
             }
@@ -239,7 +248,7 @@ impl ApplicationHandler for Isotope {
         if let Some(photon) = &self.photon {
             if let Some(state) = &self.state {
                 if let Ok(mut state_guard) = state.write() {
-                    state_guard.update_with_window(&photon.window.window, &self.delta);
+                    state_guard.update_with_window(&photon.window.window, &self.delta, &self.t);
                 }
             }
         }
@@ -286,6 +295,19 @@ impl ApplicationHandler for Isotope {
                             ..
                         } => match state {
                             ElementState::Pressed => {
+                                // Game state update
+                                if let Some(state) = self.state.as_mut() {
+                                    if let Ok(mut state) = state.write() {
+                                        match physical_key {
+                                            winit::keyboard::PhysicalKey::Code(code) => {
+                                                state.key_is_pressed(code);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+
+                                // Isotope update
                                 if let Some(callback) = self.impulse.key_is_pressed {
                                     match physical_key {
                                         winit::keyboard::PhysicalKey::Code(code) => {
@@ -296,6 +318,19 @@ impl ApplicationHandler for Isotope {
                                 }
                             }
                             ElementState::Released => {
+                                // Game state update
+                                if let Some(state) = self.state.as_mut() {
+                                    if let Ok(mut state) = state.write() {
+                                        match physical_key {
+                                            winit::keyboard::PhysicalKey::Code(code) => {
+                                                state.key_is_released(code);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+
+                                // Isotope update
                                 if let Some(callback) = self.impulse.key_is_released {
                                     match physical_key {
                                         winit::keyboard::PhysicalKey::Code(code) => {
@@ -305,11 +340,17 @@ impl ApplicationHandler for Isotope {
                                     }
                                 }
                             }
-                            _ => {}
                         },
                     }
                 }
                 WindowEvent::CursorMoved { position, .. } => {
+                    // Game state update
+                    if let Some(state) = self.state.as_mut() {
+                        if let Ok(mut state) = state.write() {
+                            state.cursor_moved(position);
+                        }
+                    }
+
                     // Run the callback of the Impulse manager for cursor movement
                     if let Some(callback) = self.impulse.cursor_moved {
                         callback(position, self);
@@ -341,7 +382,7 @@ impl ApplicationHandler for Isotope {
                     // This is safe because we are ensuring no other references
                     // to the camera exist
                     unsafe {
-                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta);
+                        state_guard.update_with_camera(&mut *camera_ptr, &self.delta, &self.t);
                     }
                 }
             }
@@ -351,7 +392,7 @@ impl ApplicationHandler for Isotope {
         if let Some(photon) = &self.photon {
             if let Some(state) = &self.state {
                 if let Ok(mut state_guard) = state.write() {
-                    state_guard.update_with_window(&photon.window.window, &self.delta);
+                    state_guard.update_with_window(&photon.window.window, &self.delta, &self.t);
                 }
             }
         }
@@ -361,7 +402,14 @@ impl ApplicationHandler for Isotope {
 
         match event {
             DeviceEvent::MouseMotion { delta } => {
-                // Run the callback for mouse movement
+                // Game state update
+                if let Some(state) = self.state.as_mut() {
+                    if let Ok(mut state) = state.write() {
+                        state.mouse_is_moved(delta);
+                    }
+                }
+
+                // Run the Isotope callback for mouse movement
                 if let Some(callback) = self.impulse.mouse_is_moved {
                     callback(delta, self);
                 }

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
@@ -47,6 +49,7 @@ impl<T: Send + Sync + 'static> MoleculeStorage<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct Compound {
     num_entities: EntityId,
     storages: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,

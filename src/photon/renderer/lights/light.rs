@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use cgmath::{Point3, Vector3};
 
 pub struct Color {

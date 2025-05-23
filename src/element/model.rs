@@ -23,6 +23,7 @@ pub use super::mesh::ModelInstance;
 // Set to 5 to allow for future expansion of bind groups for the shader
 pub(crate) const MODEL_BIND_GROUP: u32 = 2;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Model {
     meshes: Vec<Mesh>,
