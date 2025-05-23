@@ -16,13 +16,23 @@ struct InstanceInput {
     @location(4) rotation: vec4<f32>,
 }
 
+struct GlobalTransform {
+    position: vec3<f32>,
+    rotation: vec4<f32>,
+}
+
 struct CameraUniform {
     view_position: vec4<f32>,
     view_proj: mat4x4<f32>,
 }
 
+// Bind Groups
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
+
+@group(3) @binding(0)
+var<storage> global_transform: GlobalTransform;
+
 
 fn hamilton_prod(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(
@@ -68,7 +78,7 @@ fn main(
     );
 
     // Offset the point
-    let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position, 1.0);
+    let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position + global_transform.position, 1.0);
 
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;

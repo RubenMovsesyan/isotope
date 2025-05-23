@@ -292,7 +292,6 @@ impl ApplicationHandler for Isotope {
                     if let Some(photon) = &mut self.photon {
                         if let Some(state) = &mut self.state {
                             if let Ok(state) = state.write() {
-                                // _ = photon.render(state.render_elements(), state.get_lights());
                                 _ = photon.render(
                                     |render_pass: &mut RenderPass| {
                                         state.render_elements(render_pass);

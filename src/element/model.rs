@@ -1,11 +1,16 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::{Result, anyhow};
+use bytemuck::Zeroable;
+use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
-use wgpu::RenderPass;
+use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, RenderPass,
+    util::{BufferInitDescriptor, DeviceExt},
+};
 
 use crate::{
-    Isotope,
+    GpuController, Isotope,
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
@@ -21,7 +26,16 @@ use super::{
 pub use super::mesh::ModelInstance;
 
 // Set to 5 to allow for future expansion of bind groups for the shader
-pub(crate) const MODEL_BIND_GROUP: u32 = 2;
+pub(crate) const MODEL_TEXTURE_BIND_GROUP: u32 = 2;
+pub(crate) const MODEL_TRANSFORM_BIND_GROUP: u32 = 3;
+
+#[repr(C)]
+#[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ModelTransform {
+    position: [f32; 3],
+    rotation: [f32; 4],
+    _padding: f32,
+}
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -29,6 +43,17 @@ pub struct Model {
     meshes: Vec<Mesh>,
     materials: Vec<Arc<Material>>,
     instances: Vec<ModelInstance>,
+    instances_dirty: bool,
+
+    // Global position and rotation
+    position: Vector3<f32>,
+    rotation: Quaternion<f32>,
+    transform_dirty: bool,
+
+    // GPU
+    transform_buffer: Buffer,
+    transform_bind_group: BindGroup,
+    gpu_controller: Arc<GpuController>,
 }
 
 impl Model {
@@ -190,14 +215,51 @@ impl Model {
             meshes.push(new_mesh);
         }
 
+        // Create the buffer for global tranformations
+        let transform_buffer = gpu_controller
+            .device
+            .create_buffer_init(&BufferInitDescriptor {
+                label: Some("Model Transform Buffer"),
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                contents: bytemuck::cast_slice(&[ModelTransform::zeroed()]),
+            });
+
+        // Create the bind group from the layout
+        let transform_bind_group = gpu_controller
+            .device
+            .create_bind_group(&BindGroupDescriptor {
+                label: Some("Model Transform Bind Group"),
+                // Safetey: Photon should alread exist at this point
+                layout: unsafe {
+                    &isotope
+                        .photon
+                        .as_ref()
+                        .unwrap_unchecked()
+                        .renderer
+                        .layouts
+                        .model_layout
+                },
+                entries: &[BindGroupEntry {
+                    binding: 0,
+                    resource: transform_buffer.as_entire_binding(),
+                }],
+            });
+
         Ok(Self {
             meshes,
             materials,
             instances: Vec::new(),
+            instances_dirty: false,
+            position: Vector3::zero(),
+            rotation: Quaternion::one(),
+            transform_dirty: false,
+            transform_buffer,
+            transform_bind_group,
+            gpu_controller: isotope.gpu_controller.clone(),
         })
     }
 
-    // Functino to modify the instance rather than set new ones
+    // Function to modify the instance rather than set new ones
     pub fn modify_instances<F>(&mut self, callback: F)
     where
         F: FnOnce(&mut [ModelInstance]),
@@ -205,9 +267,10 @@ impl Model {
         callback(&mut self.instances);
 
         // Set the instance buffer for all the meshes
-        for mesh in self.meshes.iter_mut() {
-            mesh.set_instance_buffer(&self.instances);
-        }
+        // for mesh in self.meshes.iter_mut() {
+        //     mesh.set_instance_buffer(&self.instances);
+        // }
+        self.instances_dirty = true;
     }
 
     pub fn set_instances(&mut self, instances: &[ModelInstance]) {
@@ -236,15 +299,44 @@ impl Model {
             }
         }
 
-        warn!("Self Instances: {:#?}", self.instances);
-
         // Set the instance buffer for all the meshes
         for mesh in self.meshes.iter_mut() {
             mesh.set_instance_buffer(&self.instances);
         }
     }
 
-    pub fn render(&self, render_pass: &mut RenderPass) {
+    // Modifying the position
+    pub fn pos<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        callback(&mut self.position);
+        self.transform_dirty = true;
+    }
+
+    pub fn render(&mut self, render_pass: &mut RenderPass) {
+        if self.instances_dirty {
+            // Update the instances if changed
+            for mesh in self.meshes.iter() {
+                mesh.change_instance_buffer(&self.instances);
+            }
+        }
+
+        if self.transform_dirty {
+            // Update the position buffer if changed
+            let model_transform = ModelTransform {
+                position: self.position.into(),
+                rotation: self.rotation.into(),
+                _padding: 0.0,
+            };
+
+            self.gpu_controller.queue.write_buffer(
+                &self.transform_buffer,
+                0,
+                bytemuck::cast_slice(&[model_transform]),
+            );
+        }
+
         for mesh in self.meshes.iter() {
             // Vertices
             render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
@@ -256,7 +348,7 @@ impl Model {
             // Set the bind group for the material of the mesh
             // TODO: add optional texture support
             render_pass.set_bind_group(
-                MODEL_BIND_GROUP,
+                MODEL_TEXTURE_BIND_GROUP,
                 &mesh
                     .material
                     .as_ref()
@@ -268,7 +360,8 @@ impl Model {
                 &[],
             );
 
-            // TODO: Add Gpu Instancing to the Mesh
+            render_pass.set_bind_group(MODEL_TRANSFORM_BIND_GROUP, &self.transform_bind_group, &[]);
+
             render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
         }
     }

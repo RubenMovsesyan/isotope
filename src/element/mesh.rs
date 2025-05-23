@@ -125,4 +125,13 @@ impl Mesh {
             );
         }
     }
+
+    // Only write to the instance buffer instead of mutating
+    pub fn change_instance_buffer(&self, instances: &[ModelInstance]) {
+        self.gpu_controller.queue.write_buffer(
+            &self.instance_buffer,
+            0,
+            bytemuck::cast_slice(instances),
+        );
+    }
 }

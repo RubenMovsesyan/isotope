@@ -49,7 +49,7 @@ impl<T: Send + Sync + 'static> MoleculeStorage<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Compound {
     num_entities: EntityId,
     storages: RwLock<HashMap<TypeId, Box<dyn Any + Send + Sync>>>,

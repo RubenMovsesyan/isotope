@@ -1,9 +1,9 @@
-use std::{any::Any, fmt::Debug, sync::Arc, time::Instant};
+use std::{any::Any, fmt::Debug, time::Instant};
 
 use wgpu::RenderPass;
 use winit::{dpi::PhysicalPosition, keyboard::KeyCode, window::Window};
 
-use crate::{Element, Light, PhotonCamera};
+use crate::{Light, PhotonCamera};
 
 pub trait IsotopeState: Debug + Send + Sync {
     // This is run once when the game state is first added to Isotope ==========

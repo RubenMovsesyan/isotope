@@ -13,7 +13,7 @@ use wgpu::{
 };
 use winit::dpi::PhysicalSize;
 
-use crate::{GpuController, construct_render_pipeline, element::Element};
+use crate::{GpuController, construct_render_pipeline};
 
 pub mod camera;
 pub mod lights;
@@ -59,7 +59,8 @@ impl PhotonRenderer {
             String::from("Photon"),
             &layouts.camera_layout,
             &layouts.lights_layout,
-            &layouts.texture_layout
+            &layouts.texture_layout,
+            &layouts.model_layout
         );
 
         // Create the depth texture
@@ -163,15 +164,10 @@ impl PhotonRenderer {
 
             render_pass.set_pipeline(&self.render_pipeline);
 
-            // render_pass.set_vertex_buffer(1, /* Instance Buffer Maybe? */);
-
             // Camera
             render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
             render_pass.set_bind_group(1, &self.lights.bind_group, &[]);
 
-            // for element in elements {
-            //     element.render(&mut render_pass);
-            // }
             callback(&mut render_pass);
         }
 

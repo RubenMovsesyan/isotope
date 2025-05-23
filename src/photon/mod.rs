@@ -6,7 +6,7 @@ use wgpu::RenderPass;
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
-use crate::{Element, Light, gpu_utils::GpuController};
+use crate::{Light, gpu_utils::GpuController};
 
 pub mod renderer;
 pub mod window;

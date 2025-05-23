@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::f32::consts::PI;
 
 use cgmath::{Deg, InnerSpace, One, Quaternion, Rotation, Rotation3, Vector3};
 use isotope::{compound::Compound, *};
@@ -6,7 +6,7 @@ use isotope::{compound::Compound, *};
 #[allow(unused_imports)]
 use log::*;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct GameState {
     pub w_pressed: bool,
     pub s_pressed: bool,
@@ -19,41 +19,19 @@ pub struct GameState {
 
     pub mouse_focused: bool,
 
-    pub elements: Vec<Arc<dyn Element>>,
-
     pub ecs: Compound,
 
     pub lights: [Light; 3],
 }
 
-impl Default for GameState {
-    fn default() -> Self {
-        Self {
-            ecs: Compound::new(),
-
-            w_pressed: false,
-            s_pressed: false,
-            a_pressed: false,
-            d_pressed: false,
-            shift_pressed: false,
-            space_pressed: false,
-            mouse_diff: (0.0, 0.0),
-            mouse_focused: false,
-            elements: Vec::new(),
-            lights: [Light::default(); 3],
-        }
-    }
-}
-
 #[derive(Debug)]
 pub struct TestElement {
-    model: RwLock<Model>,
+    model: Model,
 }
 
 impl Element for TestElement {
-    fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        let model = self.model.read().unwrap();
-        model.render(render_pass);
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
+        self.model.render(render_pass);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -67,13 +45,12 @@ impl Element for TestElement {
 
 #[derive(Debug)]
 pub struct MonkeyElement {
-    model: RwLock<Model>,
+    model: Model,
 }
 
 impl Element for MonkeyElement {
-    fn render(&self, render_pass: &mut wgpu::RenderPass) {
-        let model = self.model.read().unwrap();
-        model.render(render_pass);
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
+        self.model.render(render_pass);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -186,32 +163,33 @@ impl IsotopeState for GameState {
 
         const SCALAR: f32 = 30.0;
         self.ecs
-            .for_each_molecule(|_entity, cube: &Arc<TestElement>| {
-                _ = cube.model.write().and_then(|mut m| {
-                    m.modify_instances(|instances| {
-                        instances[0].rotation = Quaternion::from_axis_angle(
-                            Vector3::unit_x(),
-                            Deg(SCALAR * t.elapsed().as_secs_f32()),
-                        )
-                        .normalize()
-                        .into();
+            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
+                cube.model.modify_instances(|instances| {
+                    instances[0].rotation = Quaternion::from_axis_angle(
+                        Vector3::unit_x(),
+                        Deg(SCALAR * t.elapsed().as_secs_f32()),
+                    )
+                    .normalize()
+                    .into();
 
-                        instances[1].rotation = Quaternion::from_axis_angle(
-                            Vector3::unit_y(),
-                            Deg(SCALAR * t.elapsed().as_secs_f32()),
-                        )
-                        .normalize()
-                        .into();
+                    instances[1].rotation = Quaternion::from_axis_angle(
+                        Vector3::unit_y(),
+                        Deg(SCALAR * t.elapsed().as_secs_f32()),
+                    )
+                    .normalize()
+                    .into();
 
-                        instances[2].rotation = Quaternion::from_axis_angle(
-                            Vector3::unit_z(),
-                            Deg(SCALAR * t.elapsed().as_secs_f32()),
-                        )
-                        .normalize()
-                        .into();
-                    });
+                    instances[2].rotation = Quaternion::from_axis_angle(
+                        Vector3::unit_z(),
+                        Deg(SCALAR * t.elapsed().as_secs_f32()),
+                    )
+                    .normalize()
+                    .into();
+                });
 
-                    Ok(())
+                cube.model.pos(|position| {
+                    position.x = f32::cos(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
+                    position.y = f32::sin(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
                 });
             });
     }
@@ -231,13 +209,16 @@ impl IsotopeState for GameState {
         }
     }
 
-    // fn render_elements(&self) -> &[Arc<dyn Element>] {
-    //     &self.elements
-    // }
     fn render_elements(&self, render_pass: &mut wgpu::RenderPass) {
-        for element in self.elements.iter() {
-            element.render(render_pass);
-        }
+        self.ecs
+            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
+                cube.render(render_pass);
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
+                monkey.render(render_pass);
+            });
     }
 
     fn key_is_pressed(&mut self, key_code: KeyCode) {
@@ -313,8 +294,8 @@ fn init(isotope: &mut Isotope) {
         let cube = state.ecs.create_entity();
         state.ecs.add_molecule(
             cube,
-            Arc::new(TestElement {
-                model: RwLock::new({
+            TestElement {
+                model: {
                     let mut model =
                         Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
 
@@ -340,15 +321,15 @@ fn init(isotope: &mut Isotope) {
                     ]);
 
                     model
-                }),
-            }),
+                },
+            },
         );
 
         let monkey = state.ecs.create_entity();
         state.ecs.add_molecule(
             monkey,
-            Arc::new(MonkeyElement {
-                model: RwLock::new({
+            MonkeyElement {
+                model: {
                     let mut model =
                         Model::from_obj("test_files/monkey.obj", &isotope).expect("Failed");
 
@@ -358,17 +339,9 @@ fn init(isotope: &mut Isotope) {
                     }]);
 
                     model
-                }),
-            }),
+                },
+            },
         );
-
-        state
-            .ecs
-            .for_each_molecule(|_entity, c: &Arc<TestElement>| state.elements.push(c.clone()));
-
-        state
-            .ecs
-            .for_each_molecule(|_entity, m: &Arc<MonkeyElement>| state.elements.push(m.clone()));
 
         state.lights[0].color = [1.0, 0.0, 0.0];
         state.lights[0].intensity = 1.0;
