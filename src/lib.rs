@@ -9,6 +9,7 @@ use anyhow::Result;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
+use wgpu::RenderPass;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
@@ -116,8 +117,23 @@ impl Isotope {
         Some(&mut self.photon.as_mut()?.renderer.camera)
     }
 
-    /// Add a state to the isotope engine
-    pub fn add_state<S: IsotopeState + 'static>(&mut self, state: S) {
+    /// Change the update callback
+    pub fn set_update_callback(&mut self, update_callback: fn(&mut Isotope)) {
+        self.update_callback = update_callback;
+    }
+
+    /// Add a state to the isotope engine if empty or replace it if occupied
+    pub fn set_state<S: IsotopeState + 'static>(&mut self, state: S) {
+        // If there is a state thread running stop it before changing state
+        if let Some(state_thread) = self.thread_handle.take() {
+            if let Ok(mut running) = self.running.write() {
+                // Stop the thread, join it and then start it again when the state has been replaced
+                *running = false;
+                _ = state_thread.join();
+                *running = true;
+            }
+        }
+
         self.state.replace(Arc::new(RwLock::new(state)));
 
         if let Some(state) = self.state.as_mut() {
@@ -276,7 +292,13 @@ impl ApplicationHandler for Isotope {
                     if let Some(photon) = &mut self.photon {
                         if let Some(state) = &mut self.state {
                             if let Ok(state) = state.write() {
-                                _ = photon.render(state.render_elements(), state.get_lights());
+                                // _ = photon.render(state.render_elements(), state.get_lights());
+                                _ = photon.render(
+                                    |render_pass: &mut RenderPass| {
+                                        state.render_elements(render_pass);
+                                    },
+                                    state.get_lights(),
+                                );
                             }
                         }
                     }

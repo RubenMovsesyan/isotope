@@ -231,8 +231,13 @@ impl IsotopeState for GameState {
         }
     }
 
-    fn render_elements(&self) -> &[Arc<dyn Element>] {
-        &self.elements
+    // fn render_elements(&self) -> &[Arc<dyn Element>] {
+    //     &self.elements
+    // }
+    fn render_elements(&self, render_pass: &mut wgpu::RenderPass) {
+        for element in self.elements.iter() {
+            element.render(render_pass);
+        }
     }
 
     fn key_is_pressed(&mut self, key_code: KeyCode) {
@@ -302,7 +307,7 @@ impl IsotopeState for GameState {
 }
 
 fn init(isotope: &mut Isotope) {
-    isotope.add_state({
+    isotope.set_state({
         let mut state = GameState::default();
 
         let cube = state.ecs.create_entity();
