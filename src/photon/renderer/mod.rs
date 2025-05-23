@@ -7,9 +7,9 @@ use lights::{Lights, light::Light};
 use photon_layouts::PhotonLayoutsManager;
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
-    Color, LoadOp, Operations, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipeline, StoreOp, Surface, SurfaceConfiguration,
-    TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
+    Color, LoadOp, Operations, RenderPass, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, Surface,
+    SurfaceConfiguration, TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
@@ -119,7 +119,11 @@ impl PhotonRenderer {
     }
 
     // Renders all elements in the engine
-    pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
+    // pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
+    pub fn render<F>(&self, surface: &Surface<'static>, callback: F) -> Result<()>
+    where
+        F: FnOnce(&mut RenderPass),
+    {
         let output = surface.get_current_texture()?;
 
         let view = output
@@ -165,9 +169,10 @@ impl PhotonRenderer {
             render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
             render_pass.set_bind_group(1, &self.lights.bind_group, &[]);
 
-            for element in elements {
-                element.render(&mut render_pass);
-            }
+            // for element in elements {
+            //     element.render(&mut render_pass);
+            // }
+            callback(&mut render_pass);
         }
 
         self.gpu_controller.queue.submit(Some(encoder.finish()));

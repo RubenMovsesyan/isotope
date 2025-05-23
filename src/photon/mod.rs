@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use renderer::PhotonRenderer;
+use wgpu::RenderPass;
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
@@ -41,8 +42,16 @@ impl PhotonManager {
     }
 
     // Call on request redraw
-    pub fn render(&mut self, elements: &[Arc<dyn Element>], lights: &[Light]) -> Result<()> {
+    // pub fn render(&mut self, elements: &[Arc<dyn Element>], lights: &[Light]) -> Result<()> {
+    //     self.renderer.update_lights(lights);
+    //     self.renderer.render(&self.window.surface, elements)
+    // }
+    pub fn render<F>(&mut self, callback: F, lights: &[Light]) -> Result<()>
+    where
+        F: FnOnce(&mut RenderPass),
+    {
         self.renderer.update_lights(lights);
-        self.renderer.render(&self.window.surface, elements)
+        // self.renderer.render(&self.window.surface, elements)
+        self.renderer.render(&self.window.surface, callback)
     }
 }

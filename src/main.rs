@@ -231,8 +231,13 @@ impl IsotopeState for GameState {
         }
     }
 
-    fn render_elements(&self) -> &[Arc<dyn Element>] {
-        &self.elements
+    // fn render_elements(&self) -> &[Arc<dyn Element>] {
+    //     &self.elements
+    // }
+    fn render_elements(&self, render_pass: &mut wgpu::RenderPass) {
+        for element in self.elements.iter() {
+            element.render(render_pass);
+        }
     }
 
     fn key_is_pressed(&mut self, key_code: KeyCode) {

@@ -9,6 +9,7 @@ use anyhow::Result;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
+use wgpu::RenderPass;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
@@ -276,7 +277,13 @@ impl ApplicationHandler for Isotope {
                     if let Some(photon) = &mut self.photon {
                         if let Some(state) = &mut self.state {
                             if let Ok(state) = state.write() {
-                                _ = photon.render(state.render_elements(), state.get_lights());
+                                // _ = photon.render(state.render_elements(), state.get_lights());
+                                _ = photon.render(
+                                    |render_pass: &mut RenderPass| {
+                                        state.render_elements(render_pass);
+                                    },
+                                    state.get_lights(),
+                                );
                             }
                         }
                     }

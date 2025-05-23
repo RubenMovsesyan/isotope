@@ -1,5 +1,6 @@
 use std::{any::Any, fmt::Debug, sync::Arc, time::Instant};
 
+use wgpu::RenderPass;
 use winit::{dpi::PhysicalPosition, keyboard::KeyCode, window::Window};
 
 use crate::{Element, Light, PhotonCamera};
@@ -20,9 +21,11 @@ pub trait IsotopeState: Debug + Send + Sync {
     fn update_with_window(&mut self, window: &Window, delta_t: &Instant, t: &Instant) {}
 
     // Specific for rendering =================================================
-    fn render_elements(&self) -> &[Arc<dyn Element>] {
-        &[]
-    }
+    // fn render_elements(&self) -> &[Arc<dyn Element>] {
+    //     &[]
+    // }
+    #[allow(unused_variables)]
+    fn render_elements(&self, render_pass: &mut RenderPass) {}
 
     fn get_lights(&self) -> &[Light] {
         &[]
