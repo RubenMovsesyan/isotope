@@ -18,6 +18,7 @@ use winit::{
 };
 
 // Publicly exposed types
+pub use boson::{Boson, Linkable, rigid_body::RigidBody};
 pub use element::Element;
 pub use element::mesh::ModelInstance;
 pub use element::model::Model;
@@ -26,6 +27,7 @@ pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};
 pub use state::IsotopeState;
 pub use winit::keyboard::KeyCode;
 
+mod boson;
 pub mod compound;
 mod element;
 mod gpu_utils;
@@ -142,7 +144,7 @@ impl Isotope {
             }
         }
 
-        info!("Added Game State: {:#?}", self.state);
+        info!("Added Game State");
         info!("Starting State Update Thread");
 
         let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
@@ -152,10 +154,27 @@ impl Isotope {
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
             info!("Running Thread");
+
+            info!("Starting Boson Engine");
+            // Boson Physics Engine
+            let mut boson = Boson::new();
+            if let Ok(mut state) = state_clone.write() {
+                state.init_boson(&mut boson);
+            }
+
             let mut delta_t = Instant::now();
             loop {
                 if let Ok(mut state) = state_clone.write() {
                     state.update(&delta_t, &t_clone);
+
+                    // Handle Boson updates here
+                    boson.step(&delta_t);
+                    // state.run_boson_updates(&mut boson, &delta_t);
+                    // let mut ecs = state.run_ecs_updates();
+
+                    // ecs.for_each_molecule_mut(|_entity, rigid_body: &mut RigidBody| {
+                    //     rigid_body.
+                    // });
                 }
 
                 // update delta_t

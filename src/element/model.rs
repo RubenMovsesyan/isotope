@@ -1,4 +1,7 @@
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{Result, anyhow};
 use bytemuck::Zeroable;
@@ -11,6 +14,7 @@ use wgpu::{
 
 use crate::{
     GpuController, Isotope,
+    boson::Linkable,
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
@@ -54,6 +58,9 @@ pub struct Model {
     transform_buffer: Buffer,
     transform_bind_group: BindGroup,
     gpu_controller: Arc<GpuController>,
+
+    // Physics Linking
+    position_link: Option<Arc<RwLock<dyn Linkable>>>,
 }
 
 impl Model {
@@ -256,6 +263,7 @@ impl Model {
             transform_buffer,
             transform_bind_group,
             gpu_controller: isotope.gpu_controller.clone(),
+            position_link: None,
         })
     }
 
@@ -310,7 +318,20 @@ impl Model {
         self.transform_dirty = true;
     }
 
+    pub fn link_position(&mut self, linkable: Arc<RwLock<dyn Linkable>>) {
+        self.position_link = Some(linkable);
+    }
+
     pub fn render(&mut self, render_pass: &mut RenderPass) {
+        // If the model is linked then update the position
+        if let Some(position_link) = self.position_link.as_ref() {
+            if let Ok(position_link) = position_link.read() {
+                self.position = position_link.get_position();
+                debug!("Updating model position with: {:#?}", self.position);
+                self.transform_dirty = true;
+            }
+        }
+
         if self.instances_dirty {
             // Update the instances if changed
             for mesh in self.meshes.iter() {
