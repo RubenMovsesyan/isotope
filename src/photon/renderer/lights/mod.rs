@@ -98,22 +98,6 @@ impl Lights {
     ) {
         // If the number of lights is different then we need to create a new buffer
         if lights.len() != self.num_lights {
-            // let buffer = match lights.len() {
-            //     0 => gpu_controller.device.create_buffer(&BufferDescriptor {
-            //         label: Some("Lights Buffer"),
-            //         mapped_at_creation: false,
-            //         size: std::mem::size_of::<Light>() as u64,
-            //         usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            //     }),
-            //     _ => gpu_controller
-            //         .device
-            //         .create_buffer_init(&BufferInitDescriptor {
-            //             label: Some("Lights Buffer"),
-            //             contents: bytemuck::cast_slice(lights),
-            //             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            //         }),
-            // };
-
             let lights_buf = (lights.len()..256)
                 .into_iter()
                 .map(|_| Light::zeroed())

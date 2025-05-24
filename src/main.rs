@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use cgmath::{Deg, InnerSpace, One, Quaternion, Rotation, Rotation3, Vector3};
+use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3};
 use isotope::{compound::Compound, *};
 
 #[allow(unused_imports)]
@@ -20,7 +20,6 @@ pub struct GameState {
     pub mouse_focused: bool,
 
     pub ecs: Compound,
-
     pub lights: [Light; 3],
 }
 
@@ -333,10 +332,9 @@ fn init(isotope: &mut Isotope) {
                     let mut model =
                         Model::from_obj("test_files/monkey.obj", &isotope).expect("Failed");
 
-                    model.set_instances(&[ModelInstance {
-                        position: [0.0, 5.0, 0.0],
-                        rotation: Quaternion::one().into(),
-                    }]);
+                    model.pos(|position| {
+                        position.y = 5.0;
+                    });
 
                     model
                 },

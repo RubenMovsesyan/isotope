@@ -266,10 +266,6 @@ impl Model {
     {
         callback(&mut self.instances);
 
-        // Set the instance buffer for all the meshes
-        // for mesh in self.meshes.iter_mut() {
-        //     mesh.set_instance_buffer(&self.instances);
-        // }
         self.instances_dirty = true;
     }
 
@@ -320,6 +316,8 @@ impl Model {
             for mesh in self.meshes.iter() {
                 mesh.change_instance_buffer(&self.instances);
             }
+
+            self.instances_dirty = false;
         }
 
         if self.transform_dirty {
@@ -335,6 +333,8 @@ impl Model {
                 0,
                 bytemuck::cast_slice(&[model_transform]),
             );
+
+            self.transform_dirty = false;
         }
 
         for mesh in self.meshes.iter() {

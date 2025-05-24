@@ -14,10 +14,19 @@ use super::{buffered::Buffered, material::Material, model_vertex::ModelVertex};
 pub(crate) const INDEX_FORMAT: IndexFormat = IndexFormat::Uint32;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelInstance {
     pub position: [f32; 3],
     pub rotation: [f32; 4],
+}
+
+impl Default for ModelInstance {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
 }
 
 impl Buffered for ModelInstance {
