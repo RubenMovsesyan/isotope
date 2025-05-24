@@ -121,10 +121,13 @@ impl PhotonRenderer {
 
     // Renders all elements in the engine
     // pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
-    pub fn render<F>(&self, surface: &Surface<'static>, callback: F) -> Result<()>
+    pub fn render<F>(&mut self, surface: &Surface<'static>, callback: F) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
     {
+        // Write to the camera buffer if needed
+        self.camera.write_buffer(); // only writing when rendering has a huge performance improvement
+
         let output = surface.get_current_texture()?;
 
         let view = output

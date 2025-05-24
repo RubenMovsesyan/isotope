@@ -37,6 +37,7 @@ pub struct PhotonCamera {
     buffer: Buffer,
     gpu_controller: Arc<GpuController>,
     pub(crate) bind_group: BindGroup,
+    uniform_dirty: bool,
 }
 
 impl PhotonCamera {
@@ -92,6 +93,7 @@ impl PhotonCamera {
             buffer,
             bind_group,
             gpu_controller,
+            uniform_dirty: false,
         }
     }
 
@@ -107,11 +109,19 @@ impl PhotonCamera {
             view_projection: view_proj.into(),
         };
 
-        self.gpu_controller.queue.write_buffer(
-            &self.buffer,
-            0,
-            bytemuck::cast_slice(&[self.camera_uniform]),
-        );
+        self.uniform_dirty = true;
+    }
+
+    pub(crate) fn write_buffer(&mut self) {
+        if self.uniform_dirty {
+            self.gpu_controller.queue.write_buffer(
+                &self.buffer,
+                0,
+                bytemuck::cast_slice(&[self.camera_uniform]),
+            );
+
+            self.uniform_dirty = false;
+        }
     }
 
     pub fn modify<F>(&mut self, callback: F)
