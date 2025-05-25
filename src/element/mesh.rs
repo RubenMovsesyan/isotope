@@ -55,7 +55,7 @@ impl Buffered for ModelInstance {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Mesh {
-    label: String,
+    pub(crate) label: String,
     pub vertex_buffer: Buffer,
     pub index_buffer: Buffer,
     pub num_indices: u32,
@@ -63,6 +63,10 @@ pub struct Mesh {
     pub instance_buffer_len: u32,
     pub material: Option<Arc<Material>>,
     pub gpu_controller: Arc<GpuController>,
+
+    // Cpu side processing
+    pub(crate) vertices: Vec<ModelVertex>,
+    pub(crate) indices: Vec<u32>,
 }
 
 impl Mesh {
@@ -77,7 +81,7 @@ impl Mesh {
             .create_buffer_init(&BufferInitDescriptor {
                 label: Some(&format!("{} Vertex Buffer", label)),
                 contents: bytemuck::cast_slice(vertices),
-                usage: BufferUsages::VERTEX,
+                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             });
 
         let index_buffer = gpu_controller
@@ -107,6 +111,8 @@ impl Mesh {
             instance_buffer_len: 1,
             material: None,
             gpu_controller,
+            vertices: Vec::from(vertices),
+            indices: Vec::from(indices),
         }
     }
 
@@ -141,6 +147,22 @@ impl Mesh {
             &self.instance_buffer,
             0,
             bytemuck::cast_slice(instances),
+        );
+    }
+
+    pub(crate) fn shift_vertices<F>(&mut self, mut callback: F)
+    where
+        F: FnMut(&mut ModelVertex),
+    {
+        self.vertices.iter_mut().for_each(|vertex| {
+            callback(vertex);
+        });
+
+        // After modifying the vertices write it to the gpu
+        self.gpu_controller.queue.write_buffer(
+            &self.vertex_buffer,
+            0,
+            bytemuck::cast_slice(&self.vertices),
         );
     }
 }

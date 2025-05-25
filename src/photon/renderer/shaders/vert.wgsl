@@ -47,6 +47,10 @@ fn quat_conj(q: vec4<f32>) -> vec4<f32> {
     return q * vec4<f32>(-1.0, -1.0, -1.0, 1.0);
 }
 
+fn quat_norm(q: vec4<f32>) -> vec4<f32> {
+    return q / length(q);
+}
+
 // Vertex Shader
 @vertex
 fn main(
@@ -56,13 +60,14 @@ fn main(
     var out: VertexOutput;
     out.uv_coords = model.uv_coords;
 
-    // Rotate the point first
+    let combined_rotation = quat_norm(hamilton_prod(global_transform.rotation, instance.rotation));
 
-    let conj = quat_conj(instance.rotation);
+    // Rotate the point first
+    let conj = quat_conj(combined_rotation);
 
     let rot_normal: vec4<f32> = hamilton_prod(
         hamilton_prod(
-            instance.rotation,
+            combined_rotation,
             vec4<f32>(model.normal, 0.0),
         ),
         conj
@@ -71,7 +76,7 @@ fn main(
 
     let rot: vec4<f32> = hamilton_prod(
         hamilton_prod(
-            instance.rotation,
+            combined_rotation,
             vec4<f32>(model.position, 0.0),
         ),
         conj

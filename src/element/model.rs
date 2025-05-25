@@ -14,7 +14,7 @@ use wgpu::{
 
 use crate::{
     GpuController, Isotope,
-    boson::Linkable,
+    boson::{Linkable, boson_math::calculate_center_of_mass},
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
@@ -44,7 +44,7 @@ pub struct ModelTransform {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Model {
-    meshes: Vec<Mesh>,
+    pub(crate) meshes: Vec<Mesh>,
     materials: Vec<Arc<Material>>,
     instances: Vec<ModelInstance>,
     instances_dirty: bool,
@@ -60,7 +60,7 @@ pub struct Model {
     gpu_controller: Arc<GpuController>,
 
     // Physics Linking
-    position_link: Option<Arc<RwLock<dyn Linkable>>>,
+    boson_link: Option<Arc<RwLock<dyn Linkable>>>,
 }
 
 impl Model {
@@ -228,7 +228,11 @@ impl Model {
             .create_buffer_init(&BufferInitDescriptor {
                 label: Some("Model Transform Buffer"),
                 usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-                contents: bytemuck::cast_slice(&[ModelTransform::zeroed()]),
+                contents: bytemuck::cast_slice(&[ModelTransform {
+                    position: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    _padding: 0.0,
+                }]),
             });
 
         // Create the bind group from the layout
@@ -263,7 +267,7 @@ impl Model {
             transform_buffer,
             transform_bind_group,
             gpu_controller: isotope.gpu_controller.clone(),
-            position_link: None,
+            boson_link: None,
         })
     }
 
@@ -318,15 +322,32 @@ impl Model {
         self.transform_dirty = true;
     }
 
-    pub fn link_position(&mut self, linkable: Arc<RwLock<dyn Linkable>>) {
-        self.position_link = Some(linkable);
+    // Linking a boson object to the model for physics
+    pub fn link_boson(&mut self, linkable: Arc<RwLock<dyn Linkable>>) {
+        self.boson_link = Some(linkable);
+
+        // adujst the vertices of the model so that the center of mass is the origin
+        let center_of_mass = calculate_center_of_mass(self);
+        info!(
+            "Center of mass: {:#?}\nMoving origin to center",
+            center_of_mass
+        );
+
+        for mesh in self.meshes.iter_mut() {
+            mesh.shift_vertices(|model_vertex| {
+                model_vertex.position =
+                    (Vector3::from(model_vertex.position) - center_of_mass).into();
+            });
+        }
     }
 
     pub fn render(&mut self, render_pass: &mut RenderPass) {
         // If the model is linked then update the position
-        if let Some(position_link) = self.position_link.as_ref() {
-            if let Ok(position_link) = position_link.read() {
-                self.position = position_link.get_position();
+        if let Some(boson_link) = self.boson_link.as_ref() {
+            if let Ok(boson_link) = boson_link.read() {
+                // Set the models position based off the boson object
+                self.position = boson_link.get_position();
+                self.rotation = boson_link.get_rotation();
                 self.transform_dirty = true;
             }
         }

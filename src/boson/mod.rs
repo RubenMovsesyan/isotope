@@ -4,9 +4,10 @@ use std::{
     time::Instant,
 };
 
-use cgmath::Vector3;
+use cgmath::{Quaternion, Vector3};
 use log::info;
 
+pub mod boson_math;
 pub mod rigid_body;
 
 #[derive(Debug)]
@@ -27,6 +28,20 @@ impl BosonObject {
         self.0.clone()
     }
 
+    pub fn pos<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        unsafe { callback(self.inner_mut().pos()) };
+    }
+
+    pub fn vel<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        unsafe { callback(self.inner_mut().vel()) };
+    }
+
     unsafe fn inner(&self) -> RwLockReadGuard<dyn DynamicObject> {
         unsafe { self.0.read().unwrap_unchecked() }
     }
@@ -42,6 +57,12 @@ pub trait DynamicObject: Linkable + 'static {
     #[allow(unused_variables)]
     fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {}
 
+    #[allow(unused_variables)]
+    fn apply_torque(&mut self, torque: Vector3<f32>, delta_t: &Instant) {}
+
+    fn pos(&mut self) -> &mut Vector3<f32>;
+    fn vel(&mut self) -> &mut Vector3<f32>;
+
     // Objects start with default mass of 0
     fn get_mass(&self) -> f32 {
         0.0
@@ -51,6 +72,7 @@ pub trait DynamicObject: Linkable + 'static {
 // Trait that ensures objects are linkable in isotope
 pub trait Linkable: Debug + Send + Sync {
     fn get_position(&self) -> Vector3<f32>;
+    fn get_rotation(&self) -> Quaternion<f32>;
 }
 
 #[derive(Debug)]
@@ -81,6 +103,14 @@ impl Boson {
             unsafe {
                 let mass = object.inner().get_mass();
                 object.inner_mut().apply_force(mass * self.gravity, delta_t);
+                object.inner_mut().apply_torque(
+                    mass * Vector3 {
+                        x: 0.1,
+                        y: 0.1,
+                        z: 0.2,
+                    },
+                    delta_t,
+                );
             }
         }
     }

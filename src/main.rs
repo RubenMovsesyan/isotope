@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3};
+use cgmath::{Deg, InnerSpace, One, Quaternion, Rotation, Rotation3, Vector3, Zero};
 use isotope::{compound::Compound, *};
 
 #[allow(unused_imports)]
@@ -49,6 +49,26 @@ pub struct MonkeyElement {
 }
 
 impl Element for MonkeyElement {
+    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
+        self.model.render(render_pass);
+    }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self as &dyn std::any::Any
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self as &mut dyn std::any::Any
+    }
+}
+
+#[derive(Debug)]
+pub struct ConeElement {
+    model: Model,
+    rigid_body: BosonObject,
+}
+
+impl Element for ConeElement {
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
         self.model.render(render_pass);
     }
@@ -147,6 +167,10 @@ impl IsotopeState for GameState {
             .for_each_molecule(|_entity, monkey: &MonkeyElement| {
                 boson.add_dynamic_object(monkey.rigid_body.clone());
             });
+
+        self.ecs.for_each_molecule(|_entity, cone: &ConeElement| {
+            boson.add_dynamic_object(cone.rigid_body.clone());
+        });
     }
 
     fn update(&mut self, _delta_t: &std::time::Instant, t: &std::time::Instant) {
@@ -226,6 +250,11 @@ impl IsotopeState for GameState {
             .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
                 monkey.render(render_pass);
             });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
+                cone.render(render_pass);
+            });
     }
 
     fn key_is_pressed(&mut self, key_code: KeyCode) {
@@ -250,6 +279,45 @@ impl IsotopeState for GameState {
             }
             KeyCode::ShiftLeft => {
                 self.shift_pressed = true;
+            }
+            KeyCode::KeyR => {
+                self.ecs
+                    .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
+                        monkey.rigid_body.pos(|position| {
+                            *position = Vector3 {
+                                x: 0.0,
+                                y: 5.0,
+                                z: 0.0,
+                            };
+                        });
+
+                        monkey.rigid_body.vel(|velocity| {
+                            *velocity = Vector3 {
+                                x: 10.0,
+                                y: 10.0,
+                                z: 0.0,
+                            };
+                        });
+                    });
+
+                self.ecs
+                    .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
+                        cone.rigid_body.pos(|position| {
+                            *position = Vector3 {
+                                x: 0.0,
+                                y: 10.0,
+                                z: 0.0,
+                            };
+                        });
+
+                        cone.rigid_body.vel(|velocity| {
+                            *velocity = Vector3 {
+                                x: 0.0,
+                                y: 5.0,
+                                z: 0.0,
+                            };
+                        });
+                    });
             }
             _ => {}
         }
@@ -344,6 +412,9 @@ fn init(isotope: &mut Isotope) {
                 y: 10.0,
                 z: 0.0,
             },
+            orientation: Quaternion::one(),
+            angular_velocity: Vector3::zero(),
+            inverse_inertia: Vector3::zero(),
             mass: 10.0,
         });
         state.ecs.add_molecule(
@@ -353,11 +424,46 @@ fn init(isotope: &mut Isotope) {
                     let mut model =
                         Model::from_obj("test_files/monkey.obj", &isotope).expect("Failed");
 
-                    model.link_position(rb.as_linkable());
+                    model.link_boson(rb.as_linkable());
 
                     model
                 },
                 rigid_body: rb,
+            },
+        );
+
+        let cone = state.ecs.create_entity();
+        let cone_rb = BosonObject::new(RigidBody {
+            position: Vector3 {
+                x: 0.0,
+                y: 10.0,
+                z: 0.0,
+            },
+            velocity: Vector3 {
+                x: 0.0,
+                y: 5.0,
+                z: 0.0,
+            },
+            orientation: Quaternion::one(),
+            angular_velocity: Vector3::zero(),
+            inverse_inertia: Vector3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            mass: 10.0,
+        });
+        state.ecs.add_molecule(
+            cone,
+            ConeElement {
+                model: {
+                    let mut model =
+                        Model::from_obj("test_files/cone.obj", &isotope).expect("Failed");
+
+                    model.link_boson(cone_rb.as_linkable());
+                    model
+                },
+                rigid_body: cone_rb,
             },
         );
 
