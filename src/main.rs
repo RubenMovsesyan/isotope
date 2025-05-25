@@ -1,9 +1,4 @@
-use std::{
-    cell::RefCell,
-    f32::consts::PI,
-    rc::Rc,
-    sync::{Arc, RwLock},
-};
+use std::f32::consts::PI;
 
 use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3};
 use isotope::{compound::Compound, *};
@@ -50,7 +45,7 @@ impl Element for TestElement {
 #[derive(Debug)]
 pub struct MonkeyElement {
     model: Model,
-    rigid_body: Arc<RwLock<RigidBody>>,
+    rigid_body: BosonObject,
 }
 
 impl Element for MonkeyElement {
@@ -153,10 +148,6 @@ impl IsotopeState for GameState {
                 boson.add_dynamic_object(monkey.rigid_body.clone());
             });
     }
-
-    // fn run_boson_updates(&mut self, boson: &mut Boson, delta_t: &std::time::Instant) {
-    //     boson.step(delta_t);
-    // }
 
     fn update(&mut self, _delta_t: &std::time::Instant, t: &std::time::Instant) {
         self.lights[0].pos(|x, y, z| {
@@ -342,19 +333,19 @@ fn init(isotope: &mut Isotope) {
         );
 
         let monkey = state.ecs.create_entity();
-        let rb = Arc::new(RwLock::new(RigidBody {
+        let rb = BosonObject::new(RigidBody {
             position: Vector3 {
                 x: 0.0,
                 y: 5.0,
                 z: 0.0,
             },
             velocity: Vector3 {
-                x: 0.0,
-                y: 0.0,
+                x: 10.0,
+                y: 10.0,
                 z: 0.0,
             },
             mass: 10.0,
-        }));
+        });
         state.ecs.add_molecule(
             monkey,
             MonkeyElement {
@@ -362,11 +353,7 @@ fn init(isotope: &mut Isotope) {
                     let mut model =
                         Model::from_obj("test_files/monkey.obj", &isotope).expect("Failed");
 
-                    model.pos(|position| {
-                        position.y = 5.0;
-                    });
-
-                    model.link_position(rb.clone());
+                    model.link_position(rb.as_linkable());
 
                     model
                 },

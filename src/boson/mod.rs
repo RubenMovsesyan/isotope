@@ -1,6 +1,6 @@
 use std::{
     fmt::Debug,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard},
     time::Instant,
 };
 
@@ -9,8 +9,35 @@ use log::info;
 
 pub mod rigid_body;
 
+#[derive(Debug)]
+pub struct BosonObject(Arc<RwLock<dyn DynamicObject>>);
+
+impl Clone for BosonObject {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl BosonObject {
+    pub fn new(object: impl DynamicObject) -> Self {
+        Self(Arc::new(RwLock::new(object)))
+    }
+
+    pub fn as_linkable(&self) -> Arc<RwLock<dyn Linkable>> {
+        self.0.clone()
+    }
+
+    unsafe fn inner(&self) -> RwLockReadGuard<dyn DynamicObject> {
+        unsafe { self.0.read().unwrap_unchecked() }
+    }
+
+    unsafe fn inner_mut(&self) -> RwLockWriteGuard<dyn DynamicObject> {
+        unsafe { self.0.write().unwrap_unchecked() }
+    }
+}
+
 // Generic trait for all physics objects
-pub trait DynamicObject: Debug + Send + Sync + 'static {
+pub trait DynamicObject: Linkable + 'static {
     // Objects default behaviour doesn't do anything with force
     #[allow(unused_variables)]
     fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {}
@@ -28,7 +55,7 @@ pub trait Linkable: Debug + Send + Sync {
 
 #[derive(Debug)]
 pub struct Boson {
-    objects: Vec<Arc<RwLock<dyn DynamicObject>>>,
+    objects: Vec<BosonObject>,
     gravity: Vector3<f32>,
 }
 
@@ -44,16 +71,16 @@ impl Boson {
         }
     }
 
-    pub fn add_dynamic_object(&mut self, object: Arc<RwLock<dyn DynamicObject>>) {
+    pub fn add_dynamic_object(&mut self, object: BosonObject) {
         self.objects.push(object);
         info!("Added Object to Boson");
     }
 
     pub fn step(&mut self, delta_t: &Instant) {
         for object in self.objects.iter_mut() {
-            if let Ok(mut object) = object.write() {
-                let mass = object.get_mass();
-                object.apply_force(mass * self.gravity, delta_t);
+            unsafe {
+                let mass = object.inner().get_mass();
+                object.inner_mut().apply_force(mass * self.gravity, delta_t);
             }
         }
     }

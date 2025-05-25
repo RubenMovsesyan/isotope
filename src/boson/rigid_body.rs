@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use cgmath::Vector3;
-use log::debug;
 
 use super::{DynamicObject, Linkable};
 

@@ -327,7 +327,6 @@ impl Model {
         if let Some(position_link) = self.position_link.as_ref() {
             if let Ok(position_link) = position_link.read() {
                 self.position = position_link.get_position();
-                debug!("Updating model position with: {:#?}", self.position);
                 self.transform_dirty = true;
             }
         }

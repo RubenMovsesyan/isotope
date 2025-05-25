@@ -18,7 +18,7 @@ use winit::{
 };
 
 // Publicly exposed types
-pub use boson::{Boson, Linkable, rigid_body::RigidBody};
+pub use boson::{Boson, BosonObject, Linkable, rigid_body::RigidBody};
 pub use element::Element;
 pub use element::mesh::ModelInstance;
 pub use element::model::Model;
