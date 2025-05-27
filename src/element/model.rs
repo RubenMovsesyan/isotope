@@ -4,7 +4,6 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use bytemuck::Zeroable;
 use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
 use wgpu::{
@@ -323,8 +322,14 @@ impl Model {
     }
 
     // Linking a boson object to the model for physics
-    pub fn link_boson(&mut self, linkable: Arc<RwLock<dyn Linkable>>) {
-        self.boson_link = Some(linkable);
+    pub fn link(&mut self, linkable: impl Into<Arc<RwLock<dyn Linkable>>>) {
+        let l: Arc<RwLock<dyn Linkable>> = linkable.into();
+        if let Ok(l) = l.write() {
+            self.position = l.get_position();
+            self.rotation = l.get_rotation();
+        }
+
+        self.boson_link = Some(l);
 
         // adujst the vertices of the model so that the center of mass is the origin
         let center_of_mass = calculate_center_of_mass(self);

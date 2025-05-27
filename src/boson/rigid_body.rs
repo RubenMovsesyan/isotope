@@ -1,8 +1,12 @@
 use std::time::Instant;
 
-use cgmath::{ElementWise, InnerSpace, Quaternion, Rad, Rotation3, Vector3};
+use anyhow::Result;
+use cgmath::{ElementWise, InnerSpace, One, Quaternion, Rad, Rotation3, Vector3, Zero};
 
-use super::{DynamicObject, Linkable};
+use super::{
+    BosonBody, Linkable,
+    collider::{Collider, CollisionPoints, sphere_collider::SphereCollider},
+};
 
 const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
 
@@ -15,11 +19,47 @@ pub struct RigidBody {
     pub angular_velocity: Vector3<f32>,
     pub inverse_inertia: Vector3<f32>,
 
-    pub mass: f32,
+    // Physical Properties
+    pub(crate) mass: f32,
+    pub(crate) inv_mass: f32,
+    pub(crate) restitution: f32,
+    pub(crate) static_friction: f32,
+    pub(crate) dynamic_friction: f32,
+    pub(crate) gravity: Vector3<f32>,
+
+    pub(crate) collider: Collider,
 }
 
-impl DynamicObject for RigidBody {
-    fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {
+impl RigidBody {
+    pub fn new(mass: f32) -> Result<Self> {
+        Ok(Self {
+            position: Vector3::zero(),
+            velocity: Vector3::zero(),
+            orientation: Quaternion::one(),
+            angular_velocity: Vector3::zero(),
+            inverse_inertia: Vector3 {
+                x: 1.0,
+                y: 1.0,
+                z: 1.0,
+            },
+            mass,
+            inv_mass: 1.0 / mass,
+            restitution: 0.01, // Defaults
+            static_friction: 0.1,
+            dynamic_friction: 0.05,
+            gravity: Vector3 {
+                x: 0.0,
+                y: -9.81,
+                z: 0.0,
+            },
+            collider: Collider::Sphere(SphereCollider {
+                center: Vector3::zero(),
+                radius: 1.0, // Temp
+            }),
+        })
+    }
+
+    pub fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {
         // For simplicity
         let dt = delta_t.elapsed().as_secs_f32();
 
@@ -27,9 +67,12 @@ impl DynamicObject for RigidBody {
         self.velocity += (force / self.mass) * dt;
         // x = x_0 + v * t
         self.position += self.velocity * dt;
+
+        // Link the position to the collider
+        self.collider.link_pos(&self.position);
     }
 
-    fn apply_torque(&mut self, torque: Vector3<f32>, delta_t: &Instant) {
+    pub fn apply_torque(&mut self, torque: Vector3<f32>, delta_t: &Instant) {
         let dt = delta_t.elapsed().as_secs_f32();
 
         // Calculate the angular acceleration from the torque
@@ -48,20 +91,39 @@ impl DynamicObject for RigidBody {
 
             // Apply the rotation
             self.orientation = (rotation * self.orientation).normalize();
+
+            // Link the rotation to the collider
+            self.collider.link_rot(&self.orientation);
         }
     }
 
-    fn pos(&mut self) -> &mut Vector3<f32> {
-        &mut self.position
+    // regular update with no forces in place
+    pub fn update(&mut self, delta_t: &Instant) {
+        let dt = delta_t.elapsed().as_secs_f32();
+
+        // Gravity
+        self.velocity += self.gravity * dt;
+
+        self.position += self.velocity * dt;
+        self.collider.link_pos(&self.position);
+
+        let angle = self.angular_velocity.magnitude() * dt;
+
+        if angle > ANGULAR_ACCELERATION_THRESHOLD {
+            // Avoiding division by 0
+            let axis = self.angular_velocity.normalize();
+            let rotation = Quaternion::from_axis_angle(axis, Rad(angle));
+
+            // Apply the rotation
+            self.orientation = (rotation * self.orientation).normalize();
+
+            // Link the rotation to the collider
+            self.collider.link_rot(&self.orientation);
+        }
     }
 
-    fn vel(&mut self) -> &mut Vector3<f32> {
-        &mut self.velocity
-    }
-
-    #[inline(always)]
-    fn get_mass(&self) -> f32 {
-        self.mass
+    pub fn test_collision(&self, other: &Collider) -> Option<CollisionPoints> {
+        self.collider.test_collision(other)
     }
 }
 
@@ -72,5 +134,11 @@ impl Linkable for RigidBody {
 
     fn get_rotation(&self) -> Quaternion<f32> {
         self.orientation
+    }
+}
+
+impl Into<BosonBody> for RigidBody {
+    fn into(self) -> BosonBody {
+        BosonBody::RigidBody(self)
     }
 }

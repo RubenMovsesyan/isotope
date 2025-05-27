@@ -6,6 +6,7 @@ use std::{
 };
 
 use anyhow::Result;
+use boson::solver::{impulse_solver::ImpulseSolver, position_solver::PositionSolver};
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -18,7 +19,10 @@ use winit::{
 };
 
 // Publicly exposed types
-pub use boson::{Boson, BosonObject, Linkable, rigid_body::RigidBody};
+pub use boson::{
+    Boson, BosonBody, BosonObject, Linkable, collider::Collider, rigid_body::RigidBody,
+    static_collider::StaticCollider,
+};
 pub use element::Element;
 pub use element::mesh::ModelInstance;
 pub use element::model::Model;
@@ -162,6 +166,10 @@ impl Isotope {
                 state.init_boson(&mut boson);
             }
 
+            // Temp
+            boson.add_solver(PositionSolver);
+            boson.add_solver(ImpulseSolver);
+
             let mut delta_t = Instant::now();
             loop {
                 if let Ok(mut state) = state_clone.write() {
@@ -169,12 +177,6 @@ impl Isotope {
 
                     // Handle Boson updates here
                     boson.step(&delta_t);
-                    // state.run_boson_updates(&mut boson, &delta_t);
-                    // let mut ecs = state.run_ecs_updates();
-
-                    // ecs.for_each_molecule_mut(|_entity, rigid_body: &mut RigidBody| {
-                    //     rigid_body.
-                    // });
                 }
 
                 // update delta_t
