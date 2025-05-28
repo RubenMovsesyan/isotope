@@ -7,6 +7,10 @@ pub struct StaticCollider {
     pub(crate) position: Vector3<f32>,
     pub(crate) orientation: Quaternion<f32>,
     pub(crate) collider: Collider,
+
+    // Physics properties
+    pub(crate) static_friction: f32,
+    pub(crate) dynamic_friction: f32,
 }
 
 impl StaticCollider {
@@ -16,6 +20,8 @@ impl StaticCollider {
             position,
             orientation: Quaternion::one(),
             collider,
+            static_friction: 0.2, // Default for now
+            dynamic_friction: 0.1,
         }
     }
 }

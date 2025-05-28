@@ -1,7 +1,6 @@
 use std::time::Instant;
 
-use cgmath::{ElementWise, InnerSpace, Vector2, Vector3, Zero};
-use log::debug;
+use cgmath::{InnerSpace, Vector2, Vector3, Zero};
 
 use crate::boson::collider::Collision;
 
@@ -10,12 +9,11 @@ use super::Solver;
 const VELOCITY_THRESHOLD: f32 = -0.01;
 const FRICTION_THRESHOLD: f32 = 0.0001;
 const PENETRATION_FACTOR: f32 = 0.1;
-// const REST_THRESHOLD: f32 = 0.1;
 
 #[derive(Debug)]
-pub struct ImpulseSolver;
+pub struct BasicImpulseSolver;
 
-impl Solver for ImpulseSolver {
+impl Solver for BasicImpulseSolver {
     fn solve(&self, collisions: &mut [Collision], _delta_t: &Instant) {
         for collision in collisions.iter_mut() {
             // for convenience
@@ -25,17 +23,9 @@ impl Solver for ImpulseSolver {
             let mut impulse: Vector3<f32> = Vector3::zero();
             let mut friction: Vector3<f32> = Vector3::zero();
 
-            let mut a_torque: Vector3<f32> = Vector3::zero();
-            let mut b_torque: Vector3<f32> = Vector3::zero();
-
             collision.object_a.access(|a| {
                 collision.object_b.access(|b| {
                     // Solving for impulse
-
-                    let r_a = points.a_deep - a.get_pos();
-                    let r_b = points.b_deep - b.get_pos();
-                    let angular_a = a.get_angular_vel().cross(r_a);
-                    let angular_b = b.get_angular_vel().cross(r_b);
 
                     // let r_velocity = (b.get_vel() + angular_b) - (a.get_vel() + angular_a);
                     let r_velocity = b.get_vel() - a.get_vel();
@@ -77,13 +67,9 @@ impl Solver for ImpulseSolver {
                                     .magnitude()
                             };
 
-                            friction = -impulse_magnitude * tangent * mu;
+                            friction = impulse_magnitude * tangent * mu;
                         }
                     }
-
-                    // Calculate torques
-                    a_torque = a.get_inv_inertia().mul_element_wise(r_a.cross(friction));
-                    b_torque = b.get_inv_inertia().mul_element_wise(r_b.cross(-friction));
                 });
             });
 
@@ -94,10 +80,6 @@ impl Solver for ImpulseSolver {
                     *velocity -= impulse * a_inv_mass;
                     *velocity -= friction * a_inv_mass;
                 });
-
-                // a.angular_vel(|angular_velocity| {
-                //     *angular_velocity -= a_torque;
-                // });
             });
 
             collision.object_b.modify(|b| {
@@ -106,10 +88,6 @@ impl Solver for ImpulseSolver {
                     *velocity += impulse * b_inv_mass;
                     *velocity += friction * b_inv_mass;
                 });
-
-                // b.angular_vel(|angular_velocity| {
-                //     *angular_velocity += b_torque;
-                // });
             });
         }
     }

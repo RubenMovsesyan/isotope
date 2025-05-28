@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use cgmath::{Deg, InnerSpace, Quaternion, Rotation, Rotation3, Vector3, Zero};
+use cgmath::{Deg, InnerSpace, Quaternion, Rad, Rotation, Rotation3, Vector3, Zero};
 use isotope::{compound::Compound, *};
 
 #[allow(unused_imports)]
@@ -260,6 +260,11 @@ impl IsotopeState for GameState {
             .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
                 cone.render(render_pass);
             });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, model: &mut Model| {
+                model.render(render_pass);
+            });
     }
 
     fn key_is_pressed(&mut self, key_code: KeyCode) {
@@ -383,39 +388,39 @@ fn init(isotope: &mut Isotope) {
     isotope.set_state({
         let mut state = GameState::default();
 
-        let cube = state.ecs.create_entity();
-        state.ecs.add_molecule(
-            cube,
-            TestElement {
-                model: {
-                    let mut model =
-                        Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
+        // let cube = state.ecs.create_entity();
+        // state.ecs.add_molecule(
+        //     cube,
+        //     TestElement {
+        //         model: {
+        //             let mut model =
+        //                 Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
 
-                    model.set_instances(&[
-                        ModelInstance {
-                            position: [0.0, 0.0, 0.0],
-                            rotation: Quaternion::from_axis_angle(Vector3::unit_x(), Deg(45.0))
-                                .normalize()
-                                .into(),
-                        },
-                        ModelInstance {
-                            position: [5.0, 0.0, 0.0],
-                            rotation: Quaternion::from_axis_angle(Vector3::unit_y(), Deg(45.0))
-                                .normalize()
-                                .into(),
-                        },
-                        ModelInstance {
-                            position: [0.0, 0.0, 5.0],
-                            rotation: Quaternion::from_axis_angle(Vector3::unit_z(), Deg(45.0))
-                                .normalize()
-                                .into(),
-                        },
-                    ]);
+        //             model.set_instances(&[
+        //                 ModelInstance {
+        //                     position: [0.0, 0.0, 0.0],
+        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_x(), Deg(45.0))
+        //                         .normalize()
+        //                         .into(),
+        //                 },
+        //                 ModelInstance {
+        //                     position: [5.0, 0.0, 0.0],
+        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_y(), Deg(45.0))
+        //                         .normalize()
+        //                         .into(),
+        //                 },
+        //                 ModelInstance {
+        //                     position: [0.0, 0.0, 5.0],
+        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_z(), Deg(45.0))
+        //                         .normalize()
+        //                         .into(),
+        //                 },
+        //             ]);
 
-                    model
-                },
-            },
-        );
+        //             model
+        //         },
+        //     },
+        // );
 
         // let monkey = state.ecs.create_entity();
         // let rb = BosonObject::new({
@@ -460,12 +465,12 @@ fn init(isotope: &mut Isotope) {
             body.velocity = Vector3 {
                 x: 0.0,
                 y: 5.0,
-                z: 0.0,
+                z: 5.0,
             };
             body.angular_velocity = Vector3 {
                 x: 0.0,
                 y: 0.0,
-                z: 1.0,
+                z: 0.0,
             };
             body
         });
@@ -475,7 +480,7 @@ fn init(isotope: &mut Isotope) {
             ConeElement {
                 model: {
                     let mut model =
-                        Model::from_obj("test_files/cone.obj", &isotope).expect("Failed");
+                        Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
 
                     model.link(cone_rb.clone());
                     model
@@ -483,6 +488,17 @@ fn init(isotope: &mut Isotope) {
                 rigid_body: cone_rb,
             },
         );
+
+        let plane = state.ecs.create_entity();
+        state.ecs.add_molecule(plane, {
+            let mut model = Model::from_obj("test_files/plane.obj", &isotope).expect("Failed");
+
+            model.rot(|orientation| {
+                *orientation = Quaternion::from_axis_angle(Vector3::unit_z(), Deg(180.0));
+            });
+
+            model
+        });
 
         state.lights[0].color = [1.0, 0.0, 0.0];
         state.lights[0].intensity = 1.0;

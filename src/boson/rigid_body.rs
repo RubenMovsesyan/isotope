@@ -1,11 +1,13 @@
 use std::time::Instant;
 
 use anyhow::Result;
-use cgmath::{ElementWise, InnerSpace, One, Quaternion, Rad, Rotation3, Vector3, Zero};
+use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
 
 use super::{
     BosonBody, Linkable,
-    collider::{Collider, CollisionPoints, sphere_collider::SphereCollider},
+    collider::{
+        Collider, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
+    },
 };
 
 const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
@@ -18,6 +20,7 @@ pub struct RigidBody {
     pub orientation: Quaternion<f32>,
     pub angular_velocity: Vector3<f32>,
     pub inverse_inertia: Vector3<f32>,
+    pub inertia_tensor: Matrix3<f32>,
 
     // Physical Properties
     pub(crate) mass: f32,
@@ -42,6 +45,15 @@ impl RigidBody {
                 y: 1.0,
                 z: 1.0,
             },
+            // inertia_tensor: {
+            //     let mat = Matrix3::one();
+            //     (2.0 / 5.0) * mass * 1.0 * 1.0 * mat // Temp
+            // },
+            inertia_tensor: Matrix3 {
+                x: Vector3::new(2.0 / 3.0, -1.0 / 4.0, -1.0 / 4.0),
+                y: Vector3::new(-1.0 / 4.0, 2.0 / 3.0, -1.0 / 4.0),
+                z: Vector3::new(-1.0 / 4.0, -1.0 / 4.0, 2.0 / 3.0),
+            },
             mass,
             inv_mass: 1.0 / mass,
             restitution: 0.01, // Defaults
@@ -52,9 +64,14 @@ impl RigidBody {
                 y: -9.81,
                 z: 0.0,
             },
-            collider: Collider::Sphere(SphereCollider {
+            // collider: Collider::Sphere(SphereCollider {
+            //     center: Vector3::zero(),
+            //     radius: 1.0, // Temp
+            // }),
+            collider: Collider::Cube(CubeCollider {
                 center: Vector3::zero(),
-                radius: 1.0, // Temp
+                orientation: Quaternion::one(),
+                edge_length: 2.0,
             }),
         })
     }

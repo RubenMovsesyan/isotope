@@ -321,6 +321,15 @@ impl Model {
         self.transform_dirty = true;
     }
 
+    // Modifying the rotaition
+    pub fn rot<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Quaternion<f32>),
+    {
+        callback(&mut self.rotation);
+        self.transform_dirty = true;
+    }
+
     // Linking a boson object to the model for physics
     pub fn link(&mut self, linkable: impl Into<Arc<RwLock<dyn Linkable>>>) {
         let l: Arc<RwLock<dyn Linkable>> = linkable.into();

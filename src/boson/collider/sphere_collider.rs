@@ -1,7 +1,8 @@
-use cgmath::{InnerSpace, Vector3};
-use log::*;
+use cgmath::Vector3;
 
-use super::{Collidable, Collider, CollisionPoints, test_sphere_plane, test_sphere_sphere};
+use super::{
+    Collidable, Collider, CollisionPoints, test_sphere_cube, test_sphere_plane, test_sphere_sphere,
+};
 
 #[derive(Debug)]
 pub struct SphereCollider {
@@ -14,6 +15,7 @@ impl Collidable for SphereCollider {
         match collider {
             Collider::Sphere(sphere_collider) => test_sphere_sphere(self, sphere_collider),
             Collider::Plane(plane_collider) => test_sphere_plane(self, plane_collider),
+            Collider::Cube(cube_collider) => test_sphere_cube(self, cube_collider),
         }
     }
 }

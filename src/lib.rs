@@ -6,7 +6,10 @@ use std::{
 };
 
 use anyhow::Result;
-use boson::solver::{impulse_solver::ImpulseSolver, position_solver::PositionSolver};
+use boson::solver::{
+    basic_impulse_solver::BasicImpulseSolver, position_solver::PositionSolver,
+    rotational_impulse_solver::RotationalImpulseSolver,
+};
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -168,7 +171,8 @@ impl Isotope {
 
             // Temp
             boson.add_solver(PositionSolver);
-            boson.add_solver(ImpulseSolver);
+            boson.add_solver(RotationalImpulseSolver);
+            // boson.add_solver(BasicImpulseSolver);
 
             let mut delta_t = Instant::now();
             loop {

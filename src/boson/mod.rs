@@ -4,7 +4,7 @@ use std::{
     time::Instant,
 };
 
-use cgmath::{Quaternion, Vector3, Zero};
+use cgmath::{Matrix3, One, Quaternion, Vector3, Zero};
 use collider::{Collision, CollisionPoints};
 use log::*;
 use solver::Solver;
@@ -14,6 +14,7 @@ use crate::RigidBody;
 
 pub mod boson_math;
 pub mod collider;
+mod properties;
 pub mod rigid_body;
 pub mod solver;
 pub mod static_collider;
@@ -134,6 +135,14 @@ impl BosonBody {
     }
 
     #[inline]
+    pub fn get_inertia(&self) -> Matrix3<f32> {
+        match self {
+            BosonBody::RigidBody(rigid_body) => rigid_body.inertia_tensor,
+            BosonBody::StaticCollider(_) => Matrix3::one(),
+        }
+    }
+
+    #[inline]
     pub fn get_pos(&self) -> Vector3<f32> {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.position,
@@ -169,7 +178,7 @@ impl BosonBody {
     pub fn get_static_friction(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.static_friction,
-            BosonBody::StaticCollider(_) => 0.0,
+            BosonBody::StaticCollider(static_collider) => static_collider.static_friction,
         }
     }
 
@@ -177,7 +186,7 @@ impl BosonBody {
     pub fn get_dynamic_friction(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.dynamic_friction,
-            BosonBody::StaticCollider(_) => 0.0,
+            BosonBody::StaticCollider(static_collider) => static_collider.dynamic_friction,
         }
     }
 
