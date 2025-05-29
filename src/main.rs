@@ -30,7 +30,7 @@ pub struct TestElement {
 
 impl Element for TestElement {
     fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
-        // self.model.render(render_pass);
+        self.model.render(render_pass);
     }
 
     fn as_any(&self) -> &dyn std::any::Any {
@@ -197,37 +197,37 @@ impl IsotopeState for GameState {
             *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
         });
 
-        const SCALAR: f32 = 30.0;
-        self.ecs
-            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
-                cube.model.modify_instances(|instances| {
-                    instances[0].rotation = Quaternion::from_axis_angle(
-                        Vector3::unit_x(),
-                        Deg(SCALAR * t.elapsed().as_secs_f32()),
-                    )
-                    .normalize()
-                    .into();
+        // const SCALAR: f32 = 30.0;
+        // self.ecs
+        //     .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
+        //         cube.model.modify_instances(|instances| {
+        //             instances[0].rotation = Quaternion::from_axis_angle(
+        //                 Vector3::unit_x(),
+        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
+        //             )
+        //             .normalize()
+        //             .into();
 
-                    instances[1].rotation = Quaternion::from_axis_angle(
-                        Vector3::unit_y(),
-                        Deg(SCALAR * t.elapsed().as_secs_f32()),
-                    )
-                    .normalize()
-                    .into();
+        //             instances[1].rotation = Quaternion::from_axis_angle(
+        //                 Vector3::unit_y(),
+        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
+        //             )
+        //             .normalize()
+        //             .into();
 
-                    instances[2].rotation = Quaternion::from_axis_angle(
-                        Vector3::unit_z(),
-                        Deg(SCALAR * t.elapsed().as_secs_f32()),
-                    )
-                    .normalize()
-                    .into();
-                });
+        //             instances[2].rotation = Quaternion::from_axis_angle(
+        //                 Vector3::unit_z(),
+        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
+        //             )
+        //             .normalize()
+        //             .into();
+        //         });
 
-                cube.model.pos(|position| {
-                    position.x = f32::cos(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
-                    position.y = f32::sin(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
-                });
-            });
+        //         cube.model.pos(|position| {
+        //             position.x = f32::cos(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
+        //             position.y = f32::sin(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
+        //         });
+        //     });
     }
 
     fn update_with_window(
@@ -500,11 +500,22 @@ fn init(isotope: &mut Isotope) {
             model
         });
 
-        state.lights[0].color = [1.0, 0.0, 0.0];
+        let other_cube = state.ecs.create_entity();
+        state.ecs.add_molecule(
+            other_cube,
+            TestElement {
+                model: Model::from_obj("test_files/other_cube.obj", &isotope).expect("Failed"),
+            },
+        );
+
+        // state.lights[0].color = [1.0, 0.0, 0.0];
+        state.lights[0].color = [1.0, 1.0, 1.0];
         state.lights[0].intensity = 1.0;
-        state.lights[1].color = [0.0, 0.0, 1.0];
+        // state.lights[1].color = [0.0, 0.0, 1.0];
+        state.lights[1].color = [1.0, 1.0, 1.0];
         state.lights[1].intensity = 1.0;
-        state.lights[2].color = [0.0, 1.0, 0.0];
+        // state.lights[2].color = [0.0, 1.0, 0.0];
+        state.lights[2].color = [1.0, 1.0, 1.0];
         state.lights[2].intensity = 1.0;
         state
     });

@@ -49,10 +49,15 @@ impl RigidBody {
             //     let mat = Matrix3::one();
             //     (2.0 / 5.0) * mass * 1.0 * 1.0 * mat // Temp
             // },
+            // inertia_tensor: Matrix3 {
+            //     x: Vector3::new(2.0 / 3.0, -1.0 / 4.0, -1.0 / 4.0),
+            //     y: Vector3::new(-1.0 / 4.0, 2.0 / 3.0, -1.0 / 4.0),
+            //     z: Vector3::new(-1.0 / 4.0, -1.0 / 4.0, 2.0 / 3.0),
+            // },
             inertia_tensor: Matrix3 {
-                x: Vector3::new(2.0 / 3.0, -1.0 / 4.0, -1.0 / 4.0),
-                y: Vector3::new(-1.0 / 4.0, 2.0 / 3.0, -1.0 / 4.0),
-                z: Vector3::new(-1.0 / 4.0, -1.0 / 4.0, 2.0 / 3.0),
+                x: Vector3::new((mass * 4.0), 0.0, 0.0),
+                y: Vector3::new(0.0, (mass * 4.0), 0.0),
+                z: Vector3::new(0.0, 0.0, (mass * 4.0)),
             },
             mass,
             inv_mass: 1.0 / mass,

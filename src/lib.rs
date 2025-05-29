@@ -171,8 +171,8 @@ impl Isotope {
 
             // Temp
             boson.add_solver(PositionSolver);
-            boson.add_solver(RotationalImpulseSolver);
-            // boson.add_solver(BasicImpulseSolver);
+            // boson.add_solver(RotationalImpulseSolver);
+            boson.add_solver(BasicImpulseSolver);
 
             let mut delta_t = Instant::now();
             loop {

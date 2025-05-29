@@ -34,6 +34,66 @@ pub(crate) struct PhotonTexture {
 }
 
 impl PhotonTexture {
+    pub fn new_empty(
+        gpu_controller: &GpuController,
+        photon_layouts: &PhotonLayoutsManager,
+    ) -> Result<Self> {
+        info!("Creating Empty Texture");
+
+        let size = Extent3d {
+            width: 1,
+            height: 1,
+            depth_or_array_layers: 1,
+        };
+
+        let texture = gpu_controller.device.create_texture(&TextureDescriptor {
+            label: Some("Photon Texture Empty"),
+            size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let view = texture.create_view(&TextureViewDescriptor::default());
+
+        let sampler = gpu_controller.device.create_sampler(&SamplerDescriptor {
+            address_mode_u: AddressMode::ClampToEdge,
+            address_mode_v: AddressMode::ClampToEdge,
+            address_mode_w: AddressMode::ClampToEdge,
+            mag_filter: FilterMode::Linear,
+            min_filter: FilterMode::Linear,
+            mipmap_filter: FilterMode::Linear,
+            ..Default::default()
+        });
+
+        let bind_group = gpu_controller
+            .device
+            .create_bind_group(&BindGroupDescriptor {
+                label: Some("Photon Texture Empty Bind Group"),
+                layout: &photon_layouts.texture_layout,
+                entries: &[
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: BindingResource::TextureView(&view),
+                    },
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: BindingResource::Sampler(&sampler),
+                    },
+                ],
+            });
+
+        Ok(Self {
+            texture,
+            view,
+            sampler,
+            bind_group,
+        })
+    }
+
     pub fn new_from_path<P>(
         gpu_controller: &GpuController,
         path: P,

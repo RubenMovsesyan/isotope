@@ -21,6 +21,17 @@ struct LightsBuffer {
     data: array<Light>,
 }
 
+struct Material {
+    ambient_color: vec3<f32>,
+    diffuse_color: vec3<f32>,
+    specular_color: vec3<f32>,
+    specular_focus: f32,
+    optical_density: f32,
+    dissolve: f32,
+    illum: u32,
+    optional_texture: u32,
+}
+
 // HACK: Fix this to be unbounded
 const LIGHTS_UPPER_BOUND: u32 = 256;
 
@@ -45,6 +56,9 @@ var t_diffuse: texture_2d<f32>;
 @group(2) @binding(1)
 var s_diffuse: sampler;
 
+@group(4) @binding(0)
+var<storage> material: Material;
+
 const WHITE: vec3<f32> = vec3<f32>(1.0, 1.0, 1.0);
 
 // Fragment shader
@@ -52,13 +66,23 @@ const WHITE: vec3<f32> = vec3<f32>(1.0, 1.0, 1.0);
 fn main(
     in: VertexOutput
 ) -> @location(0) vec4<f32> {
-    let object_color: vec4<f32> = textureSample(t_diffuse, s_diffuse, in.uv_coords);
+    var object_color: vec4<f32>;
+
+    if (material.optional_texture == 1) {
+        object_color = textureSample(t_diffuse, s_diffuse, in.uv_coords);
+    } else {
+        object_color = vec4<f32>(material.diffuse_color.rbg, 1.0); // for some reason the color is in rbg
+    }
+
+    // object_color += vec4<f32>(material.ambient_color, 1.0);
+    // object_color /= 2.0;
+
 
     var result: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
 
     // Ambient lighting
     let ambient_strength = 0.01;
-    let ambient_color = WHITE * ambient_strength;
+    let ambient_color = WHITE * ambient_strength * material.ambient_color;
 
     if (lights_len == 0) {
         result += ambient_color * object_color.rgb;
@@ -79,8 +103,8 @@ fn main(
         // Specular Lighting
         let view_dir = normalize(camera.view_position.xyz - in.world_position);
         let reflect_dir = reflect(-light_dir, in.world_normal);
-        let specular_strength = pow(max(dot(view_dir, reflect_dir), 0.0), 1000.0);
-        let specular_color = specular_strength * color.rgb;
+        let specular_strength = pow(max(dot(view_dir, reflect_dir), 0.0), material.specular_focus);
+        let specular_color = specular_strength * color.rgb * material.specular_color.rgb;
 
         result += (ambient_color + diffuse_color + specular_color) * object_color.rgb;
     }

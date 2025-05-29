@@ -4,6 +4,7 @@ use crate::GpuController;
 
 pub mod camera;
 pub mod lights;
+pub mod material;
 pub mod model;
 pub mod texture;
 
@@ -13,6 +14,7 @@ pub(crate) struct PhotonLayoutsManager {
     pub camera_layout: BindGroupLayout,
     pub lights_layout: BindGroupLayout,
     pub model_layout: BindGroupLayout,
+    pub material_layout: BindGroupLayout,
 }
 
 impl PhotonLayoutsManager {
@@ -21,12 +23,14 @@ impl PhotonLayoutsManager {
         let camera_layout = camera::create_bind_group_layout(&gpu_controller.device);
         let lights_layout = lights::create_bind_group_layout(&gpu_controller.device);
         let model_layout = model::create_bind_group_layout(&gpu_controller.device);
+        let material_layout = material::create_bind_group_layout(&gpu_controller.device);
 
         Self {
             texture_layout,
             camera_layout,
             lights_layout,
             model_layout,
+            material_layout,
         }
     }
 }

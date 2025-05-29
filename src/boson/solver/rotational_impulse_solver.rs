@@ -123,7 +123,7 @@ impl Solver for RotationalImpulseSolver {
                 });
 
                 a.angular_vel(|angular_velocity| {
-                    *angular_velocity -= angular_vel_a_change + angular_friction_a;
+                    *angular_velocity -= angular_vel_a_change;
                 });
             });
 
@@ -135,7 +135,7 @@ impl Solver for RotationalImpulseSolver {
                 });
 
                 b.angular_vel(|angular_velocity| {
-                    *angular_velocity += angular_vel_b_change + angular_friction_b;
+                    *angular_velocity -= angular_vel_b_change;
                 });
             });
         }

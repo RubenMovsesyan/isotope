@@ -31,6 +31,7 @@ pub use super::mesh::ModelInstance;
 // Set to 5 to allow for future expansion of bind groups for the shader
 pub(crate) const MODEL_TEXTURE_BIND_GROUP: u32 = 2;
 pub(crate) const MODEL_TRANSFORM_BIND_GROUP: u32 = 3;
+pub(crate) const MODEL_MATERIAL_COLOR_BIND_GROUP: u32 = 4;
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -404,18 +405,17 @@ impl Model {
             // TODO: add optional texture support
             render_pass.set_bind_group(
                 MODEL_TEXTURE_BIND_GROUP,
-                &mesh
-                    .material
-                    .as_ref()
-                    .unwrap()
-                    .diffuse_texture
-                    .as_ref()
-                    .unwrap()
-                    .bind_group,
+                &mesh.material.as_ref().unwrap().diffuse_texture.bind_group,
                 &[],
             );
 
             render_pass.set_bind_group(MODEL_TRANSFORM_BIND_GROUP, &self.transform_bind_group, &[]);
+
+            render_pass.set_bind_group(
+                MODEL_MATERIAL_COLOR_BIND_GROUP,
+                &mesh.material.as_ref().unwrap().bind_group,
+                &[],
+            );
 
             render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
         }

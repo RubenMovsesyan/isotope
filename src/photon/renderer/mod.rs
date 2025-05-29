@@ -60,7 +60,8 @@ impl PhotonRenderer {
             &layouts.camera_layout,
             &layouts.lights_layout,
             &layouts.texture_layout,
-            &layouts.model_layout
+            &layouts.model_layout,
+            &layouts.material_layout
         );
 
         // Create the depth texture
@@ -68,6 +69,8 @@ impl PhotonRenderer {
             PhotonDepthTexture::new_depth_texture(&gpu_controller, surface_configuration);
 
         // Initialie the camera
+        // TODO: ADD INITIALIZATION OPTION
+        // TODO: ADD CAMERA 2D
         let camera = PhotonCamera::create_new_camera_3d(
             gpu_controller.clone(),
             &layouts,
