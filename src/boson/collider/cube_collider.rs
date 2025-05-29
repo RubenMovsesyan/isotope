@@ -35,6 +35,7 @@ impl CubeCollider {
 impl Collidable for CubeCollider {
     fn test_with_collider(&self, collider: &Collider) -> Option<CollisionPoints> {
         match collider {
+            Collider::Empty => None,
             Collider::Sphere(sphere_collider) => test_sphere_cube(sphere_collider, self),
             Collider::Plane(plane_collider) => test_cube_plane(self, plane_collider),
             Collider::Cube(cube_collider) => test_cube_cube(self, cube_collider),

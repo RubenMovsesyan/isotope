@@ -3,6 +3,7 @@ use wgpu::BindGroupLayout;
 use crate::GpuController;
 
 pub mod camera;
+pub mod collider;
 pub mod lights;
 pub mod material;
 pub mod model;
@@ -15,6 +16,7 @@ pub(crate) struct PhotonLayoutsManager {
     pub lights_layout: BindGroupLayout,
     pub model_layout: BindGroupLayout,
     pub material_layout: BindGroupLayout,
+    pub collider_layout: BindGroupLayout,
 }
 
 impl PhotonLayoutsManager {
@@ -24,6 +26,7 @@ impl PhotonLayoutsManager {
         let lights_layout = lights::create_bind_group_layout(&gpu_controller.device);
         let model_layout = model::create_bind_group_layout(&gpu_controller.device);
         let material_layout = material::create_bind_group_layout(&gpu_controller.device);
+        let collider_layout = collider::create_bind_group_layout(&gpu_controller.device);
 
         Self {
             texture_layout,
@@ -31,6 +34,7 @@ impl PhotonLayoutsManager {
             lights_layout,
             model_layout,
             material_layout,
+            collider_layout,
         }
     }
 }

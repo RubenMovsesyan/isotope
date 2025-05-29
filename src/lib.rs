@@ -22,6 +22,7 @@ use winit::{
 };
 
 // Publicly exposed types
+pub use boson::collider::ColliderBuilder;
 pub use boson::{
     Boson, BosonBody, BosonObject, Linkable, collider::Collider, rigid_body::RigidBody,
     static_collider::StaticCollider,
@@ -72,6 +73,9 @@ pub struct Isotope {
     pub delta: Instant,
     pub t: Arc<Instant>,
 
+    // For physics
+    boson: Option<Arc<RwLock<Boson>>>,
+
     // Bool and thread handle for multithreading
     running: Arc<RwLock<bool>>,
     thread_handle: Option<JoinHandle<()>>,
@@ -95,12 +99,20 @@ pub fn new_isotope(
         t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
         thread_handle: None,
+        boson: None,
     })
 }
 
 impl Isotope {
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
+
+        if let Some(photon) = self.photon.as_ref() {
+            self.boson = Some(Arc::new(RwLock::new(Boson::new(
+                self.gpu_controller.clone(),
+                photon.renderer.layouts.clone(),
+            ))))
+        }
 
         if let Ok(mut running) = self.running.write() {
             *running = true;
@@ -157,6 +169,15 @@ impl Isotope {
         let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
         let t_clone = self.t.clone();
         let running_clone = self.running.clone();
+        let gpu_controller_clone = self.gpu_controller.clone();
+        let photon_layout_manager_clone = self
+            .photon
+            .as_ref()
+            .expect("Photon Not Initialized")
+            .renderer
+            .layouts
+            .clone(); // Fix to be better
+        let boson_clone = self.boson.as_ref().expect("Boson Not Initialized").clone();
 
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
@@ -164,15 +185,18 @@ impl Isotope {
 
             info!("Starting Boson Engine");
             // Boson Physics Engine
-            let mut boson = Boson::new();
-            if let Ok(mut state) = state_clone.write() {
-                state.init_boson(&mut boson);
-            }
+            // let mut boson = Boson::new(gpu_controller_clone, photon_layout_manager_clone);
 
-            // Temp
-            boson.add_solver(PositionSolver);
-            // boson.add_solver(RotationalImpulseSolver);
-            boson.add_solver(BasicImpulseSolver);
+            if let Ok(mut boson) = boson_clone.write() {
+                if let Ok(mut state) = state_clone.write() {
+                    state.init_boson(&mut boson);
+                }
+
+                // Temp
+                boson.add_solver(PositionSolver);
+                // boson.add_solver(RotationalImpulseSolver);
+                boson.add_solver(BasicImpulseSolver);
+            }
 
             let mut delta_t = Instant::now();
             loop {
@@ -180,7 +204,9 @@ impl Isotope {
                     state.update(&delta_t, &t_clone);
 
                     // Handle Boson updates here
-                    boson.step(&delta_t);
+                    if let Ok(mut boson) = boson_clone.write() {
+                        boson.step(&delta_t);
+                    }
                 }
 
                 // update delta_t
@@ -323,6 +349,15 @@ impl ApplicationHandler for Isotope {
                                         state.render_elements(render_pass);
                                     },
                                     state.get_lights(),
+                                    |render_pass: &mut RenderPass| {
+                                        state.debug_render_elements(render_pass);
+
+                                        if let Some(boson) = self.boson.as_ref() {
+                                            if let Ok(boson) = boson.read() {
+                                                boson.debug_render(render_pass);
+                                            }
+                                        }
+                                    },
                                 );
                             }
                         }

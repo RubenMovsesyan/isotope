@@ -27,6 +27,18 @@ impl ModelVertex {
             normal_vec: normal_vec.into(),
         }
     }
+
+    pub(crate) const fn new_const(
+        position: VertexPosition,
+        uv_coords: VertexUvCoord,
+        normal_vec: VertexNormalVec,
+    ) -> Self {
+        Self {
+            position,
+            uv_coords,
+            normal_vec,
+        }
+    }
 }
 
 impl Buffered for ModelVertex {

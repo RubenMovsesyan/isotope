@@ -2,12 +2,13 @@ use anyhow::Result;
 use log::*;
 use pollster::FutureExt;
 use wgpu::{
-    Adapter, Backends, Device, DeviceDescriptor, Features, Instance, InstanceDescriptor, Limits,
-    MemoryHints, PowerPreference, Queue, RequestAdapterOptionsBase, Trace,
+    Adapter, Backends, Device, DeviceDescriptor, Features, FeaturesWGPU, FeaturesWebGPU, Instance,
+    InstanceDescriptor, Limits, MemoryHints, PowerPreference, Queue, RequestAdapterOptionsBase,
+    Trace,
 };
 
 #[derive(Debug)]
-pub(crate) struct GpuController {
+pub struct GpuController {
     pub(crate) instance: Instance,
     pub(crate) adapter: Adapter,
     pub(crate) device: Device,
@@ -34,7 +35,10 @@ impl GpuController {
         let (device, queue) = adapter
             .request_device(&DeviceDescriptor {
                 label: Some("Device and Queue"),
-                required_features: Features::default(),
+                required_features: Features {
+                    features_wgpu: FeaturesWGPU::POLYGON_MODE_LINE,
+                    ..Default::default()
+                },
                 required_limits: Limits {
                     max_bind_groups: 5,
                     ..Default::default()

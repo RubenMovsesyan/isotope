@@ -104,7 +104,7 @@ fn main(
         let view_dir = normalize(camera.view_position.xyz - in.world_position);
         let reflect_dir = reflect(-light_dir, in.world_normal);
         let specular_strength = pow(max(dot(view_dir, reflect_dir), 0.0), material.specular_focus);
-        let specular_color = specular_strength * color.rgb * material.specular_color.rgb;
+        let specular_color = specular_strength * color.rgb * material.specular_color.rbg;
 
         result += (ambient_color + diffuse_color + specular_color) * object_color.rgb;
     }

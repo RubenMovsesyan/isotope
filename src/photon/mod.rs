@@ -27,7 +27,8 @@ impl PhotonManager {
             "Isotope",
         )?;
 
-        let renderer = PhotonRenderer::new(gpu_controller, &window.surface_configuration);
+        let mut renderer = PhotonRenderer::new(gpu_controller, &window.surface_configuration);
+        renderer.add_debug_render_pipeline(&window.surface_configuration); // Disable if debug not wanted
 
         Ok(Self { window, renderer })
     }
@@ -42,11 +43,13 @@ impl PhotonManager {
     }
 
     // Call on request redraw
-    pub fn render<F>(&mut self, callback: F, lights: &[Light]) -> Result<()>
+    pub fn render<F, D>(&mut self, callback: F, lights: &[Light], debug_callback: D) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
+        D: FnOnce(&mut RenderPass),
     {
         self.renderer.update_lights(lights);
-        self.renderer.render(&self.window.surface, callback)
+        self.renderer
+            .render(&self.window.surface, callback, debug_callback)
     }
 }

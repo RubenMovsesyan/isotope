@@ -2,6 +2,10 @@ use std::time::Instant;
 
 use anyhow::Result;
 use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
+use log::debug;
+use wgpu::RenderPass;
+
+use crate::ColliderBuilder;
 
 use super::{
     BosonBody, Linkable,
@@ -31,10 +35,11 @@ pub struct RigidBody {
     pub(crate) gravity: Vector3<f32>,
 
     pub(crate) collider: Collider,
+    pub collider_builder: ColliderBuilder,
 }
 
 impl RigidBody {
-    pub fn new(mass: f32) -> Result<Self> {
+    pub fn new(mass: f32, collider_builder: ColliderBuilder) -> Result<Self> {
         Ok(Self {
             position: Vector3::zero(),
             velocity: Vector3::zero(),
@@ -69,15 +74,8 @@ impl RigidBody {
                 y: -9.81,
                 z: 0.0,
             },
-            // collider: Collider::Sphere(SphereCollider {
-            //     center: Vector3::zero(),
-            //     radius: 1.0, // Temp
-            // }),
-            collider: Collider::Cube(CubeCollider {
-                center: Vector3::zero(),
-                orientation: Quaternion::one(),
-                edge_length: 2.0,
-            }),
+            collider: Collider::Empty,
+            collider_builder,
         })
     }
 
@@ -142,6 +140,10 @@ impl RigidBody {
             // Link the rotation to the collider
             self.collider.link_rot(&self.orientation);
         }
+    }
+
+    pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
+        self.collider.debug_render(render_pass);
     }
 
     pub fn test_collision(&self, other: &Collider) -> Option<CollisionPoints> {

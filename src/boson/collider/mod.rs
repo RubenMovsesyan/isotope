@@ -1,9 +1,14 @@
+use std::sync::Arc;
+
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use cube_collider::CubeCollider;
 use plane_collider::PlaneCollider;
 use sphere_collider::SphereCollider;
 
 use log::*;
+use wgpu::RenderPass;
+
+use crate::{GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager};
 
 use super::BosonObject;
 
@@ -31,7 +36,15 @@ pub struct CollisionPoints {
 }
 
 #[derive(Debug)]
+pub enum ColliderBuilder {
+    Sphere,
+    Plane,
+    Cube,
+}
+
+#[derive(Debug)]
 pub enum Collider {
+    Empty,
     Sphere(SphereCollider),
     Plane(PlaneCollider),
     Cube(CubeCollider),
@@ -42,11 +55,18 @@ pub(crate) trait Collidable {
 }
 
 impl Collider {
-    pub fn new_sphere(position: Vector3<f32>, radius: f32) -> Self {
-        Self::Sphere(SphereCollider {
-            center: position,
+    pub(crate) fn new_sphere(
+        position: Vector3<f32>,
+        radius: f32,
+        gpu_controller: Arc<GpuController>,
+        photon_layout_manager: &PhotonLayoutsManager,
+    ) -> Self {
+        Self::Sphere(SphereCollider::new(
+            position,
             radius,
-        })
+            gpu_controller,
+            photon_layout_manager,
+        ))
     }
 
     pub fn new_plane(normal: Vector3<f32>, distance: f32) -> Self {
@@ -67,6 +87,7 @@ impl Collider {
 
     pub fn test_collision(&self, other: &Collider) -> Option<CollisionPoints> {
         match self {
+            Collider::Empty => None,
             Collider::Sphere(sphere_collider) => sphere_collider.test_with_collider(other),
             Collider::Plane(plane_collider) => plane_collider.test_with_collider(other),
             Collider::Cube(cube_collider) => cube_collider.test_with_collider(other),
@@ -75,6 +96,7 @@ impl Collider {
 
     pub(crate) fn link_pos(&mut self, position: &Vector3<f32>) {
         match self {
+            Collider::Empty => {}
             Collider::Sphere(sphere_collider) => sphere_collider.center = *position,
             Collider::Plane(_plane_collider) => {}
             Collider::Cube(cube_collider) => cube_collider.center = *position,
@@ -83,9 +105,19 @@ impl Collider {
 
     pub(crate) fn link_rot(&mut self, rotation: &Quaternion<f32>) {
         match self {
+            Collider::Empty => {}
             Collider::Sphere(_) => {}
             Collider::Plane(_) => {}
             Collider::Cube(cube_collider) => cube_collider.orientation = *rotation,
+        }
+    }
+
+    pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
+        match self {
+            Collider::Empty => {}
+            Collider::Sphere(sphere_collider) => sphere_collider.render(render_pass),
+            Collider::Plane(_) => {}
+            Collider::Cube(cube_collider) => {}
         }
     }
 }

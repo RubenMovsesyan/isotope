@@ -11,6 +11,7 @@ pub struct PlaneCollider {
 impl Collidable for PlaneCollider {
     fn test_with_collider(&self, collider: &Collider) -> Option<CollisionPoints> {
         match collider {
+            Collider::Empty => None,
             Collider::Sphere(sphere_collider) => test_sphere_plane(sphere_collider, self),
             Collider::Plane(_plane_collider) => {
                 None // TODO: implement

@@ -7,13 +7,16 @@ use lights::{Lights, light::Light};
 use photon_layouts::PhotonLayoutsManager;
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
-    Color, LoadOp, Operations, RenderPass, RenderPassColorAttachment,
+    Color, LoadOp, Operations, PolygonMode, RenderPass, RenderPassColorAttachment,
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, Surface,
     SurfaceConfiguration, TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
-use crate::{GpuController, construct_render_pipeline};
+use crate::{
+    GpuController, ModelInstance, construct_debug_render_pipeline, construct_render_pipeline,
+    element::{buffered::Buffered, model_vertex::ModelVertex},
+};
 
 pub mod camera;
 pub mod lights;
@@ -25,8 +28,9 @@ mod render_macros;
 #[derive(Debug)]
 pub struct PhotonRenderer {
     gpu_controller: Arc<GpuController>,
-    pub layouts: PhotonLayoutsManager,
+    pub layouts: Arc<PhotonLayoutsManager>,
     render_pipeline: RenderPipeline,
+    debug_render_pipeline: Option<RenderPipeline>,
 
     // Rendering requirements
     depth_texture: PhotonDepthTexture,
@@ -57,6 +61,8 @@ impl PhotonRenderer {
             vertex_shader,
             fragment_shader,
             String::from("Photon"),
+            PolygonMode::Fill,
+            &[ModelVertex::desc(), ModelInstance::desc()],
             &layouts.camera_layout,
             &layouts.lights_layout,
             &layouts.texture_layout,
@@ -100,12 +106,39 @@ impl PhotonRenderer {
 
         Self {
             gpu_controller,
-            layouts,
+            layouts: Arc::new(layouts),
             render_pipeline,
+            debug_render_pipeline: None,
             depth_texture,
             camera,
             lights,
         }
+    }
+
+    pub fn add_debug_render_pipeline(&mut self, surface_configuration: &SurfaceConfiguration) {
+        let vertex_shader = self
+            .gpu_controller
+            .device
+            .create_shader_module(include_wgsl!("shaders/debug_vert.wgsl"));
+
+        let fragment_shader = self
+            .gpu_controller
+            .device
+            .create_shader_module(include_wgsl!("shaders/debug_frag.wgsl"));
+
+        let debug_render_pipeline = construct_debug_render_pipeline!(
+            &self.gpu_controller.device,
+            surface_configuration,
+            vertex_shader,
+            fragment_shader,
+            String::from("Photon Debug"),
+            PolygonMode::Line,
+            &[ModelVertex::desc()],
+            &self.layouts.camera_layout,
+            &self.layouts.collider_layout
+        );
+
+        self.debug_render_pipeline = Some(debug_render_pipeline);
     }
 
     // Function to modify the lights in the scene
@@ -124,9 +157,15 @@ impl PhotonRenderer {
 
     // Renders all elements in the engine
     // pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
-    pub fn render<F>(&mut self, surface: &Surface<'static>, callback: F) -> Result<()>
+    pub fn render<F, D>(
+        &mut self,
+        surface: &Surface<'static>,
+        callback: F,
+        debug_callback: D,
+    ) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
+        D: FnOnce(&mut RenderPass),
     {
         // Write to the camera buffer if needed
         self.camera.write_buffer(); // only writing when rendering has a huge performance improvement
@@ -175,6 +214,39 @@ impl PhotonRenderer {
             render_pass.set_bind_group(1, &self.lights.bind_group, &[]);
 
             callback(&mut render_pass);
+        }
+
+        // Debug render pass
+        if let Some(debug_pipeline) = self.debug_render_pipeline.as_mut() {
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("Debug Render Pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Load,
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: self.depth_texture.view(),
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Load,
+                        store: StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                // depth_stencil_attachment: None,
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
+
+            render_pass.set_pipeline(&debug_pipeline);
+
+            // Camera
+            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
+
+            debug_callback(&mut render_pass);
         }
 
         self.gpu_controller.queue.submit(Some(encoder.finish()));

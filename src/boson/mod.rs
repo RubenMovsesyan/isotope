@@ -5,12 +5,16 @@ use std::{
 };
 
 use cgmath::{Matrix3, One, Quaternion, Vector3, Zero};
-use collider::{Collision, CollisionPoints};
+use collider::{Collision, CollisionPoints, sphere_collider::SphereCollider};
 use log::*;
 use solver::Solver;
 use static_collider::StaticCollider;
+use wgpu::RenderPass;
 
-use crate::RigidBody;
+use crate::{
+    Collider, RigidBody, gpu_utils::GpuController,
+    photon::renderer::photon_layouts::PhotonLayoutsManager,
+};
 
 pub mod boson_math;
 pub mod collider;
@@ -190,6 +194,28 @@ impl BosonBody {
         }
     }
 
+    pub(crate) fn build_collider(
+        &mut self,
+        gpu_controller: Arc<GpuController>,
+        photon_layouts_manager: &PhotonLayoutsManager,
+    ) {
+        match self {
+            BosonBody::RigidBody(rigid_body) => match rigid_body.collider_builder {
+                crate::ColliderBuilder::Sphere => {
+                    rigid_body.collider = Collider::Sphere(SphereCollider::new(
+                        rigid_body.position,
+                        1.0,
+                        gpu_controller,
+                        photon_layouts_manager,
+                    ));
+                }
+                crate::ColliderBuilder::Plane => {}
+                crate::ColliderBuilder::Cube => {}
+            },
+            BosonBody::StaticCollider(_) => {}
+        }
+    }
+
     pub fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {
         match self {
             BosonBody::RigidBody(rigid_body) => {
@@ -211,6 +237,13 @@ impl BosonBody {
     pub fn update(&mut self, delta_t: &Instant) {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.update(delta_t),
+            BosonBody::StaticCollider(_) => {}
+        }
+    }
+
+    pub fn debug_render(&self, render_pass: &mut RenderPass) {
+        match self {
+            BosonBody::RigidBody(rigid_body) => rigid_body.debug_render(render_pass),
             BosonBody::StaticCollider(_) => {}
         }
     }
@@ -262,10 +295,15 @@ pub struct Boson {
     objects: Vec<BosonObject>,
     solvers: Vec<Arc<dyn Solver>>,
     gravity: Vector3<f32>,
+    gpu_controller: Arc<GpuController>,
+    photon_layouts_manager: Arc<PhotonLayoutsManager>,
 }
 
 impl Boson {
-    pub fn new() -> Self {
+    pub(crate) fn new(
+        gpu_controller: Arc<GpuController>,
+        photon_layouts_manager: Arc<PhotonLayoutsManager>,
+    ) -> Self {
         Self {
             objects: Vec::new(),
             solvers: Vec::new(),
@@ -274,10 +312,16 @@ impl Boson {
                 y: -9.81, // default for now
                 z: 0.0,
             },
+            gpu_controller,
+            photon_layouts_manager,
         }
     }
 
-    pub fn add_dynamic_object(&mut self, object: BosonObject) {
+    pub fn add_dynamic_object(&mut self, mut object: BosonObject) {
+        object.modify(|object| {
+            object.build_collider(self.gpu_controller.clone(), &self.photon_layouts_manager);
+        });
+
         self.objects.push(object);
         info!("Added Object to Boson");
     }
@@ -332,13 +376,19 @@ impl Boson {
         }
     }
 
+    pub fn debug_render(&self, render_pass: &mut RenderPass) {
+        for object in self.objects.iter() {
+            object.access(|object| {
+                object.debug_render(render_pass);
+            });
+        }
+    }
+
     pub(crate) fn step(&mut self, delta_t: &Instant) {
         self.resolve_collisions(delta_t);
 
         for object in self.objects.iter_mut() {
             object.modify(|boson_body| {
-                // Gravity
-                // boson_body.apply_force(self.gravity * boson_body.get_mass(), delta_t);
                 boson_body.update(delta_t);
             });
         }

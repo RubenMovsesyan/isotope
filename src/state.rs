@@ -24,6 +24,9 @@ pub trait IsotopeState: Debug + Send + Sync {
     #[allow(unused_variables)]
     fn render_elements(&self, render_pass: &mut RenderPass) {}
 
+    #[allow(unused_variables)]
+    fn debug_render_elements(&self, render_pass: &mut RenderPass) {}
+
     fn get_lights(&self) -> &[Light] {
         &[]
     }

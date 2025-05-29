@@ -456,7 +456,7 @@ fn init(isotope: &mut Isotope) {
 
         let cone = state.ecs.create_entity();
         let cone_rb = BosonObject::new({
-            let mut body = RigidBody::new(10.0).unwrap();
+            let mut body = RigidBody::new(10.0, ColliderBuilder::Sphere).unwrap();
             body.position = Vector3 {
                 x: 0.0,
                 y: 10.0,
@@ -500,13 +500,13 @@ fn init(isotope: &mut Isotope) {
             model
         });
 
-        let other_cube = state.ecs.create_entity();
-        state.ecs.add_molecule(
-            other_cube,
-            TestElement {
-                model: Model::from_obj("test_files/other_cube.obj", &isotope).expect("Failed"),
-            },
-        );
+        // let other_cube = state.ecs.create_entity();
+        // state.ecs.add_molecule(
+        //     other_cube,
+        //     TestElement {
+        //         model: Model::from_obj("test_files/other_cube.obj", &isotope).expect("Failed"),
+        //     },
+        // );
 
         // state.lights[0].color = [1.0, 0.0, 0.0];
         state.lights[0].color = [1.0, 1.0, 1.0];
