@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use cgmath::Vector3;
-use log::debug;
+use cgmath::{InnerSpace, Vector3};
+use log::*;
+use obj_2_rust::obj_2_rust;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, RenderPass,
     util::{BufferInitDescriptor, DeviceExt},
@@ -15,19 +16,6 @@ use crate::{
 use super::{
     Collidable, Collider, CollisionPoints, test_sphere_cube, test_sphere_plane, test_sphere_sphere,
 };
-
-const SPHERE_VERTICES: [ModelVertex; 6] = [
-    ModelVertex::new_const([0.0, 1.0, 0.0], [0.0, 0.0], [0.0, 1.0, 0.0]),
-    ModelVertex::new_const([1.0, 0.0, 0.0], [0.0, 0.0], [1.0, 0.0, 0.0]),
-    ModelVertex::new_const([0.0, -1.0, 0.0], [0.0, 0.0], [0.0, -1.0, 0.0]),
-    ModelVertex::new_const([-1.0, 0.0, 0.0], [0.0, 0.0], [-1.0, 0.0, 0.0]),
-    ModelVertex::new_const([0.0, 0.0, 1.0], [0.0, 0.0], [0.0, 0.0, 1.0]),
-    ModelVertex::new_const([0.0, 0.0, -1.0], [0.0, 0.0], [0.0, 0.0, -1.0]),
-];
-
-const SPHERE_INDICES: [u32; 24] = [
-    0, 1, 4, 1, 2, 4, 2, 3, 4, 3, 0, 4, 0, 1, 5, 1, 2, 5, 2, 3, 5, 3, 0, 5,
-];
 
 #[derive(Debug)]
 pub struct SphereCollider {
@@ -43,6 +31,26 @@ pub struct SphereCollider {
     gpu_controller: Arc<GpuController>,
 }
 
+impl From<(f32, f32, f32)> for ModelVertex {
+    fn from(value: (f32, f32, f32)) -> Self {
+        let normal: Vector3<f32> = Vector3 {
+            x: value.0,
+            y: value.1,
+            z: value.2,
+        }
+        .normalize();
+
+        Self {
+            position: [value.0, value.1, value.2],
+            normal_vec: normal.into(),
+            uv_coords: [0.0, 0.0],
+        }
+    }
+}
+
+const SPHERE: ([(f32, f32, f32); 482], [u32; 2880], usize) =
+    obj_2_rust!("isotope/src/boson/collider/collider_objs/sphere_collider.obj");
+
 impl SphereCollider {
     pub(crate) fn new(
         center: Vector3<f32>,
@@ -56,12 +64,16 @@ impl SphereCollider {
                 label: Some("Sphere Collider Vertex Buffer"),
                 usage: BufferUsages::VERTEX,
                 contents: bytemuck::cast_slice(&{
-                    let mut verts: [ModelVertex; 6] = SPHERE_VERTICES;
+                    let mut verts = SPHERE
+                        .0
+                        .into_iter()
+                        .map(|vertex| vertex.into())
+                        .collect::<Vec<ModelVertex>>();
 
                     for vert in verts.iter_mut() {
-                        vert.position[0] *= radius;
-                        vert.position[1] *= radius;
-                        vert.position[2] *= radius;
+                        vert.position[0] *= radius * 5.0;
+                        vert.position[1] *= radius * 5.0;
+                        vert.position[2] *= radius * 5.0;
                     }
 
                     verts
@@ -73,7 +85,7 @@ impl SphereCollider {
             .create_buffer_init(&BufferInitDescriptor {
                 label: Some("Sphere Collider Index Buffer"),
                 usage: BufferUsages::INDEX,
-                contents: bytemuck::cast_slice(&SPHERE_INDICES),
+                contents: bytemuck::cast_slice(&SPHERE.1),
             });
 
         let position: [f32; 3] = center.into();
@@ -137,7 +149,7 @@ impl SphereCollider {
 
         render_pass.set_bind_group(1, &self.bind_group, &[]);
 
-        render_pass.draw_indexed(0..24, 0, 0..1);
+        render_pass.draw_indexed(0..(SPHERE.2 as u32), 0, 0..1);
     }
 }
 

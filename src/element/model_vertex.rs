@@ -10,8 +10,8 @@ pub(crate) type VertexNormalVec = [f32; 3];
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ModelVertex {
     pub(crate) position: VertexPosition,
-    uv_coords: VertexUvCoord,
-    normal_vec: VertexNormalVec,
+    pub(crate) uv_coords: VertexUvCoord,
+    pub(crate) normal_vec: VertexNormalVec,
 }
 
 impl ModelVertex {

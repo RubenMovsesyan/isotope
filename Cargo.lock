@@ -874,6 +874,7 @@ dependencies = [
  "cgmath",
  "image",
  "log",
+ "obj_2_rust",
  "pollster",
  "pretty_env_logger",
  "wgpu",
@@ -1258,6 +1259,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af1844ef2428cc3e1cb900be36181049ef3d3193c63e43026cfe202983b27a56"
 dependencies = [
  "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "obj_2_rust"
+version = "0.1.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0311c630018e695c1b5b669f9e1c0904a8940f5a7ab018ff6fe83294c1692c12"
+dependencies = [
  "proc-macro2",
  "quote",
  "syn",
