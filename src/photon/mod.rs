@@ -8,6 +8,7 @@ use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
 use crate::{Light, gpu_utils::GpuController};
 
+pub mod render_descriptor;
 pub mod renderer;
 pub mod window;
 
