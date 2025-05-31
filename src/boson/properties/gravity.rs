@@ -1,5 +1,6 @@
 use cgmath::Vector3;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Gravity {
     None,

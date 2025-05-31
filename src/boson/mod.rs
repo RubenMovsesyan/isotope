@@ -5,7 +5,9 @@ use std::{
 };
 
 use cgmath::{Matrix3, One, Quaternion, Vector3, Zero};
-use collider::{Collision, CollisionPoints, sphere_collider::SphereCollider};
+use collider::{
+    Collision, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
+};
 use log::*;
 use solver::Solver;
 use static_collider::StaticCollider;
@@ -22,6 +24,12 @@ mod properties;
 pub mod rigid_body;
 pub mod solver;
 pub mod static_collider;
+
+#[derive(Debug)]
+pub enum BosonDebugger {
+    None,
+    BasicDebugger,
+}
 
 // Wrapper struct
 #[derive(Debug)]
@@ -115,6 +123,14 @@ impl BosonBody {
     }
 
     #[inline]
+    pub fn get_scale_factor(&self) -> f32 {
+        match self {
+            BosonBody::RigidBody(rigid_body) => rigid_body.scale_factor,
+            BosonBody::StaticCollider(_) => 1.0,
+        }
+    }
+
+    #[inline]
     pub fn get_mass(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.mass,
@@ -196,6 +212,7 @@ impl BosonBody {
 
     pub(crate) fn build_collider(
         &mut self,
+        scale_factor: f32,
         gpu_controller: Arc<GpuController>,
         photon_layouts_manager: &PhotonLayoutsManager,
     ) {
@@ -204,13 +221,21 @@ impl BosonBody {
                 crate::ColliderBuilder::Sphere => {
                     rigid_body.collider = Collider::Sphere(SphereCollider::new(
                         rigid_body.position,
-                        1.0,
+                        scale_factor,
                         gpu_controller,
                         photon_layouts_manager,
                     ));
                 }
                 crate::ColliderBuilder::Plane => {}
-                crate::ColliderBuilder::Cube => {}
+                crate::ColliderBuilder::Cube => {
+                    rigid_body.collider = Collider::Cube(CubeCollider::new(
+                        rigid_body.position,
+                        scale_factor * 2.0,
+                        rigid_body.orientation,
+                        gpu_controller,
+                        photon_layouts_manager,
+                    ));
+                }
             },
             BosonBody::StaticCollider(_) => {}
         }
@@ -294,9 +319,9 @@ pub trait Linkable: Debug + Send + Sync {
 pub struct Boson {
     objects: Vec<BosonObject>,
     solvers: Vec<Arc<dyn Solver>>,
-    gravity: Vector3<f32>,
     gpu_controller: Arc<GpuController>,
     photon_layouts_manager: Arc<PhotonLayoutsManager>,
+    boson_debugger: BosonDebugger,
 }
 
 impl Boson {
@@ -307,26 +332,26 @@ impl Boson {
         Self {
             objects: Vec::new(),
             solvers: Vec::new(),
-            gravity: Vector3 {
-                x: 0.0,
-                y: -9.81, // default for now
-                z: 0.0,
-            },
             gpu_controller,
             photon_layouts_manager,
+            boson_debugger: BosonDebugger::None,
         }
     }
 
     pub fn add_dynamic_object(&mut self, mut object: BosonObject) {
         object.modify(|object| {
-            object.build_collider(self.gpu_controller.clone(), &self.photon_layouts_manager);
+            object.build_collider(
+                object.get_scale_factor(),
+                self.gpu_controller.clone(),
+                &self.photon_layouts_manager,
+            );
         });
 
         self.objects.push(object);
         info!("Added Object to Boson");
     }
 
-    pub fn add_solver(&mut self, solver: impl Solver) {
+    pub(crate) fn add_solver(&mut self, solver: impl Solver) {
         self.solvers.push(Arc::new(solver));
     }
 
@@ -376,11 +401,27 @@ impl Boson {
         }
     }
 
-    pub fn debug_render(&self, render_pass: &mut RenderPass) {
-        for object in self.objects.iter() {
-            object.access(|object| {
-                object.debug_render(render_pass);
-            });
+    pub fn modify_debugger<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut BosonDebugger),
+    {
+        callback(&mut self.boson_debugger);
+    }
+
+    pub fn set_debugger(&mut self, debugger: BosonDebugger) {
+        self.boson_debugger = debugger;
+    }
+
+    pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
+        match self.boson_debugger {
+            BosonDebugger::None => {}
+            BosonDebugger::BasicDebugger => {
+                for object in self.objects.iter() {
+                    object.access(|object| {
+                        object.debug_render(render_pass);
+                    });
+                }
+            }
         }
     }
 

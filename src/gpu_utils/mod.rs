@@ -2,7 +2,7 @@ use anyhow::Result;
 use log::*;
 use pollster::FutureExt;
 use wgpu::{
-    Adapter, Backends, Device, DeviceDescriptor, Features, FeaturesWGPU, FeaturesWebGPU, Instance,
+    Adapter, Backends, Device, DeviceDescriptor, Features, FeaturesWGPU, Instance,
     InstanceDescriptor, Limits, MemoryHints, PowerPreference, Queue, RequestAdapterOptionsBase,
     Trace,
 };

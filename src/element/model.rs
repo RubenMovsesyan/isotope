@@ -37,8 +37,8 @@ pub(crate) const MODEL_MATERIAL_COLOR_BIND_GROUP: u32 = 4;
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct ModelTransform {
     position: [f32; 3],
+    _padding: f32, // IMPORTANT: MAKE SURE TO HAVE THE PADDING IN THE RIGHT PLACE
     rotation: [f32; 4],
-    _padding: f32,
 }
 
 #[allow(dead_code)]

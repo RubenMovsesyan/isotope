@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use cube_collider::CubeCollider;
+use debug_renderer::DebugRender;
 use plane_collider::PlaneCollider;
 use sphere_collider::SphereCollider;
 
-use log::*;
 use wgpu::RenderPass;
 
 use crate::{GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager};
@@ -13,6 +13,7 @@ use crate::{GpuController, photon::renderer::photon_layouts::PhotonLayoutsManage
 use super::BosonObject;
 
 pub mod cube_collider;
+mod debug_renderer;
 pub mod plane_collider;
 pub mod sphere_collider;
 
@@ -24,6 +25,7 @@ pub struct Collision {
     pub(super) points: CollisionPoints,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Copy, Clone)]
 pub struct CollisionPoints {
     pub(crate) a_deep: Vector3<f32>, // Furthest point of a into b
@@ -54,6 +56,7 @@ pub(crate) trait Collidable {
     fn test_with_collider(&self, collider: &Collider) -> Option<CollisionPoints>;
 }
 
+#[allow(dead_code)]
 impl Collider {
     pub(crate) fn new_sphere(
         position: Vector3<f32>,
@@ -73,16 +76,20 @@ impl Collider {
         Self::Plane(PlaneCollider { normal, distance })
     }
 
-    pub fn new_cube(
+    pub(crate) fn new_cube(
         position: Vector3<f32>,
         orientation: Quaternion<f32>,
         edge_length: f32,
+        gpu_controller: Arc<GpuController>,
+        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
-        Self::Cube(CubeCollider {
+        Self::Cube(CubeCollider::new(
+            position,
             edge_length,
-            center: position,
             orientation,
-        })
+            gpu_controller,
+            photon_layout_manager,
+        ))
     }
 
     pub fn test_collision(&self, other: &Collider) -> Option<CollisionPoints> {
@@ -115,9 +122,9 @@ impl Collider {
     pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
         match self {
             Collider::Empty => {}
-            Collider::Sphere(sphere_collider) => sphere_collider.render(render_pass),
+            Collider::Sphere(sphere_collider) => sphere_collider.debug_render(render_pass),
             Collider::Plane(_) => {}
-            Collider::Cube(cube_collider) => {}
+            Collider::Cube(cube_collider) => cube_collider.debug_render(render_pass),
         }
     }
 }
@@ -181,6 +188,7 @@ fn test_sphere_plane(
     None
 }
 
+#[allow(unused_variables)]
 fn test_sphere_cube(
     sphere_collider: &SphereCollider,
     cube_collider: &CubeCollider,
@@ -230,6 +238,7 @@ fn test_cube_plane(
     None
 }
 
+#[allow(unused_variables)]
 fn test_cube_cube(
     cube_1_collider: &CubeCollider,
     cube_2_collider: &CubeCollider,

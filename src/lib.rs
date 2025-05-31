@@ -7,8 +7,9 @@ use std::{
 
 use anyhow::Result;
 use boson::solver::{
-    basic_impulse_solver::BasicImpulseSolver, position_solver::PositionSolver,
-    rotational_impulse_solver::RotationalImpulseSolver,
+    basic_impulse_solver::BasicImpulseSolver,
+    position_solver::PositionSolver,
+    // rotational_impulse_solver::RotationalImpulseSolver,
 };
 use gpu_utils::GpuController;
 use log::*;
@@ -24,8 +25,8 @@ use winit::{
 // Publicly exposed types
 pub use boson::collider::ColliderBuilder;
 pub use boson::{
-    Boson, BosonBody, BosonObject, Linkable, collider::Collider, rigid_body::RigidBody,
-    static_collider::StaticCollider,
+    Boson, BosonBody, BosonDebugger, BosonObject, Linkable, collider::Collider,
+    rigid_body::RigidBody, static_collider::StaticCollider,
 };
 pub use element::Element;
 pub use element::mesh::ModelInstance;
@@ -107,13 +108,6 @@ impl Isotope {
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
 
-        if let Some(photon) = self.photon.as_ref() {
-            self.boson = Some(Arc::new(RwLock::new(Boson::new(
-                self.gpu_controller.clone(),
-                photon.renderer.layouts.clone(),
-            ))))
-        }
-
         if let Ok(mut running) = self.running.write() {
             *running = true;
         }
@@ -121,6 +115,30 @@ impl Isotope {
         (self.init_callback)(self);
 
         Ok(())
+    }
+
+    // Initialize boson
+    pub fn initialize_boson(&mut self) -> Result<()> {
+        if let Some(photon) = self.photon.as_ref() {
+            info!("Starting Boson Physics Engine");
+            self.boson = Some(Arc::new(RwLock::new(Boson::new(
+                self.gpu_controller.clone(),
+                photon.renderer.layouts.clone(),
+            ))));
+        }
+
+        Ok(())
+    }
+
+    pub fn modify_boson<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Boson),
+    {
+        if let Some(boson) = self.boson.as_mut() {
+            if let Ok(mut boson) = boson.write() {
+                callback(&mut boson);
+            }
+        }
     }
 
     /// Add Elements to isotope
@@ -169,33 +187,28 @@ impl Isotope {
         let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
         let t_clone = self.t.clone();
         let running_clone = self.running.clone();
-        let gpu_controller_clone = self.gpu_controller.clone();
-        let photon_layout_manager_clone = self
-            .photon
-            .as_ref()
-            .expect("Photon Not Initialized")
-            .renderer
-            .layouts
-            .clone(); // Fix to be better
-        let boson_clone = self.boson.as_ref().expect("Boson Not Initialized").clone();
+        let mut boson_clone = if let Some(boson) = self.boson.as_ref() {
+            Some(boson.clone())
+        } else {
+            None
+        };
 
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
             info!("Running Thread");
 
-            info!("Starting Boson Engine");
-            // Boson Physics Engine
-            // let mut boson = Boson::new(gpu_controller_clone, photon_layout_manager_clone);
+            if let Some(boson) = boson_clone.as_mut() {
+                if let Ok(mut boson) = boson.write() {
+                    info!("Initializing Boson");
+                    if let Ok(mut state) = state_clone.write() {
+                        state.init_boson(&mut boson);
+                    }
 
-            if let Ok(mut boson) = boson_clone.write() {
-                if let Ok(mut state) = state_clone.write() {
-                    state.init_boson(&mut boson);
+                    // Temp
+                    boson.add_solver(PositionSolver);
+                    boson.add_solver(BasicImpulseSolver);
+                    // boson.add_solver(RotationalImpulseSolver);
                 }
-
-                // Temp
-                boson.add_solver(PositionSolver);
-                // boson.add_solver(RotationalImpulseSolver);
-                boson.add_solver(BasicImpulseSolver);
             }
 
             let mut delta_t = Instant::now();
@@ -204,8 +217,10 @@ impl Isotope {
                     state.update(&delta_t, &t_clone);
 
                     // Handle Boson updates here
-                    if let Ok(mut boson) = boson_clone.write() {
-                        boson.step(&delta_t);
+                    if let Some(boson) = boson_clone.as_mut() {
+                        if let Ok(mut boson) = boson.write() {
+                            boson.step(&delta_t);
+                        }
                     }
                 }
 

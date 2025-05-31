@@ -1,4 +1,5 @@
 use super::buffered::Buffered;
+use cgmath::{InnerSpace, Vector3};
 use std::mem;
 use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode};
 
@@ -28,6 +29,7 @@ impl ModelVertex {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) const fn new_const(
         position: VertexPosition,
         uv_coords: VertexUvCoord,
@@ -37,6 +39,23 @@ impl ModelVertex {
             position,
             uv_coords,
             normal_vec,
+        }
+    }
+}
+
+impl From<(f32, f32, f32)> for ModelVertex {
+    fn from(value: (f32, f32, f32)) -> Self {
+        let normal: Vector3<f32> = Vector3 {
+            x: value.0,
+            y: value.1,
+            z: value.2,
+        }
+        .normalize();
+
+        Self {
+            position: [value.0, value.1, value.2],
+            normal_vec: normal.into(),
+            uv_coords: [0.0, 0.0],
         }
     }
 }

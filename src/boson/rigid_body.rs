@@ -2,16 +2,13 @@ use std::time::Instant;
 
 use anyhow::Result;
 use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
-use log::debug;
 use wgpu::RenderPass;
 
 use crate::ColliderBuilder;
 
 use super::{
     BosonBody, Linkable,
-    collider::{
-        Collider, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
-    },
+    collider::{Collider, CollisionPoints},
 };
 
 const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
@@ -20,6 +17,7 @@ const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
 pub struct RigidBody {
     pub position: Vector3<f32>,
     pub velocity: Vector3<f32>,
+    pub scale_factor: f32,
 
     pub orientation: Quaternion<f32>,
     pub angular_velocity: Vector3<f32>,
@@ -43,6 +41,7 @@ impl RigidBody {
         Ok(Self {
             position: Vector3::zero(),
             velocity: Vector3::zero(),
+            scale_factor: 1.0,
             orientation: Quaternion::one(),
             angular_velocity: Vector3::zero(),
             inverse_inertia: Vector3 {
@@ -60,9 +59,9 @@ impl RigidBody {
             //     z: Vector3::new(-1.0 / 4.0, -1.0 / 4.0, 2.0 / 3.0),
             // },
             inertia_tensor: Matrix3 {
-                x: Vector3::new((mass * 4.0), 0.0, 0.0),
-                y: Vector3::new(0.0, (mass * 4.0), 0.0),
-                z: Vector3::new(0.0, 0.0, (mass * 4.0)),
+                x: Vector3::new(mass * 4.0, 0.0, 0.0),
+                y: Vector3::new(0.0, mass * 4.0, 0.0),
+                z: Vector3::new(0.0, 0.0, mass * 4.0),
             },
             mass,
             inv_mass: 1.0 / mass,

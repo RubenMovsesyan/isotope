@@ -43,6 +43,7 @@ fn hamilton_prod(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     );
 }
 
+
 fn quat_conj(q: vec4<f32>) -> vec4<f32> {
     return q * vec4<f32>(-1.0, -1.0, -1.0, 1.0);
 }

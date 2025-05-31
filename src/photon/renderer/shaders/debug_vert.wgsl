@@ -48,30 +48,19 @@ fn main(
     model: VertexInput,
 ) -> VertexOutput {
     var out: VertexOutput;
-    out.uv_coords = model.uv_coords;
 
-    // let conj = quat_conj(global_rotation);
 
-    // let rot_normal: vec4<f32> = hamilton_prod(
-    //     hamilton_prod(
-    //         global_rotation,
-    //         vec4<f32>(model.normal, 0.0),
-    //     ),
-    //     conj
-    // );
-    // out.world_normal = normalize(rot_normal.xyz);
+    let conj = quat_conj(global_rotation);
 
-    // let rot: vec4<f32> = hamilton_prod(
-    //     hamilton_prod(
-    //         global_rotation,
-    //         vec4<f32>(model.position, 0.0),
-    //     ),
-    //     conj
-    // );
+    let rot: vec4<f32> = hamilton_prod(
+        hamilton_prod(
+            global_rotation,
+            vec4<f32>(model.position, 0.0),
+        ),
+        conj
+    );
 
-    // // Offset the point
-    // let world_position: vec4<f32> = vec4<f32>(rot.xyz + global_position, 1.0);
-    let world_position: vec4<f32> = vec4<f32>(model.position + global_position, 1.0);
+    let world_position: vec4<f32> = vec4<f32>(rot.xyz + global_position, 1.0);
 
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;

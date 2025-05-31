@@ -79,7 +79,7 @@ macro_rules! construct_debug_render_pipeline {
         {
             use wgpu::{
                 PipelineLayoutDescriptor, RenderPipelineDescriptor, VertexState, PipelineCompilationOptions, FragmentState, ColorTargetState,
-                BlendState, ColorWrites, PrimitiveState, PrimitiveTopology, FrontFace, Face, DepthStencilState,
+                BlendState, ColorWrites, PrimitiveState, PrimitiveTopology, FrontFace, DepthStencilState,
                 CompareFunction, StencilState, DepthBiasState, MultisampleState,
             };
 

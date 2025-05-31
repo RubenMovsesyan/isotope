@@ -1,6 +1,4 @@
-use std::f32::consts::PI;
-
-use cgmath::{Deg, InnerSpace, Quaternion, Rad, Rotation, Rotation3, Vector3, Zero};
+use cgmath::{InnerSpace, Quaternion, Rotation, Vector3, Zero};
 use isotope::{compound::Compound, *};
 
 #[allow(unused_imports)]
@@ -333,7 +331,7 @@ impl IsotopeState for GameState {
 
                             boson_body.angular_vel(|angular_velocity| {
                                 *angular_velocity = Vector3 {
-                                    x: 0.0,
+                                    x: 1.0,
                                     y: 0.0,
                                     z: 1.0,
                                 }
@@ -385,6 +383,7 @@ impl IsotopeState for GameState {
 }
 
 fn init(isotope: &mut Isotope) {
+    _ = isotope.initialize_boson();
     isotope.set_state({
         let mut state = GameState::default();
 
@@ -456,7 +455,7 @@ fn init(isotope: &mut Isotope) {
 
         let cone = state.ecs.create_entity();
         let cone_rb = BosonObject::new({
-            let mut body = RigidBody::new(10.0, ColliderBuilder::Sphere).unwrap();
+            let mut body = RigidBody::new(10.0, ColliderBuilder::Cube).unwrap();
             body.position = Vector3 {
                 x: 0.0,
                 y: 10.0,
@@ -491,11 +490,11 @@ fn init(isotope: &mut Isotope) {
 
         let plane = state.ecs.create_entity();
         state.ecs.add_molecule(plane, {
-            let mut model = Model::from_obj("test_files/plane.obj", &isotope).expect("Failed");
+            let model = Model::from_obj("test_files/plane.obj", &isotope).expect("Failed");
 
-            model.rot(|orientation| {
-                *orientation = Quaternion::from_axis_angle(Vector3::unit_z(), Deg(180.0));
-            });
+            // model.rot(|orientation| {
+            //     *orientation = Quaternion::from_axis_angle(Vector3::unit_z(), Deg(180.0));
+            // });
 
             model
         });
@@ -519,6 +518,28 @@ fn init(isotope: &mut Isotope) {
         state.lights[2].intensity = 1.0;
         state
     });
+
+    isotope
+        .impulse()
+        .key_is_pressed(|key_code, isotope| match key_code {
+            KeyCode::Digit0 => {
+                isotope.modify_boson(|boson| {
+                    boson.modify_debugger(|debugger| {
+                        let debugger_on = match debugger {
+                            BosonDebugger::None => false,
+                            BosonDebugger::BasicDebugger => true,
+                        };
+
+                        if debugger_on {
+                            *debugger = BosonDebugger::None;
+                        } else {
+                            *debugger = BosonDebugger::BasicDebugger;
+                        }
+                    });
+                });
+            }
+            _ => {}
+        });
 }
 
 fn update(_isotope: &mut Isotope) {}

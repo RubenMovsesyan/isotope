@@ -1,7 +1,6 @@
 use std::time::Instant;
 
-use cgmath::{ElementWise, InnerSpace, SquareMatrix, Vector2, Vector3, Zero};
-use log::debug;
+use cgmath::{InnerSpace, SquareMatrix, Vector2, Vector3, Zero};
 
 use crate::boson::collider::Collision;
 
@@ -29,8 +28,8 @@ impl Solver for RotationalImpulseSolver {
             let mut angular_vel_a_change: Vector3<f32> = Vector3::zero();
             let mut angular_vel_b_change: Vector3<f32> = Vector3::zero();
 
-            let mut angular_friction_a: Vector3<f32> = Vector3::zero();
-            let mut angular_friction_b: Vector3<f32> = Vector3::zero();
+            // let mut angular_friction_a: Vector3<f32> = Vector3::zero();
+            // let mut angular_friction_b: Vector3<f32> = Vector3::zero();
 
             collision.object_a.access(|a| {
                 collision.object_b.access(|b| {
