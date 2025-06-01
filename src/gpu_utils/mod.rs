@@ -40,7 +40,7 @@ impl GpuController {
                     ..Default::default()
                 },
                 required_limits: Limits {
-                    max_bind_groups: 5,
+                    max_bind_groups: 8,
                     ..Default::default()
                 },
                 memory_hints: MemoryHints::default(),

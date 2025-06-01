@@ -4,6 +4,7 @@ use anyhow::Result;
 use camera::PhotonCamera;
 use cgmath::{Point3, Vector3};
 use lights::{Lights, light::Light};
+use log::debug;
 use photon_layouts::PhotonLayoutsManager;
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
@@ -24,6 +25,9 @@ pub mod photon_layouts;
 pub mod texture;
 
 mod render_macros;
+
+pub const CAMERA_BIND_GROUP: u32 = 0;
+pub const LIGHTS_BIND_GROUP: u32 = 1;
 
 #[derive(Debug)]
 pub struct PhotonRenderer {
@@ -207,11 +211,11 @@ impl PhotonRenderer {
                 timestamp_writes: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            // render_pass.set_pipeline(&self.render_pipeline);
 
             // Camera
-            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
-            render_pass.set_bind_group(1, &self.lights.bind_group, &[]);
+            render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
 
             callback(&mut render_pass);
         }
@@ -244,7 +248,7 @@ impl PhotonRenderer {
             render_pass.set_pipeline(&debug_pipeline);
 
             // Camera
-            render_pass.set_bind_group(0, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
 
             debug_callback(&mut render_pass);
         }

@@ -7,8 +7,11 @@ use wgpu::{
 use anyhow::{Result, anyhow};
 
 use crate::{
-    GpuController,
-    photon::renderer::{photon_layouts::PhotonLayoutsManager, texture::PhotonTexture},
+    GpuController, bind_group_builder,
+    photon::{
+        render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
+        renderer::{photon_layouts::PhotonLayoutsManager, texture::PhotonTexture},
+    },
     utils::file_io::read_lines,
 };
 
@@ -49,10 +52,48 @@ pub struct Material {
 
     // For the gpu
     pub color_buffer: Buffer,
-    pub bind_group: BindGroup,
+    pub render_descriptor: Arc<PhotonRenderDescriptor>,
 }
 
 impl Material {
+    pub fn new_default(
+        gpu_controller: Arc<GpuController>,
+        photon_layouts_manager: &PhotonLayoutsManager,
+    ) -> Self {
+        let texture = PhotonTexture::new_empty(gpu_controller.clone(), photon_layouts_manager);
+
+        let color_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Material Color Buffer"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<MaterialColor>() as u64,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+        });
+
+        let render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .add_render_chain(texture.render_descriptor.clone())
+            .with_label("Material")
+            .add_bind_group_with_layout(bind_group_builder!(
+                gpu_controller.device,
+                "Material",
+                (0, FRAGMENT, color_buffer.as_entire_binding(), STORAGE_RO)
+            ))
+            .build_module(gpu_controller);
+
+        Self {
+            name: String::from("Material Default"),
+            diffuse_texture: texture,
+            ambient_color: ERROR_COLOR,
+            diffuse_color: ERROR_COLOR,
+            specular_color: ERROR_COLOR,
+            dissolve: 0.0,
+            illum: 0,
+            optical_density: 0.0,
+            specular_focus: 100.0,
+            color_buffer,
+            render_descriptor: Arc::new(render_descriptor),
+        }
+    }
+
     fn get_color(&self, texture: bool) -> MaterialColor {
         MaterialColor {
             ambient_color: [
@@ -81,7 +122,7 @@ impl Material {
 }
 
 pub fn load_materials<P>(
-    gpu_controller: &GpuController,
+    gpu_controller: Arc<GpuController>,
     photon_layouts_manager: &PhotonLayoutsManager,
     path: P,
 ) -> Result<Vec<Arc<Material>>>
@@ -113,7 +154,6 @@ where
                 // If there is a material currently, add it to the materials list
                 if let Some(material) = current_material.take() {
                     // Write the color information to the material buffer first
-                    // debug!("Material Data: {:#?}", material.get_color(texture));
                     gpu_controller.queue.write_buffer(
                         &material.color_buffer,
                         0,
@@ -123,37 +163,11 @@ where
                     texture = false;
                 }
 
-                let color_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
-                    label: Some("Material Color Buffer"),
-                    mapped_at_creation: false,
-                    size: std::mem::size_of::<MaterialColor>() as u64,
-                    usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-                });
-
-                current_material = Some(Material {
-                    name: line_split[1].to_string(),
-                    diffuse_texture: PhotonTexture::new_empty(
-                        gpu_controller,
-                        photon_layouts_manager,
-                    )?,
-                    ambient_color: ERROR_COLOR,
-                    diffuse_color: ERROR_COLOR,
-                    specular_color: ERROR_COLOR,
-                    specular_focus: 100.0,
-                    optical_density: 1.0,
-                    dissolve: 1.0,
-                    illum: 0,
-                    bind_group: gpu_controller
-                        .device
-                        .create_bind_group(&BindGroupDescriptor {
-                            label: Some("Photon Material Bind Group"),
-                            layout: &photon_layouts_manager.material_layout,
-                            entries: &[BindGroupEntry {
-                                binding: 0,
-                                resource: color_buffer.as_entire_binding(),
-                            }],
-                        }),
-                    color_buffer,
+                current_material = Some({
+                    let mut mat =
+                        Material::new_default(gpu_controller.clone(), photon_layouts_manager);
+                    mat.name = line_split[1].to_string();
+                    mat
                 });
 
                 debug!("Found New Material: {}", line_split[1]);
@@ -244,13 +258,28 @@ where
 
                     debug!("Texture Path: {:#?}", diffuse_texture_path);
 
-                    let diffuse_texture = PhotonTexture::new_from_path(
-                        gpu_controller,
-                        diffuse_texture_path,
-                        photon_layouts_manager,
-                    )?;
+                    let diffuse_texture =
+                        PhotonTexture::new_from_path(gpu_controller.clone(), diffuse_texture_path)?;
 
                     material.diffuse_texture = diffuse_texture;
+
+                    debug!("Setting Texture Again");
+                    material.render_descriptor = Arc::new(
+                        PhotonRenderDescriptorBuilder::default()
+                            .add_render_chain(material.diffuse_texture.render_descriptor.clone())
+                            .with_label("Material")
+                            .add_bind_group_with_layout(bind_group_builder!(
+                                gpu_controller.device,
+                                "Material",
+                                (
+                                    0,
+                                    FRAGMENT,
+                                    material.color_buffer.as_entire_binding(),
+                                    STORAGE_RO
+                                )
+                            ))
+                            .build_module(gpu_controller.clone()),
+                    );
                 } else {
                     return Err(anyhow!("Material File Corrupt"));
                 }
@@ -261,7 +290,6 @@ where
 
     if let Some(material) = current_material.take() {
         // Write the color information to the material buffer first
-        debug!("Material Data: {:#?}", material.get_color(texture));
         gpu_controller.queue.write_buffer(
             &material.color_buffer,
             0,

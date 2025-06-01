@@ -12,12 +12,14 @@ use wgpu::{
 };
 
 use crate::{
-    GpuController, Isotope,
+    GpuController, Isotope, bind_group_builder,
     boson::{Linkable, boson_math::calculate_center_of_mass},
     element::{
+        buffered::Buffered,
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
     },
+    photon::render_descriptor::{self, PhotonRenderDescriptor, PhotonRenderDescriptorBuilder},
     utils::file_io::read_lines,
 };
 
@@ -76,11 +78,15 @@ impl Model {
         );
 
         let gpu_controller = isotope.gpu_controller.clone();
-        let photon_layouts_manager = if let Some(photon) = isotope.photon.as_ref() {
-            &photon.renderer.layouts
-        } else {
-            return Err(anyhow!("Photon not initialzed"));
-        };
+        let (photon_layouts_manager, surface_configuration) =
+            if let Some(photon) = isotope.photon.as_ref() {
+                (
+                    &photon.renderer.layouts,
+                    &photon.window.surface_configuration,
+                )
+            } else {
+                return Err(anyhow!("Photon not initialzed"));
+            };
 
         // Obj file reading variables
         let mut mesh_name: Option<String> = None;
@@ -96,6 +102,19 @@ impl Model {
 
         let mut material_index: Option<usize> = None;
 
+        // Create the buffer for global tranformations
+        let transform_buffer = gpu_controller
+            .device
+            .create_buffer_init(&BufferInitDescriptor {
+                label: Some("Model Transform Buffer"),
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                contents: bytemuck::cast_slice(&[ModelTransform {
+                    position: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    _padding: 0.0,
+                }]),
+            });
+
         let lines = read_lines(&path)?;
 
         for line in lines.map_while(Result::ok) {
@@ -110,12 +129,32 @@ impl Model {
                 "o" => {
                     // If there is a mesh currently in the buffer then add it to the model
                     if let Some(name) = mesh_name.take() {
-                        let mut new_mesh =
-                            Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
+                        let new_mesh = if let Some(mat_ind) = material_index.take() {
+                            Mesh::with_material(
+                                name,
+                                &model_vertices,
+                                &indices,
+                                &transform_buffer,
+                                gpu_controller.clone(),
+                                photon_layouts_manager,
+                                surface_configuration,
+                                materials[mat_ind].clone(),
+                            )
+                        } else {
+                            Mesh::new(
+                                name,
+                                &model_vertices,
+                                &indices,
+                                &transform_buffer,
+                                gpu_controller.clone(),
+                                photon_layouts_manager,
+                                surface_configuration,
+                            )
+                        };
 
-                        if let Some(mat_ind) = material_index.take() {
-                            new_mesh.material = Some(materials[mat_ind].clone());
-                        }
+                        // if let Some(mat_ind) = material_index.take() {
+                        //     new_mesh.material = materials[mat_ind].clone();
+                        // }
 
                         meshes.push(new_mesh);
 
@@ -179,7 +218,7 @@ impl Model {
 
                     // Add all the found materials to the materials
                     materials.append(&mut load_materials(
-                        &gpu_controller,
+                        gpu_controller.clone(),
                         photon_layouts_manager,
                         path_to_material,
                     )?);
@@ -213,27 +252,31 @@ impl Model {
 
         // Add the remaining object to the list
         if let Some(name) = mesh_name.take() {
-            let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
-
-            if let Some(mat_ind) = material_index.take() {
-                new_mesh.material = Some(materials[mat_ind].clone());
-            }
+            let new_mesh = if let Some(mat_ind) = material_index.take() {
+                Mesh::with_material(
+                    name,
+                    &model_vertices,
+                    &indices,
+                    &transform_buffer,
+                    gpu_controller.clone(),
+                    photon_layouts_manager,
+                    surface_configuration,
+                    materials[mat_ind].clone(),
+                )
+            } else {
+                Mesh::new(
+                    name,
+                    &model_vertices,
+                    &indices,
+                    &transform_buffer,
+                    gpu_controller.clone(),
+                    photon_layouts_manager,
+                    surface_configuration,
+                )
+            };
 
             meshes.push(new_mesh);
         }
-
-        // Create the buffer for global tranformations
-        let transform_buffer = gpu_controller
-            .device
-            .create_buffer_init(&BufferInitDescriptor {
-                label: Some("Model Transform Buffer"),
-                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-                contents: bytemuck::cast_slice(&[ModelTransform {
-                    position: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
-                    _padding: 0.0,
-                }]),
-            });
 
         // Create the bind group from the layout
         let transform_bind_group = gpu_controller
@@ -394,30 +437,31 @@ impl Model {
         }
 
         for mesh in self.meshes.iter() {
-            // Vertices
-            render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-            // Vertex Indices
-            render_pass.set_index_buffer(mesh.index_buffer.slice(..), INDEX_FORMAT);
-            // Instances
-            render_pass.set_vertex_buffer(1, mesh.instance_buffer.slice(..));
+            mesh.render(render_pass);
+            // // Vertices
+            // render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
+            // // Vertex Indices
+            // render_pass.set_index_buffer(mesh.index_buffer.slice(..), INDEX_FORMAT);
+            // // Instances
+            // render_pass.set_vertex_buffer(1, mesh.instance_buffer.slice(..));
 
-            // Set the bind group for the material of the mesh
-            // TODO: add optional texture support
-            render_pass.set_bind_group(
-                MODEL_TEXTURE_BIND_GROUP,
-                &mesh.material.as_ref().unwrap().diffuse_texture.bind_group,
-                &[],
-            );
+            // // Set the bind group for the material of the mesh
+            // // TODO: add optional texture support
+            // render_pass.set_bind_group(
+            //     MODEL_TEXTURE_BIND_GROUP,
+            //     &mesh.material.diffuse_texture.bind_group,
+            //     &[],
+            // );
 
-            render_pass.set_bind_group(MODEL_TRANSFORM_BIND_GROUP, &self.transform_bind_group, &[]);
+            // render_pass.set_bind_group(MODEL_TRANSFORM_BIND_GROUP, &self.transform_bind_group, &[]);
 
-            render_pass.set_bind_group(
-                MODEL_MATERIAL_COLOR_BIND_GROUP,
-                &mesh.material.as_ref().unwrap().bind_group,
-                &[],
-            );
+            // render_pass.set_bind_group(
+            //     MODEL_MATERIAL_COLOR_BIND_GROUP,
+            //     &mesh.material.bind_group,
+            //     &[],
+            // );
 
-            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
+            // render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
         }
     }
 }

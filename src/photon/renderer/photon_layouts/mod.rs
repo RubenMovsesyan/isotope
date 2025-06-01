@@ -8,6 +8,7 @@ pub mod lights;
 pub mod material;
 pub mod model;
 pub mod texture;
+pub mod transform;
 
 #[derive(Debug)]
 pub(crate) struct PhotonLayoutsManager {
@@ -17,6 +18,7 @@ pub(crate) struct PhotonLayoutsManager {
     pub model_layout: BindGroupLayout,
     pub material_layout: BindGroupLayout,
     pub collider_layout: BindGroupLayout,
+    pub transform_layout: BindGroupLayout,
 }
 
 impl PhotonLayoutsManager {
@@ -27,6 +29,7 @@ impl PhotonLayoutsManager {
         let model_layout = model::create_bind_group_layout(&gpu_controller.device);
         let material_layout = material::create_bind_group_layout(&gpu_controller.device);
         let collider_layout = collider::create_bind_group_layout(&gpu_controller.device);
+        let transform_layout = transform::create_bind_group_layout(&gpu_controller.device);
 
         Self {
             texture_layout,
@@ -35,6 +38,7 @@ impl PhotonLayoutsManager {
             model_layout,
             material_layout,
             collider_layout,
+            transform_layout,
         }
     }
 }
