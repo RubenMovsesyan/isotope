@@ -320,20 +320,15 @@ pub struct Boson {
     objects: Vec<BosonObject>,
     solvers: Vec<Arc<dyn Solver>>,
     gpu_controller: Arc<GpuController>,
-    photon_layouts_manager: Arc<PhotonLayoutsManager>,
     boson_debugger: BosonDebugger,
 }
 
 impl Boson {
-    pub(crate) fn new(
-        gpu_controller: Arc<GpuController>,
-        photon_layouts_manager: Arc<PhotonLayoutsManager>,
-    ) -> Self {
+    pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Self {
         Self {
             objects: Vec::new(),
             solvers: Vec::new(),
             gpu_controller,
-            photon_layouts_manager,
             boson_debugger: BosonDebugger::None,
         }
     }
@@ -343,7 +338,7 @@ impl Boson {
             object.build_collider(
                 object.get_scale_factor(),
                 self.gpu_controller.clone(),
-                &self.photon_layouts_manager,
+                &self.gpu_controller.layouts,
             );
         });
 

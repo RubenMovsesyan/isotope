@@ -28,8 +28,8 @@ impl PhotonManager {
             "Isotope",
         )?;
 
-        let mut renderer = PhotonRenderer::new(gpu_controller, &window.surface_configuration);
-        renderer.add_debug_render_pipeline(&window.surface_configuration); // Disable if debug not wanted
+        let mut renderer = PhotonRenderer::new(gpu_controller.clone());
+        renderer.add_debug_render_pipeline(); // Disable if debug not wanted
 
         Ok(Self { window, renderer })
     }

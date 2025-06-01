@@ -1,8 +1,6 @@
 use log::*;
 use std::{path::Path, sync::Arc};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferUsages, Color,
-};
+use wgpu::{Buffer, BufferDescriptor, BufferUsages, Color};
 
 use anyhow::{Result, anyhow};
 
@@ -10,7 +8,7 @@ use crate::{
     GpuController, bind_group_builder,
     photon::{
         render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
-        renderer::{photon_layouts::PhotonLayoutsManager, texture::PhotonTexture},
+        renderer::texture::PhotonTexture,
     },
     utils::file_io::read_lines,
 };
@@ -56,11 +54,8 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn new_default(
-        gpu_controller: Arc<GpuController>,
-        photon_layouts_manager: &PhotonLayoutsManager,
-    ) -> Self {
-        let texture = PhotonTexture::new_empty(gpu_controller.clone(), photon_layouts_manager);
+    pub fn new_default(gpu_controller: Arc<GpuController>) -> Self {
+        let texture = PhotonTexture::new_empty(gpu_controller.clone());
 
         let color_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
             label: Some("Material Color Buffer"),
@@ -121,11 +116,7 @@ impl Material {
     }
 }
 
-pub fn load_materials<P>(
-    gpu_controller: Arc<GpuController>,
-    photon_layouts_manager: &PhotonLayoutsManager,
-    path: P,
-) -> Result<Vec<Arc<Material>>>
+pub fn load_materials<P>(gpu_controller: Arc<GpuController>, path: P) -> Result<Vec<Arc<Material>>>
 where
     P: AsRef<Path>,
 {
@@ -164,8 +155,7 @@ where
                 }
 
                 current_material = Some({
-                    let mut mat =
-                        Material::new_default(gpu_controller.clone(), photon_layouts_manager);
+                    let mut mat = Material::new_default(gpu_controller.clone());
                     mat.name = line_split[1].to_string();
                     mat
                 });

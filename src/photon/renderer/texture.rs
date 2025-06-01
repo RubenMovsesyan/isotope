@@ -4,23 +4,18 @@ use anyhow::{Result, anyhow};
 use image::{GenericImageView, ImageReader};
 use log::*;
 use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
-    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType,
-    BufferBindingType, CompareFunction, Extent3d, FilterMode, Sampler, SamplerBindingType,
-    SamplerDescriptor, ShaderStages, SurfaceConfiguration, TexelCopyBufferLayout, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
-    TextureView, TextureViewDescriptor, TextureViewDimension,
+    AddressMode, BindingResource, CompareFunction, Extent3d, FilterMode, Sampler,
+    SamplerDescriptor, TexelCopyBufferLayout, Texture, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    GpuController, bind_group_builder, bind_group_with_layout,
+    GpuController, bind_group_builder,
     photon::render_descriptor::{
-        self, PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, SAMPLER, TEXTURE,
+        PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, SAMPLER, TEXTURE,
     },
 };
-
-use super::photon_layouts::PhotonLayoutsManager;
 
 const ROW_SIZE: u32 = std::mem::size_of::<f32>() as u32;
 
@@ -40,15 +35,10 @@ pub(crate) struct PhotonTexture {
 
     // For rendering
     pub(crate) render_descriptor: Arc<PhotonRenderDescriptor>,
-    // pub(crate) texture_layout: BindGroupLayout,
-    // pub bind_group: BindGroup,
 }
 
 impl PhotonTexture {
-    pub fn new_empty(
-        gpu_controller: Arc<GpuController>,
-        photon_layouts: &PhotonLayoutsManager,
-    ) -> Self {
+    pub fn new_empty(gpu_controller: Arc<GpuController>) -> Self {
         info!("Creating Empty Texture");
 
         let size = Extent3d {
@@ -192,10 +182,8 @@ pub struct PhotonDepthTexture {
 }
 
 impl PhotonDepthTexture {
-    pub fn new_depth_texture(
-        gpu_controller: &GpuController,
-        surface_configuration: &SurfaceConfiguration,
-    ) -> Self {
+    pub fn new_depth_texture(gpu_controller: &GpuController) -> Self {
+        let surface_configuration = gpu_controller.surface_configuration();
         let size = Extent3d {
             width: surface_configuration.width.max(1),
             height: surface_configuration.height.max(1),

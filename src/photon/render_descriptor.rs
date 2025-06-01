@@ -1,40 +1,39 @@
 use std::{borrow::Cow, sync::Arc};
 
-use anyhow::{Result, anyhow};
-use cgmath::num_traits::one;
-use log::{debug, info};
+use log::*;
 use wgpu::{
-    BindGroup, BindGroupLayout, BindingType, BlendState, Buffer, BufferBindingType,
-    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face,
-    FragmentState, FrontFace, MultisampleState, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass,
-    RenderPipeline, RenderPipelineDescriptor, SamplerBindingType, ShaderModuleDescriptor,
-    ShaderSource, StencilState, SurfaceConfiguration, TextureSampleType, TextureViewDimension,
-    VertexBufferLayout, VertexState,
+    BindGroup, BindGroupLayout, BindingType, BlendState, BufferBindingType, ColorTargetState,
+    ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face, FragmentState,
+    FrontFace, MultisampleState, PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode,
+    PrimitiveState, PrimitiveTopology, RenderPass, RenderPipeline, RenderPipelineDescriptor,
+    SamplerBindingType, ShaderModuleDescriptor, ShaderSource, StencilState, TextureSampleType,
+    TextureViewDimension, VertexBufferLayout, VertexState,
 };
 
 use crate::{gpu_utils::GpuController, photon::renderer::texture::PHOTON_TEXTURE_DEPTH_FORMAT};
 
-use super::renderer::{LIGHTS_BIND_GROUP, photon_layouts::PhotonLayoutsManager};
-
+#[allow(dead_code)]
 pub const STORAGE_RW: BindingType = BindingType::Buffer {
     ty: BufferBindingType::Storage { read_only: false },
     has_dynamic_offset: false,
     min_binding_size: None,
 };
 
+#[allow(dead_code)]
 pub const STORAGE_RO: BindingType = BindingType::Buffer {
     ty: BufferBindingType::Storage { read_only: true },
     has_dynamic_offset: false,
     min_binding_size: None,
 };
 
+#[allow(dead_code)]
 pub const UNIFORM: BindingType = BindingType::Buffer {
     ty: BufferBindingType::Uniform,
     has_dynamic_offset: false,
     min_binding_size: None,
 };
 
+#[allow(dead_code)]
 pub const TEXTURE: BindingType = BindingType::Texture {
     multisampled: false,
     sample_type: TextureSampleType::Float { filterable: true },
@@ -132,6 +131,7 @@ pub struct PhotonRenderDescriptorBuilder<'a> {
     render_descriptor_chains: Vec<Arc<PhotonRenderDescriptor>>,
 }
 
+#[allow(dead_code)]
 impl<'a> PhotonRenderDescriptorBuilder<'a> {
     /// Add a vertex shader to the render descriptor
     pub fn with_vertex_shader(&mut self, vertex_shader_code: &'a str) -> &mut Self {
@@ -300,58 +300,39 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
     }
 
     /// Build the render descriptor from the builder
-    pub fn build(
-        &mut self,
-        gpu_controller: Arc<GpuController>,
-        photon_layouts: &PhotonLayoutsManager,
-        surface_configuration: &SurfaceConfiguration,
-    ) -> PhotonRenderDescriptor {
-        // Helper function to copy the label from the builder
-        let get_label_with = |connecting_label: &str| -> String {
-            let label = match self.label.as_ref() {
-                Some(label) => label.clone() + " ",
-                None => "".to_string(),
-            };
-
-            label + connecting_label
-        };
-
+    pub fn build(&mut self, gpu_controller: Arc<GpuController>) -> PhotonRenderDescriptor {
         // Create the vertex shader module
-        let vertex_shader = if let Some(shader_code) = self.vertex_shader.take() {
+        let mut vertex_shader = self.vertex_shader.take().and_then(|shader_code| {
             Some(
                 gpu_controller
                     .device
                     .create_shader_module(ShaderModuleDescriptor {
-                        label: Some(&get_label_with("Vertex Shader")),
+                        label: Some(&self.get_label_with("Vertex Shader")),
                         source: ShaderSource::Wgsl(shader_code),
                     }),
             )
-        } else {
-            None
-        };
+        });
 
         // Create the fragment shader module
-        let fragment_shader = if let Some(shader_code) = self.fragment_shader.take() {
+        let fragment_shader = self.fragment_shader.take().and_then(|shader_code| {
             Some(
                 gpu_controller
                     .device
                     .create_shader_module(ShaderModuleDescriptor {
-                        label: Some(&get_label_with("Fragment Shader")),
+                        label: Some(&self.get_label_with("Fragment Shader")),
                         source: ShaderSource::Wgsl(shader_code),
                     }),
             )
-        } else {
-            None
-        };
+        });
 
-        let bind_groups = if let Some(bind_groups) = self.bind_groups.take() {
-            bind_groups
-        } else {
-            Vec::new()
-        };
+        // Unwrap the bind groups if there are any
+        let bind_groups = self.bind_groups.take().unwrap_or_else(|| Vec::new()); // NOTE: unwrap_or_else is lazy eval where unwrap_or is eager
 
         let bind_group_layouts = {
-            let mut v = Vec::from([&photon_layouts.camera_layout, &photon_layouts.lights_layout]);
+            let mut v = Vec::from([
+                &gpu_controller.layouts.camera_layout,
+                &gpu_controller.layouts.lights_layout,
+            ]);
             for chain in self.render_descriptor_chains.iter() {
                 chain.add_layouts_to_chain(&mut v);
             }
@@ -366,87 +347,87 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
         };
 
         // Create the render pipeline
-        let render_pipeline = {
+        // If the vertex shader does not exist then the render descriptor will use the default
+        // render pipeline provided by GpuController
+        let render_pipeline = if let Some(vertex_shader) = vertex_shader.take() {
             let layout = gpu_controller
                 .device
                 .create_pipeline_layout(&PipelineLayoutDescriptor {
-                    label: Some(&get_label_with("Render Pipeline Layout")),
+                    label: Some(&self.get_label_with("Render Pipeline Layout")),
                     bind_group_layouts: bind_group_layouts.as_slice(),
                     push_constant_ranges: &[],
                 });
 
             let targets = [Some(ColorTargetState {
-                format: surface_configuration.format,
+                format: gpu_controller.surface_configuration().format,
                 blend: Some(BlendState::REPLACE),
                 write_mask: ColorWrites::ALL,
             })];
 
-            if let Some(vertex_shader) = vertex_shader {
-                Some(
-                    gpu_controller
-                        .device
-                        .create_render_pipeline(&RenderPipelineDescriptor {
-                            label: Some(&get_label_with("Render Pipeline")),
-                            layout: Some(&layout),
-                            vertex: VertexState {
-                                module: &vertex_shader,
+            Some(
+                gpu_controller
+                    .device
+                    .create_render_pipeline(&RenderPipelineDescriptor {
+                        label: Some(&self.get_label_with("Render Pipeline")),
+                        layout: Some(&layout),
+                        vertex: VertexState {
+                            module: &vertex_shader,
+                            entry_point: Some("main"),
+                            buffers: &self.vertex_buffers,
+                            compilation_options: match self
+                                .vertex_pipeline_compilation_options
+                                .take()
+                            {
+                                Some(compilation_options) => compilation_options,
+                                None => PipelineCompilationOptions::default(),
+                            },
+                        },
+                        fragment: if let Some(shader) = fragment_shader.as_ref() {
+                            Some(FragmentState {
+                                module: shader,
                                 entry_point: Some("main"),
-                                buffers: &self.vertex_buffers,
+                                targets: &targets,
                                 compilation_options: match self
-                                    .vertex_pipeline_compilation_options
+                                    .fragment_pipeline_compilation_options
                                     .take()
                                 {
                                     Some(compilation_options) => compilation_options,
                                     None => PipelineCompilationOptions::default(),
                                 },
+                            })
+                        } else {
+                            None
+                        },
+                        primitive: PrimitiveState {
+                            topology: PrimitiveTopology::TriangleList,
+                            strip_index_format: None,
+                            front_face: FrontFace::Ccw,
+                            cull_mode: Some(Face::Back),
+                            polygon_mode: match self.polygon_mode.take() {
+                                Some(mode) => mode,
+                                None => PolygonMode::Fill,
                             },
-                            fragment: if let Some(shader) = fragment_shader.as_ref() {
-                                Some(FragmentState {
-                                    module: shader,
-                                    entry_point: Some("main"),
-                                    targets: &targets,
-                                    compilation_options: match self
-                                        .fragment_pipeline_compilation_options
-                                        .take()
-                                    {
-                                        Some(compilation_options) => compilation_options,
-                                        None => PipelineCompilationOptions::default(),
-                                    },
-                                })
-                            } else {
-                                None
-                            },
-                            primitive: PrimitiveState {
-                                topology: PrimitiveTopology::TriangleList,
-                                strip_index_format: None,
-                                front_face: FrontFace::Ccw,
-                                cull_mode: Some(Face::Back),
-                                polygon_mode: match self.polygon_mode.take() {
-                                    Some(mode) => mode,
-                                    None => PolygonMode::Fill,
-                                },
-                                unclipped_depth: false,
-                                conservative: false,
-                            },
-                            depth_stencil: Some(DepthStencilState {
-                                format: PHOTON_TEXTURE_DEPTH_FORMAT,
-                                depth_write_enabled: true,
-                                depth_compare: CompareFunction::Less,
-                                stencil: StencilState::default(),
-                                bias: DepthBiasState::default(),
-                            }),
-                            multisample: MultisampleState {
-                                count: 1,
-                                mask: !0,
-                                alpha_to_coverage_enabled: false,
-                            },
-                            multiview: None,
-                            cache: None,
+                            unclipped_depth: false,
+                            conservative: false,
+                        },
+                        depth_stencil: Some(DepthStencilState {
+                            format: PHOTON_TEXTURE_DEPTH_FORMAT,
+                            depth_write_enabled: true,
+                            depth_compare: CompareFunction::Less,
+                            stencil: StencilState::default(),
+                            bias: DepthBiasState::default(),
                         }),
-                )
-            } else {
-                None
-            }
+                        multisample: MultisampleState {
+                            count: 1,
+                            mask: !0,
+                            alpha_to_coverage_enabled: false,
+                        },
+                        multiview: None,
+                        cache: None,
+                    }),
+            )
+        } else {
+            None
         };
 
         PhotonRenderDescriptor {
@@ -459,31 +440,15 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
             },
             render_module: {
                 if self.render_descriptor_chains.is_empty() {
-                    // PhotonRenderDescriptorModule::Full { render_pipeline }
-                    match render_pipeline {
-                        Some(render_pipeline) => {
-                            PhotonRenderDescriptorModule::Full { render_pipeline }
-                        }
-
-                        None => PhotonRenderDescriptorModule::Module,
-                    }
+                    PhotonRenderDescriptorModule::Full { render_pipeline }
                 } else {
-                    match render_pipeline {
-                        Some(render_pipeline) => PhotonRenderDescriptorModule::ChainedFull {
-                            chained_render_descriptors: self
-                                .render_descriptor_chains
-                                .iter()
-                                .map(|chain| chain.clone())
-                                .collect(),
-                            render_pipeline,
-                        },
-                        None => PhotonRenderDescriptorModule::ChainedModule {
-                            chained_render_descriptors: self
-                                .render_descriptor_chains
-                                .iter()
-                                .map(|chain| chain.clone())
-                                .collect(),
-                        },
+                    PhotonRenderDescriptorModule::ChainedFull {
+                        chained_render_descriptors: self
+                            .render_descriptor_chains
+                            .iter()
+                            .map(|chain| chain.clone())
+                            .collect(),
+                        render_pipeline,
                     }
                 }
             },
@@ -494,12 +459,12 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
 #[derive(Debug)]
 enum PhotonRenderDescriptorModule {
     Full {
-        render_pipeline: RenderPipeline,
+        render_pipeline: Option<RenderPipeline>,
     },
     Module,
     ChainedFull {
         chained_render_descriptors: Vec<Arc<PhotonRenderDescriptor>>,
-        render_pipeline: RenderPipeline,
+        render_pipeline: Option<RenderPipeline>,
     },
     ChainedModule {
         chained_render_descriptors: Vec<Arc<PhotonRenderDescriptor>>,
@@ -516,10 +481,6 @@ pub struct PhotonRenderDescriptor {
 }
 
 impl PhotonRenderDescriptor {
-    pub fn write_to_buffer(&self, buffer: &Buffer, offset: u64, data: &[u8]) {
-        self.gpu_controller.queue.write_buffer(buffer, offset, data);
-    }
-
     pub(crate) fn add_layouts_to_chain<'a>(&'a self, layouts_vec: &mut Vec<&'a BindGroupLayout>) {
         use PhotonRenderDescriptorModule::*;
 
@@ -544,7 +505,10 @@ impl PhotonRenderDescriptor {
 
         match &self.render_module {
             Full { render_pipeline } => {
-                render_pass.set_pipeline(&render_pipeline);
+                match render_pipeline {
+                    Some(pipeline) => render_pass.set_pipeline(pipeline),
+                    None => render_pass.set_pipeline(&self.gpu_controller.default_render_pipeline),
+                }
 
                 for (index, bind_group) in self.bind_groups.iter().enumerate() {
                     render_pass.set_bind_group(
@@ -573,7 +537,10 @@ impl PhotonRenderDescriptor {
             } => {
                 let mut start_index: u32 = 0;
 
-                render_pass.set_pipeline(&render_pipeline);
+                match render_pipeline {
+                    Some(pipeline) => render_pass.set_pipeline(pipeline),
+                    None => render_pass.set_pipeline(&self.gpu_controller.default_render_pipeline),
+                }
 
                 for chain in chained_render_descriptors.iter() {
                     start_index += chain.setup_render(render_pass);

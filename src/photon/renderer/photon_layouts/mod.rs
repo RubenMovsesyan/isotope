@@ -1,6 +1,4 @@
-use wgpu::BindGroupLayout;
-
-use crate::GpuController;
+use wgpu::{BindGroupLayout, Device};
 
 pub mod camera;
 pub mod collider;
@@ -22,14 +20,14 @@ pub(crate) struct PhotonLayoutsManager {
 }
 
 impl PhotonLayoutsManager {
-    pub fn new(gpu_controller: &GpuController) -> Self {
-        let texture_layout = texture::create_bind_group_layout(&gpu_controller.device);
-        let camera_layout = camera::create_bind_group_layout(&gpu_controller.device);
-        let lights_layout = lights::create_bind_group_layout(&gpu_controller.device);
-        let model_layout = model::create_bind_group_layout(&gpu_controller.device);
-        let material_layout = material::create_bind_group_layout(&gpu_controller.device);
-        let collider_layout = collider::create_bind_group_layout(&gpu_controller.device);
-        let transform_layout = transform::create_bind_group_layout(&gpu_controller.device);
+    pub fn new(device: &Device) -> Self {
+        let texture_layout = texture::create_bind_group_layout(device);
+        let camera_layout = camera::create_bind_group_layout(device);
+        let lights_layout = lights::create_bind_group_layout(device);
+        let model_layout = model::create_bind_group_layout(device);
+        let material_layout = material::create_bind_group_layout(device);
+        let collider_layout = collider::create_bind_group_layout(device);
+        let transform_layout = transform::create_bind_group_layout(device);
 
         Self {
             texture_layout,

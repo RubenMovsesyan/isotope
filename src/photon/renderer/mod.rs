@@ -4,18 +4,16 @@ use anyhow::Result;
 use camera::PhotonCamera;
 use cgmath::{Point3, Vector3};
 use lights::{Lights, light::Light};
-use log::debug;
-use photon_layouts::PhotonLayoutsManager;
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
     Color, LoadOp, Operations, PolygonMode, RenderPass, RenderPassColorAttachment,
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, Surface,
-    SurfaceConfiguration, TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
+    TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
 use crate::{
-    GpuController, ModelInstance, construct_debug_render_pipeline, construct_render_pipeline,
+    GpuController, construct_debug_render_pipeline,
     element::{buffered::Buffered, model_vertex::ModelVertex},
 };
 
@@ -32,8 +30,6 @@ pub const LIGHTS_BIND_GROUP: u32 = 1;
 #[derive(Debug)]
 pub struct PhotonRenderer {
     gpu_controller: Arc<GpuController>,
-    pub layouts: Arc<PhotonLayoutsManager>,
-    render_pipeline: RenderPipeline,
     debug_render_pipeline: Option<RenderPipeline>,
 
     // Rendering requirements
@@ -43,47 +39,42 @@ pub struct PhotonRenderer {
 }
 
 impl PhotonRenderer {
-    pub fn new(
-        gpu_controller: Arc<GpuController>,
-        surface_configuration: &SurfaceConfiguration,
-    ) -> Self {
-        // Load in the shaders
-        let vertex_shader = gpu_controller
-            .device
-            .create_shader_module(include_wgsl!("shaders/vert.wgsl"));
-        let fragment_shader = gpu_controller
-            .device
-            .create_shader_module(include_wgsl!("shaders/frag.wgsl"));
+    pub fn new(gpu_controller: Arc<GpuController>) -> Self {
+        //! Might need if the surface configuration format is changed
 
-        // Initialie the layout manager
-        let layouts = PhotonLayoutsManager::new(&gpu_controller);
+        // // Load in the shaders
+        // let vertex_shader = gpu_controller
+        //     .device
+        //     .create_shader_module(include_wgsl!("shaders/vert.wgsl"));
+        // let fragment_shader = gpu_controller
+        //     .device
+        //     .create_shader_module(include_wgsl!("shaders/frag.wgsl"));
 
-        // Create the render pipeline
-        let render_pipeline = construct_render_pipeline!(
-            &gpu_controller.device,
-            surface_configuration,
-            vertex_shader,
-            fragment_shader,
-            String::from("Photon"),
-            PolygonMode::Fill,
-            &[ModelVertex::desc(), ModelInstance::desc()],
-            &layouts.camera_layout,
-            &layouts.lights_layout,
-            &layouts.texture_layout,
-            &layouts.model_layout,
-            &layouts.material_layout
-        );
+        // // Create the render pipeline
+        // let render_pipeline = construct_render_pipeline!(
+        //     &gpu_controller.device,
+        //     &gpu_controller.surface_configuration(),
+        //     vertex_shader,
+        //     fragment_shader,
+        //     String::from("Photon"),
+        //     PolygonMode::Fill,
+        //     &[ModelVertex::desc(), ModelInstance::desc()],
+        //     &gpu_controller.layouts.camera_layout,
+        //     &gpu_controller.layouts.lights_layout,
+        //     &gpu_controller.layouts.texture_layout,
+        //     &gpu_controller.layouts.model_layout,
+        //     &gpu_controller.layouts.material_layout
+        // );
 
         // Create the depth texture
-        let depth_texture =
-            PhotonDepthTexture::new_depth_texture(&gpu_controller, surface_configuration);
+        let depth_texture = PhotonDepthTexture::new_depth_texture(&gpu_controller);
 
         // Initialie the camera
         // TODO: ADD INITIALIZATION OPTION
         // TODO: ADD CAMERA 2D
         let camera = PhotonCamera::create_new_camera_3d(
             gpu_controller.clone(),
-            &layouts,
+            &gpu_controller.layouts,
             Point3 {
                 x: 2.0,
                 y: 2.0,
@@ -99,19 +90,18 @@ impl PhotonRenderer {
                 y: 1.0,
                 z: 0.0,
             },
-            surface_configuration.width as f32 / surface_configuration.height as f32,
+            gpu_controller.surface_configuration().width as f32
+                / gpu_controller.surface_configuration().height as f32,
             90.0,
             0.1,
             100.0,
         );
 
         // Initialize with no lights
-        let lights = Lights::new_with_lights(&gpu_controller, &layouts, &[]);
+        let lights = Lights::new_with_lights(&gpu_controller, &[]);
 
         Self {
             gpu_controller,
-            layouts: Arc::new(layouts),
-            render_pipeline,
             debug_render_pipeline: None,
             depth_texture,
             camera,
@@ -119,7 +109,7 @@ impl PhotonRenderer {
         }
     }
 
-    pub fn add_debug_render_pipeline(&mut self, surface_configuration: &SurfaceConfiguration) {
+    pub fn add_debug_render_pipeline(&mut self) {
         let vertex_shader = self
             .gpu_controller
             .device
@@ -132,14 +122,14 @@ impl PhotonRenderer {
 
         let debug_render_pipeline = construct_debug_render_pipeline!(
             &self.gpu_controller.device,
-            surface_configuration,
+            self.gpu_controller.surface_configuration(),
             vertex_shader,
             fragment_shader,
             String::from("Photon Debug"),
             PolygonMode::Line,
             &[ModelVertex::desc()],
-            &self.layouts.camera_layout,
-            &self.layouts.collider_layout
+            &self.gpu_controller.layouts.camera_layout,
+            &self.gpu_controller.layouts.collider_layout
         );
 
         self.debug_render_pipeline = Some(debug_render_pipeline);
@@ -148,7 +138,7 @@ impl PhotonRenderer {
     // Function to modify the lights in the scene
     pub fn update_lights(&mut self, lights: &[Light]) {
         self.lights
-            .update(&self.gpu_controller, &self.layouts, lights);
+            .update(&self.gpu_controller, &self.gpu_controller.layouts, lights);
     }
 
     // Change the render configuration and camera and all other necessary items to resize the render
@@ -160,7 +150,6 @@ impl PhotonRenderer {
     }
 
     // Renders all elements in the engine
-    // pub fn render(&self, surface: &Surface<'static>, elements: &[Arc<dyn Element>]) -> Result<()> {
     pub fn render<F, D>(
         &mut self,
         surface: &Surface<'static>,
@@ -211,8 +200,7 @@ impl PhotonRenderer {
                 timestamp_writes: None,
             });
 
-            // render_pass.set_pipeline(&self.render_pipeline);
-
+            // Every render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
             // Camera
             render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
             render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
@@ -240,7 +228,6 @@ impl PhotonRenderer {
                     }),
                     stencil_ops: None,
                 }),
-                // depth_stencil_attachment: None,
                 occlusion_query_set: None,
                 timestamp_writes: None,
             });

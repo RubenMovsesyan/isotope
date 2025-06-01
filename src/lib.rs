@@ -119,13 +119,10 @@ impl Isotope {
 
     // Initialize boson
     pub fn initialize_boson(&mut self) -> Result<()> {
-        if let Some(photon) = self.photon.as_ref() {
-            info!("Starting Boson Physics Engine");
-            self.boson = Some(Arc::new(RwLock::new(Boson::new(
-                self.gpu_controller.clone(),
-                photon.renderer.layouts.clone(),
-            ))));
-        }
+        info!("Starting Boson Physics Engine");
+        self.boson = Some(Arc::new(RwLock::new(Boson::new(
+            self.gpu_controller.clone(),
+        ))));
 
         Ok(())
     }
