@@ -29,12 +29,12 @@ pub use boson::{
     rigid_body::RigidBody, static_collider::StaticCollider,
 };
 pub use element::Element;
-pub use element::mesh::ModelInstance;
 pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
+pub use photon::instancer::*;
 pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};
 pub use state::IsotopeState;
-pub use winit::keyboard::KeyCode;
+pub use winit::keyboard::KeyCode; // Temp
 
 mod boson;
 pub mod compound;

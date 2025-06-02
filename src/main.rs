@@ -438,6 +438,14 @@ fn init(isotope: &mut Isotope) {
             model
         });
 
+        let cubes = state.ecs.create_entity();
+        state.ecs.add_molecule(
+            cubes,
+            Model::from_obj("test_files/cube.obj", &isotope)
+                .expect("Failed")
+                .with_custom_time_instancer(include_str!("../test_files/test_instancer.wgsl"), 20),
+        );
+
         // let other_cube = state.ecs.create_entity();
         // state.ecs.add_molecule(
         //     other_cube,

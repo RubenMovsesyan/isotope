@@ -11,8 +11,8 @@ use wgpu::{
 };
 
 use crate::{
-    ModelInstance, construct_render_pipeline,
-    element::{buffered::Buffered, model_vertex::ModelVertex},
+    construct_render_pipeline,
+    element::{buffered::Buffered, model::ModelInstance, model_vertex::ModelVertex},
     photon::renderer::photon_layouts::PhotonLayoutsManager,
 };
 
@@ -108,7 +108,7 @@ impl GpuController {
             queue,
             layouts,
             surface_configuration: RwLock::new(surface_configuration),
-            default_render_pipeline: default_render_pipeline,
+            default_render_pipeline,
         })
     }
 
