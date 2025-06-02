@@ -1,10 +1,13 @@
-use std::{borrow::Cow, fmt::Debug, num::NonZeroU32, sync::Arc};
+use std::{
+    borrow::Cow,
+    fmt::Debug,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{Result, anyhow};
-use log::debug;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages,
     CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor,
     PipelineCompilationOptions, PipelineLayoutDescriptor, ShaderModuleDescriptor, ShaderSource,
     ShaderStages,
@@ -86,7 +89,7 @@ impl<'a> ParallelInstancerBuilder<'a> {
         label + connecting_label
     }
 
-    pub fn build<T: Instance>(
+    pub(crate) fn build<T: Instance>(
         &mut self,
         gpu_controller: Arc<GpuController>,
     ) -> Result<Instancer<T>> {
@@ -191,7 +194,6 @@ impl<'a> ParallelInstancerBuilder<'a> {
             instance_buffer_bind_group,
             instancer_type: InstancerType::Parallel {
                 compute_pipeline,
-                bind_group_layouts,
                 bind_groups,
             },
         })
@@ -199,7 +201,7 @@ impl<'a> ParallelInstancerBuilder<'a> {
 }
 
 /// Implementers must mark their type with #[repr(C)] to ensure consistent memory layout
-pub unsafe trait Instance:
+pub(crate) unsafe trait Instance:
     Debug + Copy + Clone + Default + bytemuck::Pod + bytemuck::Zeroable + Buffered
 {
 }
@@ -207,17 +209,16 @@ pub unsafe trait Instance:
 #[derive(Debug)]
 enum InstancerType<T: Instance> {
     Series {
-        instances: Vec<T>,
+        instances: RwLock<Vec<T>>,
     },
     Parallel {
         compute_pipeline: ComputePipeline,
-        bind_group_layouts: Vec<BindGroupLayout>,
         bind_groups: Vec<BindGroup>,
     },
 }
 
 #[derive(Debug)]
-pub struct Instancer<T: Instance> {
+pub(crate) struct Instancer<T: Instance> {
     gpu_controller: Arc<GpuController>,
     pub(crate) instance_count: u64,
     pub(crate) instance_buffer: Buffer,
@@ -228,7 +229,7 @@ pub struct Instancer<T: Instance> {
 }
 
 #[derive(Debug)]
-pub enum InstanceBufferDescriptor<T: Instance> {
+pub(crate) enum InstanceBufferDescriptor<T: Instance> {
     Size(u64),
     Instances(Vec<T>),
 }
@@ -257,7 +258,9 @@ impl<T: Instance> Instancer<T> {
 
                 // Create a series instancer with enough instances to fill the buffer
                 let instancer_type = InstancerType::Series {
-                    instances: (0..buffer_size).into_iter().map(|_| T::default()).collect(),
+                    instances: RwLock::new(
+                        (0..buffer_size).into_iter().map(|_| T::default()).collect(),
+                    ),
                 };
 
                 (instance_buffer, buffer_size, instancer_type)
@@ -276,7 +279,9 @@ impl<T: Instance> Instancer<T> {
 
                 let instance_count = instances.len() as u64;
 
-                let instancer_type = InstancerType::Series { instances };
+                let instancer_type = InstancerType::Series {
+                    instances: RwLock::new(instances),
+                };
 
                 (instance_buffer, instance_count, instancer_type)
             }
@@ -321,13 +326,15 @@ impl<T: Instance> Instancer<T> {
         }
     }
 
-    pub fn compute_instances<F>(&mut self, callback: F)
+    pub fn compute_instances<F>(&self, callback: F)
     where
         F: FnOnce(&mut [T]),
     {
-        match &mut self.instancer_type {
+        match &self.instancer_type {
             InstancerType::Series { instances } => {
-                callback(instances);
+                if let Ok(mut instances) = instances.write() {
+                    callback(&mut instances);
+                }
             }
             InstancerType::Parallel {
                 compute_pipeline,

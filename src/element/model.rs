@@ -30,8 +30,6 @@ use crate::{
 
 use super::{buffered::Buffered, material::Material, mesh::Mesh};
 
-// pub use super::mesh::ModelInstance;
-
 #[repr(C)]
 #[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
 pub struct ModelInstance {
@@ -88,8 +86,6 @@ pub struct ModelTransform {
 pub struct Model {
     pub(crate) meshes: Vec<Mesh>,
     materials: Vec<Arc<Material>>,
-    // instances: Vec<ModelInstance>,
-    instances_dirty: bool,
 
     // Global position and rotation
     position: Vector3<f32>,
@@ -105,7 +101,7 @@ pub struct Model {
     boson_link: Option<Arc<RwLock<dyn Linkable>>>,
 
     // For gpu instancing
-    instancer: Instancer<ModelInstance>,
+    instancer: Arc<Instancer<ModelInstance>>,
 
     // Temp
     time_buffer: Buffer,
@@ -319,7 +315,6 @@ impl Model {
         Ok(Self {
             meshes,
             materials,
-            instances_dirty: false,
             position: Vector3::zero(),
             rotation: Quaternion::one(),
             transform_dirty: false,
@@ -327,7 +322,7 @@ impl Model {
             transform_bind_group,
             gpu_controller: isotope.gpu_controller.clone(),
             boson_link: None,
-            instancer,
+            instancer: Arc::new(instancer),
             time_buffer,
             time: Instant::now(),
         })
@@ -358,7 +353,7 @@ impl Model {
             .build(self.gpu_controller.clone())
             .expect("Failed to build model instancer");
 
-        self.instancer = instancer;
+        self.instancer = Arc::new(instancer);
 
         self
     }
@@ -426,6 +421,7 @@ impl Model {
             bytemuck::cast_slice(&[time_elapsed]),
         );
 
+        // Compute the instaces
         self.instancer.compute_instances(|_| {});
 
         if self.transform_dirty {
