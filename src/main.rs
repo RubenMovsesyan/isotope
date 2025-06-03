@@ -270,6 +270,35 @@ impl IsotopeState for GameState {
             });
     }
 
+    fn debug_render_elements(&self, render_pass: &mut wgpu::RenderPass) {
+        self.ecs
+            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
+                cube.render(render_pass);
+                unsafe { cube.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
+                monkey.render(render_pass);
+
+                unsafe { monkey.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
+                cone.render(render_pass);
+
+                unsafe { cone.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, model: &mut Model| {
+                model.render(render_pass);
+
+                unsafe { model.debug_render(render_pass) };
+            });
+    }
+
     fn key_is_pressed(&mut self, key_code: KeyCode) {
         match key_code {
             KeyCode::KeyW => {
@@ -516,20 +545,13 @@ fn init(isotope: &mut Isotope) {
         .impulse()
         .key_is_pressed(|key_code, isotope| match key_code {
             KeyCode::Digit0 => {
-                isotope.modify_boson(|boson| {
-                    boson.modify_debugger(|debugger| {
-                        let debugger_on = match debugger {
-                            BosonDebugger::None => false,
-                            BosonDebugger::BasicDebugger => true,
-                        };
-
-                        if debugger_on {
-                            *debugger = BosonDebugger::None;
-                        } else {
-                            *debugger = BosonDebugger::BasicDebugger;
-                        }
-                    });
-                });
+                isotope.set_debbuging(|debugging| *debugging = !*debugging);
+            }
+            KeyCode::Digit9 => {
+                isotope.set_model_debugging(|debugging| *debugging = !*debugging);
+            }
+            KeyCode::Digit8 => {
+                isotope.set_boson_debbuging(|debugging| *debugging = !*debugging);
             }
             _ => {}
         });

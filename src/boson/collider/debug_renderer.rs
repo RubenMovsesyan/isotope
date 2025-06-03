@@ -1,13 +1,17 @@
 use std::sync::Arc;
 
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, RenderPass,
+    Buffer, BufferUsages, PolygonMode, RenderPass,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
 use crate::{
-    element::model_vertex::ModelVertex, gpu_utils::GpuController,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
+    bind_group_builder,
+    element::{buffered::Buffered, model::ModelInstance, model_vertex::ModelVertex},
+    gpu_utils::GpuController,
+    photon::render_descriptor::{
+        PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO,
+    },
 };
 
 // Imple for all colliders
@@ -21,9 +25,9 @@ pub(crate) struct DebugRenderer {
     index_buffer: Buffer,
     position_buffer: Buffer,
     orientation_buffer: Buffer,
-    bind_group: BindGroup,
     index_buffer_len: u32,
-    gpu_controller: Arc<GpuController>,
+
+    debug_render_descriptor: PhotonRenderDescriptor,
 }
 
 impl DebugRenderer {
@@ -33,7 +37,6 @@ impl DebugRenderer {
         position: [f32; 3],
         orientation: [f32; 4],
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
         let vertex_buffer = gpu_controller
             .device
@@ -67,22 +70,24 @@ impl DebugRenderer {
                 contents: bytemuck::cast_slice(&orientation),
             });
 
-        let bind_group = gpu_controller
-            .device
-            .create_bind_group(&BindGroupDescriptor {
-                label: Some("Debug Collider Bind Group"),
-                layout: &photon_layout_manager.collider_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: position_buffer.as_entire_binding(),
-                    },
-                    BindGroupEntry {
-                        binding: 1,
-                        resource: orientation_buffer.as_entire_binding(),
-                    },
-                ],
-            });
+        let debug_render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .with_label("Boson Debugger")
+            .with_polygon_mode(PolygonMode::Fill)
+            .with_vertex_shader(include_str!("debugging_shaders/collider_vert_debug.wgsl"))
+            .with_fragment_shader(include_str!("debugging_shaders/collider_frag_debug.wgsl"))
+            .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
+            .add_bind_group_with_layout(bind_group_builder!(
+                gpu_controller.device,
+                "Boson Debugger",
+                (0, VERTEX, position_buffer.as_entire_binding(), STORAGE_RO),
+                (
+                    1,
+                    VERTEX,
+                    orientation_buffer.as_entire_binding(),
+                    STORAGE_RO
+                )
+            ))
+            .build(gpu_controller);
 
         Self {
             vertex_buffer,
@@ -90,25 +95,22 @@ impl DebugRenderer {
             index_buffer_len: indices.len() as u32,
             position_buffer,
             orientation_buffer,
-            bind_group,
-            gpu_controller,
+            debug_render_descriptor,
         }
     }
 
     #[inline]
     pub(crate) fn update_pos(&self, position: impl Into<[f32; 3]>) {
-        self.gpu_controller.queue.write_buffer(
+        self.debug_render_descriptor.write_buffer(
             &self.position_buffer,
-            0,
             bytemuck::cast_slice(&position.into()),
         );
     }
 
     #[inline]
     pub(crate) fn update_rot(&self, orientation: impl Into<[f32; 4]>) {
-        self.gpu_controller.queue.write_buffer(
+        self.debug_render_descriptor.write_buffer(
             &self.orientation_buffer,
-            0,
             bytemuck::cast_slice(&orientation.into()),
         );
     }
@@ -118,7 +120,7 @@ impl DebugRenderer {
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
         render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
 
-        render_pass.set_bind_group(1, &self.bind_group, &[]);
+        self.debug_render_descriptor.setup_render(render_pass);
 
         render_pass.draw_indexed(0..self.index_buffer_len, 0, 0..1);
     }

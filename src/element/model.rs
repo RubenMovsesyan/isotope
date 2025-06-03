@@ -10,7 +10,8 @@ use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferAddress, BufferDescriptor,
-    BufferUsages, RenderPass, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode,
+    BufferUsages, CommandEncoder, RenderPass, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -405,6 +406,10 @@ impl Model {
         }
     }
 
+    pub fn compute_instances(&self, encoder: &mut CommandEncoder) {
+        self.instancer.compute_instances(|_| {}, encoder);
+    }
+
     pub fn render(&mut self, render_pass: &mut RenderPass) {
         // If the model is linked then update the position
         if let Some(boson_link) = self.boson_link.as_ref() {
@@ -424,9 +429,6 @@ impl Model {
             0,
             bytemuck::cast_slice(&[time_elapsed]),
         );
-
-        // Compute the instaces
-        self.instancer.compute_instances(|_| {});
 
         if self.transform_dirty {
             // Update the position buffer if changed
@@ -449,6 +451,15 @@ impl Model {
 
         for mesh in self.meshes.iter() {
             mesh.render(render_pass, self.instancer.instance_count as u32);
+        }
+    }
+
+    ///! Always call after main render
+    pub unsafe fn debug_render(&self, render_pass: &mut RenderPass) {
+        render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
+
+        for mesh in self.meshes.iter() {
+            mesh.debug_render(render_pass, self.instancer.instance_count as u32);
         }
     }
 }

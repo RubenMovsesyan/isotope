@@ -3,7 +3,7 @@ use std::{sync::Arc, time::Instant};
 use cgmath::{One, Quaternion, Vector3, Zero};
 use log::{debug, warn};
 use wgpu::{
-    Buffer, BufferDescriptor, BufferUsages,
+    Buffer, BufferDescriptor, BufferUsages, CommandEncoder,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -190,7 +190,7 @@ impl ParticleSysytem {
         // self.instancer.compute_instances(|_| {});
     }
 
-    pub(crate) fn update_on_render(&mut self) {
+    pub(crate) fn update_instances(&mut self, encoder: &mut CommandEncoder) {
         // Write the delta time to the buffer
         self.instancer.write_to_buffer(
             &self.delta_time_buffer,
@@ -200,7 +200,7 @@ impl ParticleSysytem {
         self.delta_t_accum = 0.0;
 
         // Step through the physics step
-        self.instancer.compute_instances(|_| {});
+        self.instancer.compute_instances(|_| {}, encoder);
     }
 
     pub(crate) fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {

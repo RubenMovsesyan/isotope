@@ -14,7 +14,7 @@ use boson::solver::{
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
-use wgpu::RenderPass;
+use wgpu::{CommandEncoder, RenderPass};
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
@@ -83,6 +83,9 @@ pub struct Isotope {
     // Bool and thread handle for multithreading
     running: Arc<RwLock<bool>>,
     thread_handle: Option<JoinHandle<()>>,
+
+    // For enabling or disabling debugging
+    debugging: bool,
 }
 
 pub fn new_isotope(
@@ -104,6 +107,7 @@ pub fn new_isotope(
         running: Arc::new(RwLock::new(false)),
         thread_handle: None,
         boson: None,
+        debugging: false,
     })
 }
 
@@ -128,6 +132,64 @@ impl Isotope {
         ))));
 
         Ok(())
+    }
+
+    // Set all debugging modes
+    pub fn set_debbuging<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut bool),
+    {
+        callback(&mut self.debugging);
+
+        // Enable the boson debugger
+        if let Some(boson) = self.boson.as_mut() {
+            if let Ok(mut boson) = boson.write() {
+                boson.set_debugger(if self.debugging {
+                    BosonDebugger::BasicDebugger
+                } else {
+                    BosonDebugger::None
+                });
+            }
+        }
+
+        // Enable debug rendering
+        if let Some(photon) = self.photon.as_mut() {
+            photon.set_debugger(|debugging| *debugging = self.debugging);
+        }
+    }
+
+    // Only change the model debugging mode
+    pub fn set_model_debugging<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut bool),
+    {
+        if let Some(photon) = self.photon.as_mut() {
+            photon.set_debugger(callback);
+        }
+    }
+
+    // Only set boson debugging mode
+    pub fn set_boson_debbuging<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut bool),
+    {
+        // Enable the boson debugger
+        if let Some(boson) = self.boson.as_mut() {
+            if let Ok(mut boson) = boson.write() {
+                let mut debugging = match boson.boson_debugger {
+                    BosonDebugger::None => false,
+                    BosonDebugger::BasicDebugger => true,
+                };
+
+                callback(&mut debugging);
+
+                boson.set_debugger(if debugging {
+                    BosonDebugger::BasicDebugger
+                } else {
+                    BosonDebugger::None
+                });
+            }
+        }
     }
 
     pub fn modify_boson<F>(&mut self, callback: F)
@@ -361,14 +423,17 @@ impl ApplicationHandler for Isotope {
                                 // TODO: make this sligtly nicer looking
                                 _ = photon.render(
                                     |render_pass: &mut RenderPass| {
+                                        state.render_elements(render_pass);
+                                    },
+                                    |encoder: &mut CommandEncoder| {
+                                        // TODO: move this to the top because update happens first
                                         // Boson particle systems are tied to render thread because of delta_t
+                                        // Updating the instaces with the command encoder
                                         if let Some(boson) = self.boson.as_ref() {
                                             if let Ok(mut boson) = boson.write() {
-                                                boson.update_on_render();
+                                                boson.update_instances(encoder);
                                             }
                                         }
-
-                                        state.render_elements(render_pass);
                                     },
                                     state.get_lights(),
                                     |render_pass: &mut RenderPass| {

@@ -35,7 +35,6 @@ impl CubeCollider {
         edge_length: f32,
         orientation: Quaternion<f32>,
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
         // Create the debug renderer for this collider
         let debug_renderer = DebugRenderer::new(
@@ -58,7 +57,6 @@ impl CubeCollider {
             center.into(),
             orientation.into(),
             gpu_controller,
-            photon_layout_manager,
         );
 
         Self {

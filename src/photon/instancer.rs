@@ -5,13 +5,11 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use log::debug;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages,
-    CommandEncoderDescriptor, ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, ShaderModuleDescriptor, ShaderSource,
-    ShaderStages,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, CommandEncoder,
+    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, ShaderModuleDescriptor, ShaderSource, ShaderStages,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
@@ -202,7 +200,7 @@ impl<'a> ParallelInstancerBuilder<'a> {
 }
 
 /// Implementers must mark their type with #[repr(C)] to ensure consistent memory layout
-pub(crate) unsafe trait Instance:
+pub unsafe trait Instance:
     Debug + Copy + Clone + Default + bytemuck::Pod + bytemuck::Zeroable + Buffered
 {
 }
@@ -219,7 +217,7 @@ enum InstancerType<T: Instance> {
 }
 
 #[derive(Debug)]
-pub(crate) struct Instancer<T: Instance> {
+pub struct Instancer<T: Instance> {
     gpu_controller: Arc<GpuController>,
     pub(crate) instance_count: u64,
     pub(crate) instance_buffer: Buffer,
@@ -230,7 +228,7 @@ pub(crate) struct Instancer<T: Instance> {
 }
 
 #[derive(Debug)]
-pub(crate) enum InstanceBufferDescriptor<T: Instance> {
+pub enum InstanceBufferDescriptor<T: Instance> {
     Size(u64),
     Instances(Vec<T>),
 }
@@ -331,7 +329,7 @@ impl<T: Instance> Instancer<T> {
         self.gpu_controller.queue.write_buffer(buffer, 0, data);
     }
 
-    pub fn compute_instances<F>(&self, callback: F)
+    pub fn compute_instances<F>(&self, callback: F, encoder: &mut CommandEncoder)
     where
         F: FnOnce(&mut [T]),
     {
@@ -346,13 +344,6 @@ impl<T: Instance> Instancer<T> {
                 bind_groups,
                 ..
             } => {
-                let mut encoder =
-                    self.gpu_controller
-                        .device
-                        .create_command_encoder(&CommandEncoderDescriptor {
-                            label: Some("Instancer Command encoder"),
-                        });
-
                 {
                     // Temp for now
                     let dispatch_size = 256;
@@ -380,8 +371,6 @@ impl<T: Instance> Instancer<T> {
 
                     compute_pass.dispatch_workgroups(dispatch_size, 1, 1);
                 }
-
-                self.gpu_controller.queue.submit(Some(encoder.finish()));
             }
         }
     }

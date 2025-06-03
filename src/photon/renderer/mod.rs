@@ -6,7 +6,7 @@ use cgmath::{Point3, Vector3};
 use lights::{Lights, light::Light};
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
-    Color, LoadOp, Operations, PolygonMode, RenderPass, RenderPassColorAttachment,
+    Color, CommandEncoder, LoadOp, Operations, PolygonMode, RenderPass, RenderPassColorAttachment,
     RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, Surface,
     TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
 };
@@ -31,6 +31,7 @@ pub const LIGHTS_BIND_GROUP: u32 = 1;
 pub struct PhotonRenderer {
     gpu_controller: Arc<GpuController>,
     debug_render_pipeline: Option<RenderPipeline>,
+    pub(crate) debugging: bool,
 
     // Rendering requirements
     depth_texture: PhotonDepthTexture,
@@ -40,32 +41,6 @@ pub struct PhotonRenderer {
 
 impl PhotonRenderer {
     pub fn new(gpu_controller: Arc<GpuController>) -> Self {
-        //! Might need if the surface configuration format is changed
-
-        // // Load in the shaders
-        // let vertex_shader = gpu_controller
-        //     .device
-        //     .create_shader_module(include_wgsl!("shaders/vert.wgsl"));
-        // let fragment_shader = gpu_controller
-        //     .device
-        //     .create_shader_module(include_wgsl!("shaders/frag.wgsl"));
-
-        // // Create the render pipeline
-        // let render_pipeline = construct_render_pipeline!(
-        //     &gpu_controller.device,
-        //     &gpu_controller.surface_configuration(),
-        //     vertex_shader,
-        //     fragment_shader,
-        //     String::from("Photon"),
-        //     PolygonMode::Fill,
-        //     &[ModelVertex::desc(), ModelInstance::desc()],
-        //     &gpu_controller.layouts.camera_layout,
-        //     &gpu_controller.layouts.lights_layout,
-        //     &gpu_controller.layouts.texture_layout,
-        //     &gpu_controller.layouts.model_layout,
-        //     &gpu_controller.layouts.material_layout
-        // );
-
         // Create the depth texture
         let depth_texture = PhotonDepthTexture::new_depth_texture(&gpu_controller);
 
@@ -103,6 +78,7 @@ impl PhotonRenderer {
         Self {
             gpu_controller,
             debug_render_pipeline: None,
+            debugging: false,
             depth_texture,
             camera,
             lights,
@@ -150,14 +126,16 @@ impl PhotonRenderer {
     }
 
     // Renders all elements in the engine
-    pub fn render<F, D>(
+    pub fn render<F, U, D>(
         &mut self,
         surface: &Surface<'static>,
         callback: F,
+        update_callback: U,
         debug_callback: D,
     ) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
+        U: FnOnce(&mut CommandEncoder),
         D: FnOnce(&mut RenderPass),
     {
         // Write to the camera buffer if needed
@@ -175,6 +153,8 @@ impl PhotonRenderer {
                 .create_command_encoder(&CommandEncoderDescriptor {
                     label: Some("Render Encoder"),
                 });
+
+        update_callback(&mut encoder);
 
         // Scene Render Pass
         {
@@ -209,35 +189,38 @@ impl PhotonRenderer {
         }
 
         // Debug render pass
-        if let Some(debug_pipeline) = self.debug_render_pipeline.as_mut() {
-            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                label: Some("Debug Render Pass"),
-                color_attachments: &[Some(RenderPassColorAttachment {
-                    view: &view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: LoadOp::Load,
-                        store: StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                    view: self.depth_texture.view(),
-                    depth_ops: Some(Operations {
-                        load: LoadOp::Load,
-                        store: StoreOp::Store,
+        if self.debugging {
+            if let Some(debug_pipeline) = self.debug_render_pipeline.as_mut() {
+                let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                    label: Some("Debug Render Pass"),
+                    color_attachments: &[Some(RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Load,
+                            store: StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                        view: self.depth_texture.view(),
+                        depth_ops: Some(Operations {
+                            load: LoadOp::Load,
+                            store: StoreOp::Store,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                occlusion_query_set: None,
-                timestamp_writes: None,
-            });
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
 
-            render_pass.set_pipeline(&debug_pipeline);
+                render_pass.set_pipeline(&debug_pipeline);
 
-            // Camera
-            render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
+                // Camera
+                render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
+                render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]); // Temp
 
-            debug_callback(&mut render_pass);
+                debug_callback(&mut render_pass);
+            }
         }
 
         self.gpu_controller.queue.submit(Some(encoder.finish()));

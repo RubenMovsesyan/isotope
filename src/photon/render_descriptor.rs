@@ -2,12 +2,13 @@ use std::{borrow::Cow, sync::Arc};
 
 use log::*;
 use wgpu::{
-    BindGroup, BindGroupLayout, BindingType, BlendState, BufferBindingType, ColorTargetState,
-    ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Face, FragmentState,
-    FrontFace, MultisampleState, PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode,
-    PrimitiveState, PrimitiveTopology, RenderPass, RenderPipeline, RenderPipelineDescriptor,
-    SamplerBindingType, ShaderModuleDescriptor, ShaderSource, StencilState, TextureSampleType,
-    TextureViewDimension, VertexBufferLayout, VertexState,
+    BindGroup, BindGroupLayout, BindingType, BlendComponent, BlendFactor, BlendOperation,
+    BlendState, Buffer, BufferBindingType, ColorTargetState, ColorWrites, CompareFunction,
+    DepthBiasState, DepthStencilState, Face, FragmentState, FrontFace, MultisampleState,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPass, RenderPipeline, RenderPipelineDescriptor, SamplerBindingType,
+    ShaderModuleDescriptor, ShaderSource, StencilState, TextureSampleType, TextureViewDimension,
+    VertexBufferLayout, VertexState,
 };
 
 use crate::{gpu_utils::GpuController, photon::renderer::texture::PHOTON_TEXTURE_DEPTH_FORMAT};
@@ -360,7 +361,15 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
 
             let targets = [Some(ColorTargetState {
                 format: gpu_controller.surface_configuration().format,
-                blend: Some(BlendState::REPLACE),
+                // blend: Some(BlendState::REPLACE),
+                blend: Some(BlendState {
+                    color: BlendComponent {
+                        src_factor: BlendFactor::SrcAlpha,
+                        dst_factor: BlendFactor::OneMinusSrcAlpha,
+                        operation: BlendOperation::Add,
+                    },
+                    alpha: BlendComponent::OVER,
+                }),
                 write_mask: ColorWrites::ALL,
             })];
 
@@ -481,6 +490,10 @@ pub struct PhotonRenderDescriptor {
 }
 
 impl PhotonRenderDescriptor {
+    pub(crate) fn write_buffer(&self, buffer: &Buffer, data: &[u8]) {
+        self.gpu_controller.queue.write_buffer(buffer, 0, data);
+    }
+
     pub(crate) fn add_layouts_to_chain<'a>(&'a self, layouts_vec: &mut Vec<&'a BindGroupLayout>) {
         use PhotonRenderDescriptorModule::*;
 

@@ -1,5 +1,5 @@
 use wgpu::VertexBufferLayout;
 
-pub(crate) trait Buffered {
+pub trait Buffered {
     fn desc() -> VertexBufferLayout<'static>;
 }

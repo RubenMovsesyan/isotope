@@ -12,11 +12,10 @@ use log::*;
 use particle_system::ParticleSysytem;
 use solver::Solver;
 use static_collider::StaticCollider;
-use wgpu::RenderPass;
+use wgpu::{CommandEncoder, RenderPass};
 
 use crate::{
-    Collider, Instance, Instancer, RigidBody, element::model::ModelInstance,
-    gpu_utils::GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager,
+    Collider, Instancer, RigidBody, element::model::ModelInstance, gpu_utils::GpuController,
 };
 
 pub mod boson_math;
@@ -44,7 +43,7 @@ impl BosonObject {
 
     pub fn modify<F>(&mut self, callback: F)
     where
-        F: Fn(&mut BosonBody),
+        F: FnOnce(&mut BosonBody),
     {
         if let Ok(mut boson_body) = self.0.write() {
             callback(&mut boson_body);
@@ -223,12 +222,7 @@ impl BosonBody {
         }
     }
 
-    pub(crate) fn build_collider(
-        &mut self,
-        scale_factor: f32,
-        gpu_controller: Arc<GpuController>,
-        photon_layouts_manager: &PhotonLayoutsManager,
-    ) {
+    pub(crate) fn build_collider(&mut self, scale_factor: f32, gpu_controller: Arc<GpuController>) {
         match self {
             BosonBody::RigidBody(rigid_body) => match rigid_body.collider_builder {
                 crate::ColliderBuilder::Sphere => {
@@ -236,7 +230,6 @@ impl BosonBody {
                         rigid_body.position,
                         scale_factor,
                         gpu_controller,
-                        photon_layouts_manager,
                     ));
                 }
                 crate::ColliderBuilder::Plane => {}
@@ -246,7 +239,6 @@ impl BosonBody {
                         scale_factor * 2.0,
                         rigid_body.orientation,
                         gpu_controller,
-                        photon_layouts_manager,
                     ));
                 }
             },
@@ -322,9 +314,9 @@ impl BosonBody {
         }
     }
 
-    pub fn update_on_render(&mut self) {
+    pub fn update_instances(&mut self, encoder: &mut CommandEncoder) {
         match self {
-            BosonBody::ParticleSystem(particle_system) => particle_system.update_on_render(),
+            BosonBody::ParticleSystem(particle_system) => particle_system.update_instances(encoder),
             _ => {}
         }
     }
@@ -356,7 +348,7 @@ impl Linkable for BosonBody {
 }
 
 // Trait that ensures objects are linkable in isotope
-pub(crate) trait Linkable: Debug + Send + Sync {
+pub trait Linkable: Debug + Send + Sync {
     fn get_position(&self) -> Vector3<f32>;
     fn get_orientation(&self) -> Quaternion<f32>;
     fn get_instancer(&self) -> Option<Arc<Instancer<ModelInstance>>>;
@@ -367,7 +359,7 @@ pub struct Boson {
     objects: Vec<BosonObject>,
     solvers: Vec<Arc<dyn Solver>>,
     gpu_controller: Arc<GpuController>,
-    boson_debugger: BosonDebugger,
+    pub(crate) boson_debugger: BosonDebugger,
 }
 
 impl Boson {
@@ -382,11 +374,7 @@ impl Boson {
 
     pub fn add_dynamic_object(&mut self, mut object: BosonObject) {
         object.modify(|object| {
-            object.build_collider(
-                object.get_scale_factor(),
-                self.gpu_controller.clone(),
-                &self.gpu_controller.layouts,
-            );
+            object.build_collider(object.get_scale_factor(), self.gpu_controller.clone());
         });
 
         self.objects.push(object);
@@ -453,6 +441,7 @@ impl Boson {
     }
 
     pub fn set_debugger(&mut self, debugger: BosonDebugger) {
+        debug!("Setting Boson Debugger: {:#?}", debugger);
         self.boson_debugger = debugger;
     }
 
@@ -470,9 +459,9 @@ impl Boson {
     }
 
     // Some GPU based systems should only be updated during render to avoid slowdown from writing to the gpu
-    pub(crate) fn update_on_render(&mut self) {
+    pub(crate) fn update_instances(&mut self, encoder: &mut CommandEncoder) {
         for object in self.objects.iter_mut() {
-            object.modify(|boson_body| boson_body.update_on_render());
+            object.modify(|boson_body| boson_body.update_instances(encoder));
         }
     }
 

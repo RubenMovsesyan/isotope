@@ -35,6 +35,7 @@ pub struct Mesh {
 
     // Delegated Rendering
     render_descriptor: PhotonRenderDescriptor,
+    debug_render_descriptor: PhotonRenderDescriptor,
 }
 
 impl Mesh {
@@ -70,6 +71,12 @@ impl Mesh {
             Arc::new(Material::new_default(gpu_controller.clone()))
         };
 
+        let (mesh_bind_group_layout, mesh_bind_group) = bind_group_builder!(
+            gpu_controller.device,
+            "Mesh",
+            (0, VERTEX, transform.as_entire_binding(), STORAGE_RO)
+        );
+
         let render_descriptor = PhotonRenderDescriptorBuilder::default()
             .add_render_chain(material.render_descriptor.clone())
             .with_vertex_shader(include_str!("shaders/model_vert.wgsl"))
@@ -77,11 +84,16 @@ impl Mesh {
             .with_polygon_mode(PolygonMode::Fill)
             .with_label("Mesh")
             .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
-            .add_bind_group_with_layout(bind_group_builder!(
-                gpu_controller.device,
-                "Mesh",
-                (0, VERTEX, transform.as_entire_binding(), STORAGE_RO)
-            ))
+            .add_bind_group_with_layout((mesh_bind_group_layout.clone(), mesh_bind_group.clone()))
+            .build(gpu_controller.clone());
+
+        let debug_render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .with_vertex_shader(include_str!("shaders/model_vert_debug.wgsl"))
+            .with_fragment_shader(include_str!("shaders/model_frag_debug.wgsl"))
+            .with_polygon_mode(PolygonMode::Line)
+            .with_label("Mesh Debug")
+            .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
+            .add_bind_group_with_layout((mesh_bind_group_layout, mesh_bind_group))
             .build(gpu_controller.clone());
 
         Self {
@@ -95,6 +107,7 @@ impl Mesh {
             vertices: Vec::from(vertices),
             indices: Vec::from(indices),
             render_descriptor,
+            debug_render_descriptor,
         }
     }
 
@@ -105,6 +118,22 @@ impl Mesh {
             .with_fragment_shader(fragment_shader)
             .with_polygon_mode(PolygonMode::Fill)
             .with_label("Mesh")
+            .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
+            .add_bind_group_with_layout(bind_group_builder!(
+                self.gpu_controller.device,
+                "Mesh",
+                (0, VERTEX, self.transform.as_entire_binding(), STORAGE_RO)
+            ))
+            .build(self.gpu_controller.clone())
+    }
+
+    pub(crate) fn set_debug_shaders(&mut self, vertex_shader: &str, fragment_shader: &str) {
+        self.debug_render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .add_render_chain(self.material.render_descriptor.clone())
+            .with_vertex_shader(vertex_shader)
+            .with_fragment_shader(fragment_shader)
+            .with_polygon_mode(PolygonMode::Line)
+            .with_label("Mesh Debug")
             .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
             .add_bind_group_with_layout(bind_group_builder!(
                 self.gpu_controller.device,
@@ -135,6 +164,15 @@ impl Mesh {
         render_pass.set_index_buffer(self.index_buffer.slice(..), INDEX_FORMAT);
 
         self.render_descriptor.setup_render(render_pass);
+
+        render_pass.draw_indexed(0..self.num_indices, 0, 0..instance_count);
+    }
+
+    pub(crate) fn debug_render(&self, render_pass: &mut RenderPass, instance_count: u32) {
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), INDEX_FORMAT);
+
+        self.debug_render_descriptor.setup_render(render_pass);
 
         render_pass.draw_indexed(0..self.num_indices, 0, 0..instance_count);
     }
