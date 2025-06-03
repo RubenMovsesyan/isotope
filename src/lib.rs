@@ -25,8 +25,11 @@ use winit::{
 // Publicly exposed types
 pub use boson::collider::ColliderBuilder;
 pub use boson::{
-    Boson, BosonBody, BosonDebugger, BosonObject, Linkable, collider::Collider,
-    rigid_body::RigidBody, static_collider::StaticCollider,
+    Boson, BosonBody, BosonDebugger, BosonObject,
+    collider::Collider,
+    particle_system::{InitialState, ParticleSysytem},
+    rigid_body::RigidBody,
+    static_collider::StaticCollider,
 };
 pub use element::Element;
 pub use element::model::Model;
@@ -358,6 +361,13 @@ impl ApplicationHandler for Isotope {
                                 // TODO: make this sligtly nicer looking
                                 _ = photon.render(
                                     |render_pass: &mut RenderPass| {
+                                        // Boson particle systems are tied to render thread because of delta_t
+                                        if let Some(boson) = self.boson.as_ref() {
+                                            if let Ok(mut boson) = boson.write() {
+                                                boson.update_on_render();
+                                            }
+                                        }
+
                                         state.render_elements(render_pass);
                                     },
                                     state.get_lights(),

@@ -9,17 +9,19 @@ use collider::{
     Collision, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
 };
 use log::*;
+use particle_system::ParticleSysytem;
 use solver::Solver;
 use static_collider::StaticCollider;
 use wgpu::RenderPass;
 
 use crate::{
-    Collider, RigidBody, gpu_utils::GpuController,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
+    Collider, Instance, Instancer, RigidBody, element::model::ModelInstance,
+    gpu_utils::GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager,
 };
 
 pub mod boson_math;
 pub mod collider;
+pub mod particle_system;
 mod properties;
 pub mod rigid_body;
 pub mod solver;
@@ -75,6 +77,7 @@ impl Into<Arc<RwLock<dyn Linkable>>> for BosonObject {
 pub enum BosonBody {
     RigidBody(RigidBody),
     StaticCollider(StaticCollider),
+    ParticleSystem(ParticleSysytem),
 }
 
 impl BosonBody {
@@ -95,6 +98,9 @@ impl BosonBody {
                 callback(&mut static_collider.position);
                 static_collider.collider.link_pos(&static_collider.position);
             }
+            BosonBody::ParticleSystem(particle_system) => {
+                callback(&mut particle_system.position);
+            }
         }
     }
 
@@ -107,6 +113,9 @@ impl BosonBody {
                 callback(&mut rigid_body.velocity);
             }
             BosonBody::StaticCollider(_) => {}
+            BosonBody::ParticleSystem(particle_system) => {
+                callback(&mut particle_system.velocity);
+            }
         }
     }
 
@@ -118,7 +127,7 @@ impl BosonBody {
             BosonBody::RigidBody(rigid_body) => {
                 callback(&mut rigid_body.angular_velocity);
             }
-            BosonBody::StaticCollider(_) => {}
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => {}
         }
     }
 
@@ -126,7 +135,7 @@ impl BosonBody {
     pub fn get_scale_factor(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.scale_factor,
-            BosonBody::StaticCollider(_) => 1.0,
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => 1.0,
         }
     }
 
@@ -134,7 +143,7 @@ impl BosonBody {
     pub fn get_mass(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.mass,
-            BosonBody::StaticCollider(_) => 0.0,
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => 0.0,
         }
     }
 
@@ -142,7 +151,7 @@ impl BosonBody {
     pub fn get_inv_mass(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.inv_mass,
-            BosonBody::StaticCollider(_) => 0.0,
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => 0.0,
         }
     }
 
@@ -150,7 +159,7 @@ impl BosonBody {
     pub fn get_inv_inertia(&self) -> Vector3<f32> {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.inverse_inertia,
-            BosonBody::StaticCollider(_) => Vector3::zero(),
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => Vector3::zero(),
         }
     }
 
@@ -158,7 +167,7 @@ impl BosonBody {
     pub fn get_inertia(&self) -> Matrix3<f32> {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.inertia_tensor,
-            BosonBody::StaticCollider(_) => Matrix3::one(),
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => Matrix3::one(),
         }
     }
 
@@ -167,6 +176,7 @@ impl BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.position,
             BosonBody::StaticCollider(static_collider) => static_collider.position,
+            BosonBody::ParticleSystem(particle_system) => particle_system.position,
         }
     }
 
@@ -175,6 +185,7 @@ impl BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.velocity,
             BosonBody::StaticCollider(_) => Vector3::zero(),
+            BosonBody::ParticleSystem(particle_system) => particle_system.velocity,
         }
     }
 
@@ -182,7 +193,7 @@ impl BosonBody {
     pub fn get_angular_vel(&self) -> Vector3<f32> {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.angular_velocity,
-            BosonBody::StaticCollider(_) => Vector3::zero(),
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => Vector3::zero(),
         }
     }
 
@@ -190,7 +201,7 @@ impl BosonBody {
     pub fn get_restitution(&self) -> f32 {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.restitution,
-            BosonBody::StaticCollider(_) => 1.0,
+            BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => 1.0,
         }
     }
 
@@ -199,6 +210,7 @@ impl BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.static_friction,
             BosonBody::StaticCollider(static_collider) => static_collider.static_friction,
+            BosonBody::ParticleSystem(_) => 0.0,
         }
     }
 
@@ -207,6 +219,7 @@ impl BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.dynamic_friction,
             BosonBody::StaticCollider(static_collider) => static_collider.dynamic_friction,
+            BosonBody::ParticleSystem(_) => 0.0,
         }
     }
 
@@ -238,6 +251,7 @@ impl BosonBody {
                 }
             },
             BosonBody::StaticCollider(_) => {}
+            BosonBody::ParticleSystem(_) => {}
         }
     }
 
@@ -245,6 +259,9 @@ impl BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => {
                 rigid_body.apply_force(force, delta_t);
+            }
+            BosonBody::ParticleSystem(particle_system) => {
+                particle_system.apply_force(force, delta_t);
             }
             BosonBody::StaticCollider(_) => {}
         }
@@ -255,6 +272,7 @@ impl BosonBody {
             BosonBody::RigidBody(rigid_body) => {
                 rigid_body.apply_torque(torque, delta_t);
             }
+            BosonBody::ParticleSystem(_) => {}
             BosonBody::StaticCollider(_) => {}
         }
     }
@@ -262,6 +280,7 @@ impl BosonBody {
     pub fn update(&mut self, delta_t: &Instant) {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.update(delta_t),
+            BosonBody::ParticleSystem(particle_system) => particle_system.update(delta_t),
             BosonBody::StaticCollider(_) => {}
         }
     }
@@ -269,6 +288,7 @@ impl BosonBody {
     pub fn debug_render(&self, render_pass: &mut RenderPass) {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.debug_render(render_pass),
+            BosonBody::ParticleSystem(_) => {}
             BosonBody::StaticCollider(_) => {}
         }
     }
@@ -282,13 +302,30 @@ impl BosonBody {
                 BosonBody::StaticCollider(static_collider) => {
                     rigid_body.test_collision(&static_collider.collider)
                 }
+                BosonBody::ParticleSystem(_) => None,
             },
             BosonBody::StaticCollider(static_collider) => match other {
                 BosonBody::RigidBody(rigid_body) => static_collider
                     .collider
                     .test_collision(&rigid_body.collider),
                 BosonBody::StaticCollider(_) => None,
+                BosonBody::ParticleSystem(_) => None,
             },
+            BosonBody::ParticleSystem(_) => None,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        match self {
+            BosonBody::ParticleSystem(particle_system) => particle_system.reset_system(),
+            _ => {}
+        }
+    }
+
+    pub fn update_on_render(&mut self) {
+        match self {
+            BosonBody::ParticleSystem(particle_system) => particle_system.update_on_render(),
+            _ => {}
         }
     }
 }
@@ -298,21 +335,31 @@ impl Linkable for BosonBody {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.position,
             BosonBody::StaticCollider(static_collider) => static_collider.position,
+            BosonBody::ParticleSystem(particle_system) => particle_system.position,
         }
     }
 
-    fn get_rotation(&self) -> Quaternion<f32> {
+    fn get_orientation(&self) -> Quaternion<f32> {
         match self {
             BosonBody::RigidBody(rigid_body) => rigid_body.orientation,
             BosonBody::StaticCollider(static_collider) => static_collider.orientation,
+            BosonBody::ParticleSystem(particle_system) => particle_system.orientation,
+        }
+    }
+
+    fn get_instancer(&self) -> Option<Arc<Instancer<ModelInstance>>> {
+        match self {
+            BosonBody::ParticleSystem(particle_system) => particle_system.get_instancer(),
+            _ => None,
         }
     }
 }
 
 // Trait that ensures objects are linkable in isotope
-pub trait Linkable: Debug + Send + Sync {
+pub(crate) trait Linkable: Debug + Send + Sync {
     fn get_position(&self) -> Vector3<f32>;
-    fn get_rotation(&self) -> Quaternion<f32>;
+    fn get_orientation(&self) -> Quaternion<f32>;
+    fn get_instancer(&self) -> Option<Arc<Instancer<ModelInstance>>>;
 }
 
 #[derive(Debug)]
@@ -359,7 +406,9 @@ impl Boson {
 
             // check if the collision needs to be checked
             object_a.access(|object_a| match object_a {
-                BosonBody::StaticCollider(_) => check_collision = false,
+                BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => {
+                    check_collision = false
+                }
                 _ => {}
             });
 
@@ -417,6 +466,13 @@ impl Boson {
                     });
                 }
             }
+        }
+    }
+
+    // Some GPU based systems should only be updated during render to avoid slowdown from writing to the gpu
+    pub(crate) fn update_on_render(&mut self) {
+        for object in self.objects.iter_mut() {
+            object.modify(|boson_body| boson_body.update_on_render());
         }
     }
 

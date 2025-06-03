@@ -381,7 +381,11 @@ impl Model {
         let l: Arc<RwLock<dyn Linkable>> = linkable.into();
         if let Ok(l) = l.write() {
             self.position = l.get_position();
-            self.rotation = l.get_rotation();
+            self.rotation = l.get_orientation();
+
+            if let Some(instancer) = l.get_instancer() {
+                self.instancer = instancer;
+            }
         }
 
         self.boson_link = Some(l);
@@ -407,7 +411,7 @@ impl Model {
             if let Ok(boson_link) = boson_link.read() {
                 // Set the models position based off the boson object
                 self.position = boson_link.get_position();
-                self.rotation = boson_link.get_rotation();
+                self.rotation = boson_link.get_orientation();
                 self.transform_dirty = true;
             }
         }

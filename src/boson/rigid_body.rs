@@ -1,10 +1,16 @@
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 
 use anyhow::Result;
 use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
 use wgpu::RenderPass;
 
-use crate::ColliderBuilder;
+use crate::{
+    ColliderBuilder, Instance, Instancer,
+    element::{
+        self,
+        model::{self, ModelInstance},
+    },
+};
 
 use super::{
     BosonBody, Linkable,
@@ -155,8 +161,12 @@ impl Linkable for RigidBody {
         self.position
     }
 
-    fn get_rotation(&self) -> Quaternion<f32> {
+    fn get_orientation(&self) -> Quaternion<f32> {
         self.orientation
+    }
+
+    fn get_instancer(&self) -> Option<Arc<Instancer<ModelInstance>>> {
+        None
     }
 }
 

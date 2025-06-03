@@ -5,6 +5,7 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
+use log::debug;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages,
@@ -324,6 +325,10 @@ impl<T: Instance> Instancer<T> {
             instance_buffer_bind_group,
             instancer_type,
         }
+    }
+
+    pub fn write_to_buffer(&self, buffer: &Buffer, data: &[u8]) {
+        self.gpu_controller.queue.write_buffer(buffer, 0, data);
     }
 
     pub fn compute_instances<F>(&self, callback: F)

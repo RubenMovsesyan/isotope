@@ -170,6 +170,11 @@ impl IsotopeState for GameState {
             boson.add_dynamic_object(cone.rigid_body.clone());
         });
 
+        self.ecs
+            .for_each_molecule(|_entity, boson_object: &BosonObject| {
+                boson.add_dynamic_object(boson_object.clone());
+            });
+
         boson.add_dynamic_object(BosonObject::new(StaticCollider::new(
             Vector3::zero(),
             Collider::new_plane(Vector3::unit_y(), 0.0),
@@ -338,6 +343,12 @@ impl IsotopeState for GameState {
                             });
                         });
                     });
+
+                self.ecs.for_each_duo_mut(
+                    |_entity, _cones: &mut Model, particle_system: &mut BosonObject| {
+                        particle_system.modify(|system| system.reset());
+                    },
+                );
             }
             _ => {}
         }
@@ -438,13 +449,47 @@ fn init(isotope: &mut Isotope) {
             model
         });
 
-        let cubes = state.ecs.create_entity();
-        state.ecs.add_molecule(
-            cubes,
-            Model::from_obj("test_files/cube.obj", &isotope)
-                .expect("Failed")
-                .with_custom_time_instancer(include_str!("../test_files/test_instancer.wgsl"), 20),
-        );
+        // let cubes = state.ecs.create_entity();
+        // state.ecs.add_molecule(
+        //     cubes,
+        //     Model::from_obj("test_files/cube.obj", &isotope)
+        //         .expect("Failed")
+        //         .with_custom_time_instancer(include_str!("../test_files/test_instancer.wgsl"), 20),
+        // );
+
+        let particle_system = BosonObject::new({
+            let particle_system = ParticleSysytem::new(300, &isotope);
+
+            particle_system.set_initial_conditions(
+                (0..300)
+                    .into_iter()
+                    .map(|val| {
+                        let x = 3.0 * f32::sin(val as f32);
+                        let z = 3.0 * f32::cos(val as f32);
+
+                        InitialState {
+                            position: Vector3 {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            },
+                            velocity: Vector3 { x, y: 20.0, z },
+                        }
+                    })
+                    .collect(),
+            );
+
+            particle_system
+        });
+
+        let cones = state.ecs.create_entity();
+        state.ecs.add_molecule(cones, {
+            let mut model = Model::from_obj("test_files/cone.obj", &isotope).expect("Failed");
+            model.link(particle_system.clone());
+            model
+        });
+
+        state.ecs.add_molecule(cones, particle_system);
 
         // let other_cube = state.ecs.create_entity();
         // state.ecs.add_molecule(
