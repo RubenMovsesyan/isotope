@@ -13,7 +13,7 @@ use crate::GpuController;
 use super::BosonObject;
 
 pub mod cube_collider;
-mod debug_renderer;
+pub mod debug_renderer;
 pub mod plane_collider;
 pub mod sphere_collider;
 
@@ -198,36 +198,52 @@ fn test_cube_plane(
 
     let cube_vertices = cube_collider.get_vertices();
 
-    // Keep track of extreme points
-    let mut most_negative_distance = f32::MAX;
-    let mut most_negative_vertex = cube_vertices[0];
+    fn most_negative_distance(distances: Vec<f32>) -> Option<(usize, f32)> {
+        let all_positive = distances.iter().all(|distance| *distance >= 0.0);
+        let all_negative = distances.iter().all(|distance| *distance < 0.0);
 
-    cube_vertices.iter().for_each(|vertex| {
-        let vertex_plane_distance = vertex.dot(plane_normal) - plane_distance;
-
-        if vertex_plane_distance < most_negative_distance {
-            most_negative_distance = vertex_plane_distance;
-            most_negative_vertex = *vertex;
+        if all_positive || all_negative {
+            return None;
         }
-    });
 
-    // If the most negative distance is negative, there is a collision
-    if most_negative_distance < 0.0 {
-        let depth = -most_negative_distance;
-        let a_deep = most_negative_vertex;
+        let mut most_negative_index = 0;
+        let mut most_negative_distance = distances[0];
+
+        distances
+            .into_iter()
+            .enumerate()
+            .for_each(|(index, distance)| {
+                if distance < most_negative_distance {
+                    most_negative_index = index;
+                    most_negative_distance = distance;
+                }
+            });
+
+        Some((most_negative_index, most_negative_distance))
+    }
+
+    let distances = cube_vertices
+        .iter()
+        .map(|vertex| plane_normal.dot(*vertex) - plane_distance)
+        .collect::<Vec<f32>>();
+
+    if let Some((point_index, point_distance)) = most_negative_distance(distances) {
+        let depth = f32::abs(point_distance);
+
+        let a_deep = cube_vertices[point_index];
         let b_deep = a_deep - plane_normal * depth;
         let contact_point = (a_deep + b_deep) * 0.5;
 
-        return Some(CollisionPoints {
+        Some(CollisionPoints {
             a_deep,
             b_deep,
             normal: plane_normal,
             depth,
             contact_point,
-        });
+        })
+    } else {
+        None
     }
-
-    None
 }
 
 #[allow(unused_variables)]

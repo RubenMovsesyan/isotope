@@ -8,7 +8,7 @@ use crate::{GpuController, element::model_vertex::ModelVertex};
 
 use super::{
     Collidable, Collider, CollisionPoints,
-    debug_renderer::{DebugRender, DebugRenderer},
+    debug_renderer::{DebugRender, ColliderDebugRenderer},
     test_sphere_cube, test_sphere_plane, test_sphere_sphere,
 };
 
@@ -21,7 +21,7 @@ pub struct SphereCollider {
     pub(crate) radius: f32,
 
     // For Debug Rendering
-    pub(crate) debug_renderer: DebugRenderer,
+    pub(crate) debug_renderer: ColliderDebugRenderer,
 }
 
 impl SphereCollider {
@@ -31,7 +31,7 @@ impl SphereCollider {
         gpu_controller: Arc<GpuController>,
     ) -> Self {
         // Create the debug renderer for this collider
-        let debug_renderer = DebugRenderer::new(
+        let debug_renderer = ColliderDebugRenderer::new(
             &{
                 let mut verts = SPHERE
                     .0
