@@ -65,36 +65,27 @@ pub(crate) struct BosonDebugRenderer {
 }
 
 impl BosonDebugRenderer {
-    pub(crate) fn new(
-        velocity: [f32; 3],
-        acceleration: [f32; 3],
-        angular_velocity: [f32; 3],
-        gpu_controller: Arc<GpuController>,
-    ) -> Self {
-        let velocity_buffer = gpu_controller
-            .device
-            .create_buffer_init(&BufferInitDescriptor {
-                label: Some("Boson Velocity Debugger"),
-                contents: bytemuck::cast_slice(&[[0.0, 0.0, 0.0], velocity].concat()),
-                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            });
+    pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Self {
+        let velocity_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Boson Velocity Debugger"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<[f32; 6]>() as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        });
 
-        let acceleration_buffer = gpu_controller
-            .device
-            .create_buffer_init(&BufferInitDescriptor {
-                label: Some("Boson Acceleration Debugger"),
-                contents: bytemuck::cast_slice(&[[0.0, 0.0, 0.0], acceleration].concat()),
-                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            });
+        let acceleration_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Boson Acceleration Debugger"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<[f32; 6]>() as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        });
 
-        let angular_velocity_buffer =
-            gpu_controller
-                .device
-                .create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Boson Acceleration Debugger"),
-                    contents: bytemuck::cast_slice(&[[0.0, 0.0, 0.0], angular_velocity].concat()),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-                });
+        let angular_velocity_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Boson Acceleration Debugger"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<[f32; 6]>() as u64,
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+        });
 
         let vector_index_buffer = gpu_controller
             .device

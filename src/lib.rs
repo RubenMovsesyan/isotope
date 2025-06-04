@@ -6,10 +6,13 @@ use std::{
 };
 
 use anyhow::Result;
-use boson::solver::{
-    basic_impulse_solver::BasicImpulseSolver,
-    position_solver::PositionSolver,
-    // rotational_impulse_solver::RotationalImpulseSolver,
+use boson::{
+    BosonDebugger,
+    solver::{
+        basic_impulse_solver::BasicImpulseSolver,
+        position_solver::PositionSolver,
+        // rotational_impulse_solver::RotationalImpulseSolver,
+    },
 };
 use gpu_utils::GpuController;
 use log::*;
@@ -25,7 +28,7 @@ use winit::{
 // Publicly exposed types
 pub use boson::collider::ColliderBuilder;
 pub use boson::{
-    Boson, BosonBody, BosonDebugger, BosonObject,
+    Boson, BosonBody, BosonObject,
     collider::Collider,
     particle_system::{InitialState, ParticleSysytem},
     rigid_body::RigidBody,
@@ -145,7 +148,7 @@ impl Isotope {
         if let Some(boson) = self.boson.as_mut() {
             if let Ok(mut boson) = boson.write() {
                 boson.set_debugger(if self.debugging {
-                    BosonDebugger::BasicDebugger
+                    BosonDebugger::new_basic(self.gpu_controller.clone())
                 } else {
                     BosonDebugger::None
                 });
@@ -178,13 +181,13 @@ impl Isotope {
             if let Ok(mut boson) = boson.write() {
                 let mut debugging = match boson.boson_debugger {
                     BosonDebugger::None => false,
-                    BosonDebugger::BasicDebugger => true,
+                    BosonDebugger::BasicDebugger { .. } => true,
                 };
 
                 callback(&mut debugging);
 
                 boson.set_debugger(if debugging {
-                    BosonDebugger::BasicDebugger
+                    BosonDebugger::new_basic(self.gpu_controller.clone())
                 } else {
                     BosonDebugger::None
                 });

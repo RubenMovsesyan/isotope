@@ -29,9 +29,26 @@ pub mod solver;
 pub mod static_collider;
 
 #[derive(Debug)]
-pub enum BosonDebugger {
+pub(crate) enum BosonDebugger {
     None,
-    BasicDebugger,
+    BasicDebugger {
+        debug_renderer: Arc<BosonDebugRenderer>,
+    },
+}
+
+impl BosonDebugger {
+    pub(crate) fn new_basic(gpu_controller: Arc<GpuController>) -> Self {
+        let debug_renderer = Arc::new(BosonDebugRenderer::new(gpu_controller));
+
+        Self::BasicDebugger { debug_renderer }
+    }
+
+    pub(crate) fn get_debug_renderer(&self) -> Option<Arc<BosonDebugRenderer>> {
+        match self {
+            Self::BasicDebugger { debug_renderer } => Some(debug_renderer.clone()),
+            Self::None => None,
+        }
+    }
 }
 
 // Wrapper struct
@@ -225,15 +242,15 @@ impl BosonBody {
     }
 
     // Also build the debug renderers here
-    pub(crate) fn build_collider(&mut self, scale_factor: f32, gpu_controller: Arc<GpuController>) {
+    pub(crate) fn build_collider(
+        &mut self,
+        scale_factor: f32,
+        gpu_controller: Arc<GpuController>,
+        debugger: &BosonDebugger,
+    ) {
         match self {
             BosonBody::RigidBody(rigid_body) => {
-                rigid_body.debug_renderer = Some(BosonDebugRenderer::new(
-                    rigid_body.velocity.into(),
-                    rigid_body.current_acceleration.into(),
-                    rigid_body.angular_velocity.into(),
-                    gpu_controller.clone(),
-                ));
+                rigid_body.debug_renderer = debugger.get_debug_renderer();
 
                 match rigid_body.collider_builder {
                     crate::ColliderBuilder::Sphere => {
@@ -256,6 +273,24 @@ impl BosonBody {
             }
             BosonBody::StaticCollider(_) => {}
             BosonBody::ParticleSystem(_) => {}
+        }
+    }
+
+    #[inline]
+    pub(crate) fn attach_debugger(&mut self, debugger: &BosonDebugger) {
+        match debugger {
+            BosonDebugger::None => {}
+            BosonDebugger::BasicDebugger { debug_renderer } => match self {
+                BosonBody::RigidBody(rigid_body) => {
+                    if rigid_body.debug_renderer.is_some() {
+                        return;
+                    }
+
+                    rigid_body.debug_renderer = Some(debug_renderer.clone());
+                }
+                BosonBody::ParticleSystem(_) => {}
+                BosonBody::StaticCollider(_) => {}
+            },
         }
     }
 
@@ -386,7 +421,13 @@ impl Boson {
 
     pub fn add_dynamic_object(&mut self, mut object: BosonObject) {
         object.modify(|object| {
-            object.build_collider(object.get_scale_factor(), self.gpu_controller.clone());
+            object.build_collider(
+                object.get_scale_factor(),
+                self.gpu_controller.clone(),
+                &self.boson_debugger,
+            );
+
+            object.attach_debugger(&self.boson_debugger);
         });
 
         self.objects.push(object);
@@ -445,22 +486,29 @@ impl Boson {
         }
     }
 
-    pub fn modify_debugger<F>(&mut self, callback: F)
+    #[allow(dead_code)]
+    pub(crate) fn modify_debugger<F>(&mut self, callback: F)
     where
         F: FnOnce(&mut BosonDebugger),
     {
         callback(&mut self.boson_debugger);
     }
 
-    pub fn set_debugger(&mut self, debugger: BosonDebugger) {
+    pub(crate) fn set_debugger(&mut self, debugger: BosonDebugger) {
         debug!("Setting Boson Debugger: {:#?}", debugger);
         self.boson_debugger = debugger;
+
+        for object in self.objects.iter_mut() {
+            object.modify(|object| {
+                object.attach_debugger(&self.boson_debugger);
+            });
+        }
     }
 
     pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
         match self.boson_debugger {
             BosonDebugger::None => {}
-            BosonDebugger::BasicDebugger => {
+            BosonDebugger::BasicDebugger { .. } => {
                 for object in self.objects.iter() {
                     object.access(|object| {
                         object.debug_render(render_pass);

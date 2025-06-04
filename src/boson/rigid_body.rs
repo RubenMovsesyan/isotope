@@ -37,7 +37,7 @@ pub struct RigidBody {
     pub(crate) collider: Collider,
     pub collider_builder: ColliderBuilder,
 
-    pub(crate) debug_renderer: Option<BosonDebugRenderer>,
+    pub(crate) debug_renderer: Option<Arc<BosonDebugRenderer>>,
 }
 
 impl RigidBody {
