@@ -3,13 +3,12 @@ use std::sync::Arc;
 use cgmath::{InnerSpace, Quaternion, Vector3};
 use cube_collider::CubeCollider;
 use debug_renderer::DebugRender;
-use log::debug;
 use plane_collider::PlaneCollider;
 use sphere_collider::SphereCollider;
 
 use wgpu::RenderPass;
 
-use crate::{GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager};
+use crate::GpuController;
 
 use super::BosonObject;
 

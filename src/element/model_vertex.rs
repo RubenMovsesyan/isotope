@@ -89,3 +89,26 @@ impl Buffered for ModelVertex {
         }
     }
 }
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ModelNormalVertex {
+    pub(crate) position: [f32; 3],
+}
+
+impl Buffered for ModelNormalVertex {
+    fn desc() -> VertexBufferLayout<'static> {
+        VertexBufferLayout {
+            array_stride: mem::size_of::<ModelNormalVertex>() as BufferAddress,
+            step_mode: VertexStepMode::Vertex,
+            attributes: &[
+                // Position
+                VertexAttribute {
+                    offset: 0,
+                    shader_location: 0,
+                    format: VertexFormat::Float32x3,
+                },
+            ],
+        }
+    }
+}

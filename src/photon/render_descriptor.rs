@@ -130,6 +130,7 @@ pub struct PhotonRenderDescriptorBuilder<'a> {
     fragment_pipeline_compilation_options: Option<PipelineCompilationOptions<'a>>,
     polygon_mode: Option<PolygonMode>,
     render_descriptor_chains: Vec<Arc<PhotonRenderDescriptor>>,
+    primitive_topology: Option<PrimitiveTopology>,
 }
 
 #[allow(dead_code)]
@@ -171,6 +172,13 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
     /// Add Bind Group Layouts
     pub fn with_bind_group_layouts(&mut self, bind_group_layouts: &[BindGroupLayout]) -> &mut Self {
         self.bind_group_layouts = Some(Vec::from(bind_group_layouts));
+
+        self
+    }
+
+    /// Set the primitive topology type
+    pub fn with_primitive_topology(&mut self, primitive_topology: PrimitiveTopology) -> &mut Self {
+        self.primitive_topology = Some(primitive_topology);
 
         self
     }
@@ -408,7 +416,11 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
                             None
                         },
                         primitive: PrimitiveState {
-                            topology: PrimitiveTopology::TriangleList,
+                            topology: if let Some(primitive_topology) = self.primitive_topology {
+                                primitive_topology
+                            } else {
+                                PrimitiveTopology::TriangleList // Default
+                            },
                             strip_index_format: None,
                             front_face: FrontFace::Ccw,
                             cull_mode: Some(Face::Back),
