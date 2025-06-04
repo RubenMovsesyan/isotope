@@ -131,6 +131,7 @@ pub struct PhotonRenderDescriptorBuilder<'a> {
     polygon_mode: Option<PolygonMode>,
     render_descriptor_chains: Vec<Arc<PhotonRenderDescriptor>>,
     primitive_topology: Option<PrimitiveTopology>,
+    depth_stencil_state: Option<DepthStencilState>,
 }
 
 #[allow(dead_code)]
@@ -179,6 +180,16 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
     /// Set the primitive topology type
     pub fn with_primitive_topology(&mut self, primitive_topology: PrimitiveTopology) -> &mut Self {
         self.primitive_topology = Some(primitive_topology);
+
+        self
+    }
+
+    /// Set the depth stencil State
+    pub fn with_depth_stencil_state(
+        &mut self,
+        depth_stencil_state: DepthStencilState,
+    ) -> &mut Self {
+        self.depth_stencil_state = Some(depth_stencil_state);
 
         self
     }
@@ -431,13 +442,19 @@ impl<'a> PhotonRenderDescriptorBuilder<'a> {
                             unclipped_depth: false,
                             conservative: false,
                         },
-                        depth_stencil: Some(DepthStencilState {
-                            format: PHOTON_TEXTURE_DEPTH_FORMAT,
-                            depth_write_enabled: true,
-                            depth_compare: CompareFunction::Less,
-                            stencil: StencilState::default(),
-                            bias: DepthBiasState::default(),
-                        }),
+                        depth_stencil: if let Some(depth_stencil_state) =
+                            self.depth_stencil_state.take()
+                        {
+                            Some(depth_stencil_state)
+                        } else {
+                            Some(DepthStencilState {
+                                format: PHOTON_TEXTURE_DEPTH_FORMAT,
+                                depth_write_enabled: true,
+                                depth_compare: CompareFunction::Less,
+                                stencil: StencilState::default(),
+                                bias: DepthBiasState::default(),
+                            })
+                        },
                         multisample: MultisampleState {
                             count: 1,
                             mask: !0,
@@ -504,6 +521,10 @@ pub struct PhotonRenderDescriptor {
 impl PhotonRenderDescriptor {
     pub(crate) fn write_buffer(&self, buffer: &Buffer, data: &[u8]) {
         self.gpu_controller.queue.write_buffer(buffer, 0, data);
+    }
+
+    pub(crate) unsafe fn write_buffer_offset(&self, buffer: &Buffer, offset: u64, data: &[u8]) {
+        self.gpu_controller.queue.write_buffer(buffer, offset, data);
     }
 
     pub(crate) fn add_layouts_to_chain<'a>(&'a self, layouts_vec: &mut Vec<&'a BindGroupLayout>) {

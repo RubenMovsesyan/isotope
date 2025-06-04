@@ -3,10 +3,7 @@ use std::sync::Arc;
 use cgmath::{Quaternion, Rotation, Vector3, Zero};
 use obj_2_rust::obj_2_rust;
 
-use crate::{
-    element::model_vertex::ModelVertex, gpu_utils::GpuController,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
-};
+use crate::{element::model_vertex::ModelVertex, gpu_utils::GpuController};
 
 use super::{
     Collidable, Collider, CollisionPoints,

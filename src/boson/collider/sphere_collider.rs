@@ -4,10 +4,7 @@ use cgmath::Vector3;
 use obj_2_rust::obj_2_rust;
 use wgpu::RenderPass;
 
-use crate::{
-    GpuController, element::model_vertex::ModelVertex,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
-};
+use crate::{GpuController, element::model_vertex::ModelVertex};
 
 use super::{
     Collidable, Collider, CollisionPoints,

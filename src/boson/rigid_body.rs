@@ -4,17 +4,12 @@ use anyhow::Result;
 use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
 use wgpu::RenderPass;
 
-use crate::{
-    ColliderBuilder, Instance, Instancer,
-    element::{
-        self,
-        model::{self, ModelInstance},
-    },
-};
+use crate::{ColliderBuilder, Instancer, element::model::ModelInstance};
 
 use super::{
     BosonBody, Linkable,
     collider::{Collider, CollisionPoints},
+    debug_renderer::BosonDebugRenderer,
 };
 
 const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
@@ -23,6 +18,7 @@ const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
 pub struct RigidBody {
     pub position: Vector3<f32>,
     pub velocity: Vector3<f32>,
+    pub current_acceleration: Vector3<f32>,
     pub scale_factor: f32,
 
     pub orientation: Quaternion<f32>,
@@ -40,6 +36,8 @@ pub struct RigidBody {
 
     pub(crate) collider: Collider,
     pub collider_builder: ColliderBuilder,
+
+    pub(crate) debug_renderer: Option<BosonDebugRenderer>,
 }
 
 impl RigidBody {
@@ -47,6 +45,7 @@ impl RigidBody {
         Ok(Self {
             position: Vector3::zero(),
             velocity: Vector3::zero(),
+            current_acceleration: Vector3::zero(),
             scale_factor: 1.0,
             orientation: Quaternion::one(),
             angular_velocity: Vector3::zero(),
@@ -81,6 +80,7 @@ impl RigidBody {
             },
             collider: Collider::Empty,
             collider_builder,
+            debug_renderer: None,
         })
     }
 
@@ -88,8 +88,10 @@ impl RigidBody {
         // For simplicity
         let dt = delta_t.elapsed().as_secs_f32();
 
+        self.current_acceleration = force / self.mass;
+
         // v = v_0 + F/m * t
-        self.velocity += (force / self.mass) * dt;
+        self.velocity += self.current_acceleration * dt;
         // x = x_0 + v * t
         self.position += self.velocity * dt;
 
@@ -126,8 +128,10 @@ impl RigidBody {
     pub fn update(&mut self, delta_t: &Instant) {
         let dt = delta_t.elapsed().as_secs_f32();
 
+        self.current_acceleration = self.gravity;
+
         // Gravity
-        self.velocity += self.gravity * dt;
+        self.velocity += self.current_acceleration * dt;
 
         self.position += self.velocity * dt;
         self.collider.link_pos(&self.position);
@@ -148,7 +152,18 @@ impl RigidBody {
     }
 
     pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
+        // Render the collider
         self.collider.debug_render(render_pass);
+
+        // Render the velocity
+        if let Some(debug_renderer) = self.debug_renderer.as_ref() {
+            debug_renderer.update_pos(self.position);
+            debug_renderer.update_vel(self.velocity);
+            debug_renderer.update_acc(self.current_acceleration);
+            debug_renderer.update_ang_vel(self.angular_velocity);
+
+            debug_renderer.render(render_pass);
+        }
     }
 
     pub fn test_collision(&self, other: &Collider) -> Option<CollisionPoints> {

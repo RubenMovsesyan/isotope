@@ -42,6 +42,7 @@ struct InitialCondition {
 }
 
 #[derive(Debug)]
+#[allow(dead_code)]
 pub struct ParticleSysytem {
     pub(crate) position: Vector3<f32>,
     pub(crate) velocity: Vector3<f32>,
@@ -99,7 +100,7 @@ impl ParticleSysytem {
             label: Some("Particle System Velocity Buffer"),
             mapped_at_creation: false,
             size: std::mem::size_of::<[f32; 3]>() as u64 * particle_count,
-            usage: BufferUsages::STORAGE,
+            usage: BufferUsages::STORAGE | BufferUsages::VERTEX,
         });
 
         let instancer = Arc::new(
@@ -124,7 +125,7 @@ impl ParticleSysytem {
                 ))
                 .with_instance_count(particle_count)
                 .with_label("Particle System")
-                .with_compute_shader(include_str!("shaders/ic_particle_system.wgsl"))
+                .with_compute_shader(include_str!("shaders/compute/ic_particle_system.wgsl"))
                 .build(gpu_controller)
                 .expect("Failed to create Particle System Instancer"),
         );

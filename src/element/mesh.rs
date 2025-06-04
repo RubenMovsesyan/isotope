@@ -203,6 +203,7 @@ impl Mesh {
             .build(self.gpu_controller.clone())
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_debug_shaders(&mut self, vertex_shader: &str, fragment_shader: &str) {
         self.debug_render_descriptor = PhotonRenderDescriptorBuilder::default()
             .add_render_chain(self.material.render_descriptor.clone())

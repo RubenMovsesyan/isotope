@@ -8,6 +8,7 @@ use cgmath::{Matrix3, One, Quaternion, Vector3, Zero};
 use collider::{
     Collision, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
 };
+use debug_renderer::BosonDebugRenderer;
 use log::*;
 use particle_system::ParticleSysytem;
 use solver::Solver;
@@ -20,6 +21,7 @@ use crate::{
 
 pub mod boson_math;
 pub mod collider;
+mod debug_renderer;
 pub mod particle_system;
 mod properties;
 pub mod rigid_body;
@@ -222,26 +224,36 @@ impl BosonBody {
         }
     }
 
+    // Also build the debug renderers here
     pub(crate) fn build_collider(&mut self, scale_factor: f32, gpu_controller: Arc<GpuController>) {
         match self {
-            BosonBody::RigidBody(rigid_body) => match rigid_body.collider_builder {
-                crate::ColliderBuilder::Sphere => {
-                    rigid_body.collider = Collider::Sphere(SphereCollider::new(
-                        rigid_body.position,
-                        scale_factor,
-                        gpu_controller,
-                    ));
+            BosonBody::RigidBody(rigid_body) => {
+                rigid_body.debug_renderer = Some(BosonDebugRenderer::new(
+                    rigid_body.velocity.into(),
+                    rigid_body.current_acceleration.into(),
+                    rigid_body.angular_velocity.into(),
+                    gpu_controller.clone(),
+                ));
+
+                match rigid_body.collider_builder {
+                    crate::ColliderBuilder::Sphere => {
+                        rigid_body.collider = Collider::Sphere(SphereCollider::new(
+                            rigid_body.position,
+                            scale_factor,
+                            gpu_controller,
+                        ));
+                    }
+                    crate::ColliderBuilder::Plane => {}
+                    crate::ColliderBuilder::Cube => {
+                        rigid_body.collider = Collider::Cube(CubeCollider::new(
+                            rigid_body.position,
+                            scale_factor * 2.0,
+                            rigid_body.orientation,
+                            gpu_controller,
+                        ));
+                    }
                 }
-                crate::ColliderBuilder::Plane => {}
-                crate::ColliderBuilder::Cube => {
-                    rigid_body.collider = Collider::Cube(CubeCollider::new(
-                        rigid_body.position,
-                        scale_factor * 2.0,
-                        rigid_body.orientation,
-                        gpu_controller,
-                    ));
-                }
-            },
+            }
             BosonBody::StaticCollider(_) => {}
             BosonBody::ParticleSystem(_) => {}
         }

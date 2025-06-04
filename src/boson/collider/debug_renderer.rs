@@ -7,7 +7,9 @@ use wgpu::{
 
 use crate::{
     bind_group_builder,
-    element::{buffered::Buffered, model::ModelInstance, model_vertex::ModelVertex},
+    element::{
+        buffered::Buffered, mesh::INDEX_FORMAT, model::ModelInstance, model_vertex::ModelVertex,
+    },
     gpu_utils::GpuController,
     photon::render_descriptor::{
         PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO,
@@ -21,6 +23,7 @@ pub(crate) trait DebugRender {
 
 #[derive(Debug)]
 pub(crate) struct DebugRenderer {
+    // For collider model
     vertex_buffer: Buffer,
     index_buffer: Buffer,
     position_buffer: Buffer,
@@ -87,7 +90,7 @@ impl DebugRenderer {
                     STORAGE_RO
                 )
             ))
-            .build(gpu_controller);
+            .build(gpu_controller.clone());
 
         Self {
             vertex_buffer,
@@ -117,8 +120,9 @@ impl DebugRenderer {
 
     #[inline]
     pub(crate) fn render(&self, render_pass: &mut RenderPass) {
+        // Render the Collider Visualization
         render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+        render_pass.set_index_buffer(self.index_buffer.slice(..), INDEX_FORMAT);
 
         self.debug_render_descriptor.setup_render(render_pass);
 
