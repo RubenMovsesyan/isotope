@@ -4,10 +4,7 @@ use cgmath::Vector3;
 use obj_2_rust::obj_2_rust;
 use wgpu::RenderPass;
 
-use crate::{
-    GpuController, element::model_vertex::ModelVertex,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
-};
+use crate::{GpuController, element::model_vertex::ModelVertex};
 
 use super::{
     Collidable, Collider, CollisionPoints,
@@ -32,7 +29,6 @@ impl SphereCollider {
         center: Vector3<f32>,
         radius: f32,
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
         // Create the debug renderer for this collider
         let debug_renderer = DebugRenderer::new(
@@ -55,7 +51,6 @@ impl SphereCollider {
             center.into(),
             [0.0, 0.0, 0.0, 1.0],
             gpu_controller,
-            photon_layout_manager,
         );
 
         Self {

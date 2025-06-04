@@ -8,7 +8,7 @@ use sphere_collider::SphereCollider;
 
 use wgpu::RenderPass;
 
-use crate::{GpuController, photon::renderer::photon_layouts::PhotonLayoutsManager};
+use crate::GpuController;
 
 use super::BosonObject;
 
@@ -62,14 +62,8 @@ impl Collider {
         position: Vector3<f32>,
         radius: f32,
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
-        Self::Sphere(SphereCollider::new(
-            position,
-            radius,
-            gpu_controller,
-            photon_layout_manager,
-        ))
+        Self::Sphere(SphereCollider::new(position, radius, gpu_controller))
     }
 
     pub fn new_plane(normal: Vector3<f32>, distance: f32) -> Self {
@@ -81,14 +75,12 @@ impl Collider {
         orientation: Quaternion<f32>,
         edge_length: f32,
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
         Self::Cube(CubeCollider::new(
             position,
             edge_length,
             orientation,
             gpu_controller,
-            photon_layout_manager,
         ))
     }
 

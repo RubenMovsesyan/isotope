@@ -1,37 +1,78 @@
 use std::{
+    mem,
     path::Path,
     sync::{Arc, RwLock},
+    time::Instant,
 };
 
 use anyhow::{Result, anyhow};
 use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages, RenderPass,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferAddress, BufferDescriptor,
+    BufferUsages, CommandEncoder, RenderPass, VertexAttribute, VertexBufferLayout, VertexFormat,
+    VertexStepMode,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
 use crate::{
-    GpuController, Isotope,
+    GpuController, Isotope, ParallelInstancerBuilder, bind_group_builder,
     boson::{Linkable, boson_math::calculate_center_of_mass},
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
     },
+    photon::{
+        instancer::{Instance, InstanceBufferDescriptor, Instancer},
+        render_descriptor::STORAGE_RO,
+    },
     utils::file_io::read_lines,
 };
 
-use super::{
-    material::Material,
-    mesh::{INDEX_FORMAT, Mesh},
-};
+use super::{buffered::Buffered, material::Material, mesh::Mesh};
 
-pub use super::mesh::ModelInstance;
+#[repr(C)]
+#[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
+pub struct ModelInstance {
+    position: [f32; 3],
+    _padding: f32,
+    orientation: [f32; 4],
+}
 
-// Set to 5 to allow for future expansion of bind groups for the shader
-pub(crate) const MODEL_TEXTURE_BIND_GROUP: u32 = 2;
-pub(crate) const MODEL_TRANSFORM_BIND_GROUP: u32 = 3;
-pub(crate) const MODEL_MATERIAL_COLOR_BIND_GROUP: u32 = 4;
+unsafe impl Instance for ModelInstance {}
+
+impl Buffered for ModelInstance {
+    fn desc() -> wgpu::VertexBufferLayout<'static> {
+        VertexBufferLayout {
+            array_stride: mem::size_of::<ModelInstance>() as BufferAddress,
+            step_mode: VertexStepMode::Instance,
+            attributes: &[
+                // Position
+                VertexAttribute {
+                    offset: 0,
+                    shader_location: 3,
+                    format: VertexFormat::Float32x3,
+                },
+                // Rotation
+                VertexAttribute {
+                    offset: mem::size_of::<[f32; 4]>() as BufferAddress,
+                    shader_location: 4,
+                    format: VertexFormat::Float32x4,
+                },
+            ],
+        }
+    }
+}
+
+impl Default for ModelInstance {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            _padding: 0.0,
+            orientation: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
+}
 
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
@@ -46,8 +87,6 @@ pub struct ModelTransform {
 pub struct Model {
     pub(crate) meshes: Vec<Mesh>,
     materials: Vec<Arc<Material>>,
-    instances: Vec<ModelInstance>,
-    instances_dirty: bool,
 
     // Global position and rotation
     position: Vector3<f32>,
@@ -55,12 +94,19 @@ pub struct Model {
     transform_dirty: bool,
 
     // GPU
-    transform_buffer: Buffer,
+    transform_buffer: Arc<Buffer>,
     transform_bind_group: BindGroup,
     gpu_controller: Arc<GpuController>,
 
     // Physics Linking
     boson_link: Option<Arc<RwLock<dyn Linkable>>>,
+
+    // For gpu instancing
+    instancer: Arc<Instancer<ModelInstance>>,
+
+    // Temp
+    time_buffer: Buffer,
+    time: Instant,
 }
 
 impl Model {
@@ -76,11 +122,6 @@ impl Model {
         );
 
         let gpu_controller = isotope.gpu_controller.clone();
-        let photon_layouts_manager = if let Some(photon) = isotope.photon.as_ref() {
-            &photon.renderer.layouts
-        } else {
-            return Err(anyhow!("Photon not initialzed"));
-        };
 
         // Obj file reading variables
         let mut mesh_name: Option<String> = None;
@@ -96,6 +137,19 @@ impl Model {
 
         let mut material_index: Option<usize> = None;
 
+        // Create the buffer for global tranformations
+        let transform_buffer = Arc::new(gpu_controller.device.create_buffer_init(
+            &BufferInitDescriptor {
+                label: Some("Model Transform Buffer"),
+                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                contents: bytemuck::cast_slice(&[ModelTransform {
+                    position: [0.0, 0.0, 0.0],
+                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    _padding: 0.0,
+                }]),
+            },
+        ));
+
         let lines = read_lines(&path)?;
 
         for line in lines.map_while(Result::ok) {
@@ -110,12 +164,18 @@ impl Model {
                 "o" => {
                     // If there is a mesh currently in the buffer then add it to the model
                     if let Some(name) = mesh_name.take() {
-                        let mut new_mesh =
-                            Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
-
-                        if let Some(mat_ind) = material_index.take() {
-                            new_mesh.material = Some(materials[mat_ind].clone());
-                        }
+                        let new_mesh = Mesh::new(
+                            name,
+                            &model_vertices,
+                            &indices,
+                            transform_buffer.clone(),
+                            gpu_controller.clone(),
+                            if let Some(material_index) = material_index.take() {
+                                Some(materials[material_index].clone())
+                            } else {
+                                None
+                            },
+                        );
 
                         meshes.push(new_mesh);
 
@@ -179,8 +239,7 @@ impl Model {
 
                     // Add all the found materials to the materials
                     materials.append(&mut load_materials(
-                        &gpu_controller,
-                        photon_layouts_manager,
+                        gpu_controller.clone(),
                         path_to_material,
                     )?);
                 }
@@ -213,27 +272,20 @@ impl Model {
 
         // Add the remaining object to the list
         if let Some(name) = mesh_name.take() {
-            let mut new_mesh = Mesh::new(name, &model_vertices, &indices, gpu_controller.clone());
-
-            if let Some(mat_ind) = material_index.take() {
-                new_mesh.material = Some(materials[mat_ind].clone());
-            }
-
+            let new_mesh = Mesh::new(
+                name,
+                &model_vertices,
+                &indices,
+                transform_buffer.clone(),
+                gpu_controller.clone(),
+                if let Some(material_index) = material_index.take() {
+                    Some(materials[material_index].clone())
+                } else {
+                    None
+                },
+            );
             meshes.push(new_mesh);
         }
-
-        // Create the buffer for global tranformations
-        let transform_buffer = gpu_controller
-            .device
-            .create_buffer_init(&BufferInitDescriptor {
-                label: Some("Model Transform Buffer"),
-                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-                contents: bytemuck::cast_slice(&[ModelTransform {
-                    position: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
-                    _padding: 0.0,
-                }]),
-            });
 
         // Create the bind group from the layout
         let transform_bind_group = gpu_controller
@@ -241,26 +293,29 @@ impl Model {
             .create_bind_group(&BindGroupDescriptor {
                 label: Some("Model Transform Bind Group"),
                 // Safetey: Photon should alread exist at this point
-                layout: unsafe {
-                    &isotope
-                        .photon
-                        .as_ref()
-                        .unwrap_unchecked()
-                        .renderer
-                        .layouts
-                        .model_layout
-                },
+                layout: &gpu_controller.layouts.transform_layout,
                 entries: &[BindGroupEntry {
                     binding: 0,
                     resource: transform_buffer.as_entire_binding(),
                 }],
             });
 
+        let instancer = Instancer::new_series(
+            gpu_controller.clone(),
+            InstanceBufferDescriptor::Size(1),
+            "Default Model Instance",
+        );
+
+        let time_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Time Buffer"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<f32>() as u64,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+        });
+
         Ok(Self {
             meshes,
             materials,
-            instances: Vec::new(),
-            instances_dirty: false,
             position: Vector3::zero(),
             rotation: Quaternion::one(),
             transform_dirty: false,
@@ -268,49 +323,40 @@ impl Model {
             transform_bind_group,
             gpu_controller: isotope.gpu_controller.clone(),
             boson_link: None,
+            instancer: Arc::new(instancer),
+            time_buffer,
+            time: Instant::now(),
         })
     }
 
-    // Function to modify the instance rather than set new ones
-    pub fn modify_instances<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut [ModelInstance]),
-    {
-        callback(&mut self.instances);
+    pub fn with_custom_shaders(
+        mut self,
+        vertex_shader: &str,
+        fragment_shader: &str,
+    ) -> Result<Self> {
+        self.meshes.iter_mut().for_each(|mesh| {
+            mesh.set_shaders(vertex_shader, fragment_shader);
+        });
 
-        self.instances_dirty = true;
+        Ok(self)
     }
 
-    pub fn set_instances(&mut self, instances: &[ModelInstance]) {
-        // If the instance buffer is a different size update the instances to match the size
-        // if the new buffer is lonver then clear the instances and start anew
-        if instances.len() > self.instances.len() {
-            if self.instances.capacity() < instances.len() {
-                self.instances = Vec::with_capacity(instances.len());
-            }
+    pub fn with_custom_time_instancer(mut self, compute_shader: &str, instances: u64) -> Self {
+        let instancer: Instancer<ModelInstance> = ParallelInstancerBuilder::default()
+            .add_bind_group_with_layout(bind_group_builder!(
+                self.gpu_controller.device,
+                "Time Instancer",
+                (0, COMPUTE, self.time_buffer.as_entire_binding(), STORAGE_RO)
+            ))
+            .with_instance_count(instances)
+            .with_label("Time Instancer")
+            .with_compute_shader(compute_shader)
+            .build(self.gpu_controller.clone())
+            .expect("Failed to build model instancer");
 
-            for (index, instance) in instances.iter().enumerate() {
-                if index < self.instances.len() {
-                    self.instances[index] = *instance;
-                } else {
-                    self.instances.push(*instance);
-                }
-            }
-        // if it is shorter then pop from the current buffer and push until finished
-        } else if instances.len() <= self.instances.len() {
-            while self.instances.len() > instances.len() {
-                _ = self.instances.pop();
-            }
+        self.instancer = Arc::new(instancer);
 
-            for (index, instance) in instances.iter().enumerate() {
-                self.instances[index] = *instance;
-            }
-        }
-
-        // Set the instance buffer for all the meshes
-        for mesh in self.meshes.iter_mut() {
-            mesh.set_instance_buffer(&self.instances);
-        }
+        self
     }
 
     // Modifying the position
@@ -336,7 +382,11 @@ impl Model {
         let l: Arc<RwLock<dyn Linkable>> = linkable.into();
         if let Ok(l) = l.write() {
             self.position = l.get_position();
-            self.rotation = l.get_rotation();
+            self.rotation = l.get_orientation();
+
+            if let Some(instancer) = l.get_instancer() {
+                self.instancer = instancer;
+            }
         }
 
         self.boson_link = Some(l);
@@ -356,25 +406,29 @@ impl Model {
         }
     }
 
+    pub fn compute_instances(&self, encoder: &mut CommandEncoder) {
+        self.instancer.compute_instances(|_| {}, encoder);
+    }
+
     pub fn render(&mut self, render_pass: &mut RenderPass) {
         // If the model is linked then update the position
         if let Some(boson_link) = self.boson_link.as_ref() {
             if let Ok(boson_link) = boson_link.read() {
                 // Set the models position based off the boson object
                 self.position = boson_link.get_position();
-                self.rotation = boson_link.get_rotation();
+                self.rotation = boson_link.get_orientation();
                 self.transform_dirty = true;
             }
         }
 
-        if self.instances_dirty {
-            // Update the instances if changed
-            for mesh in self.meshes.iter() {
-                mesh.change_instance_buffer(&self.instances);
-            }
+        let time_elapsed = self.time.elapsed().as_secs_f32();
 
-            self.instances_dirty = false;
-        }
+        // Write the time to the buffer
+        self.gpu_controller.queue.write_buffer(
+            &self.time_buffer,
+            0,
+            bytemuck::cast_slice(&[time_elapsed]),
+        );
 
         if self.transform_dirty {
             // Update the position buffer if changed
@@ -393,31 +447,19 @@ impl Model {
             self.transform_dirty = false;
         }
 
+        render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
+
         for mesh in self.meshes.iter() {
-            // Vertices
-            render_pass.set_vertex_buffer(0, mesh.vertex_buffer.slice(..));
-            // Vertex Indices
-            render_pass.set_index_buffer(mesh.index_buffer.slice(..), INDEX_FORMAT);
-            // Instances
-            render_pass.set_vertex_buffer(1, mesh.instance_buffer.slice(..));
+            mesh.render(render_pass, self.instancer.instance_count as u32);
+        }
+    }
 
-            // Set the bind group for the material of the mesh
-            // TODO: add optional texture support
-            render_pass.set_bind_group(
-                MODEL_TEXTURE_BIND_GROUP,
-                &mesh.material.as_ref().unwrap().diffuse_texture.bind_group,
-                &[],
-            );
+    ///! Always call after main render
+    pub unsafe fn debug_render(&self, render_pass: &mut RenderPass) {
+        render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
-            render_pass.set_bind_group(MODEL_TRANSFORM_BIND_GROUP, &self.transform_bind_group, &[]);
-
-            render_pass.set_bind_group(
-                MODEL_MATERIAL_COLOR_BIND_GROUP,
-                &mesh.material.as_ref().unwrap().bind_group,
-                &[],
-            );
-
-            render_pass.draw_indexed(0..mesh.num_indices, 0, 0..mesh.instance_buffer_len);
+        for mesh in self.meshes.iter() {
+            mesh.debug_render(render_pass, self.instancer.instance_count as u32);
         }
     }
 }

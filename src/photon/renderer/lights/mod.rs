@@ -11,6 +11,8 @@ use super::photon_layouts::PhotonLayoutsManager;
 
 pub mod light;
 
+pub const MAX_LIGHTS: usize = 256;
+
 #[derive(Debug)]
 pub(crate) struct Lights {
     pub buffer: Buffer,
@@ -21,29 +23,8 @@ pub(crate) struct Lights {
 
 impl Lights {
     // Create the Lights given a list of lights
-    pub fn new_with_lights(
-        gpu_controller: &GpuController,
-        photon_layouts: &PhotonLayoutsManager,
-        lights: &[Light],
-    ) -> Self {
-        // Create a buffer with room for at least 1 element in it
-        // let buffer = match lights.len() {
-        //     0 => gpu_controller.device.create_buffer(&BufferDescriptor {
-        //         label: Some("Lights Buffer"),
-        //         mapped_at_creation: false,
-        //         size: std::mem::size_of::<Light>() as u64,
-        //         usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-        //     }),
-        //     _ => gpu_controller
-        //         .device
-        //         .create_buffer_init(&BufferInitDescriptor {
-        //             label: Some("Lights Buffer"),
-        //             contents: bytemuck::cast_slice(lights),
-        //             usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-        //         }),
-        // };
-
-        let lights_buf = (lights.len()..256)
+    pub fn new_with_lights(gpu_controller: &GpuController, lights: &[Light]) -> Self {
+        let lights_buf = (lights.len()..MAX_LIGHTS)
             .into_iter()
             .map(|_| Light::zeroed())
             .collect::<Vec<Light>>();
@@ -68,7 +49,7 @@ impl Lights {
             .device
             .create_bind_group(&BindGroupDescriptor {
                 label: Some("Lights Bind Group"),
-                layout: &photon_layouts.lights_layout,
+                layout: &gpu_controller.layouts.lights_layout,
                 entries: &[
                     BindGroupEntry {
                         binding: 0,

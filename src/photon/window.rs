@@ -21,7 +21,6 @@ pub struct PhotonWindow {
     gpu_controller: Arc<GpuController>,
     pub window: Arc<Window>,
     pub surface: Arc<Surface<'static>>,
-    pub surface_configuration: SurfaceConfiguration,
 }
 
 impl PhotonWindow {
@@ -66,21 +65,26 @@ impl PhotonWindow {
 
         surface.configure(&gpu_controller.device, &surface_configuration);
 
+        if let Ok(mut surface_config) = gpu_controller.surface_configuration.write() {
+            *surface_config = surface_configuration;
+        }
+
         Ok(Self {
             gpu_controller,
             window,
             surface,
-            surface_configuration,
         })
     }
 
     // Resizes the surface configuration of the window
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
-        self.surface_configuration.width = new_size.width;
-        self.surface_configuration.height = new_size.height;
+        if let Ok(mut surface_config) = self.gpu_controller.surface_configuration.write() {
+            surface_config.width = new_size.width;
+            surface_config.height = new_size.height;
 
-        self.surface
-            .configure(&self.gpu_controller.device, &self.surface_configuration);
+            self.surface
+                .configure(&self.gpu_controller.device, &surface_config);
+        }
 
         debug!("Window resized to: {:#?}", new_size);
     }

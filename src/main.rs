@@ -170,30 +170,35 @@ impl IsotopeState for GameState {
             boson.add_dynamic_object(cone.rigid_body.clone());
         });
 
+        self.ecs
+            .for_each_molecule(|_entity, boson_object: &BosonObject| {
+                boson.add_dynamic_object(boson_object.clone());
+            });
+
         boson.add_dynamic_object(BosonObject::new(StaticCollider::new(
             Vector3::zero(),
             Collider::new_plane(Vector3::unit_y(), 0.0),
         )));
     }
 
-    fn update(&mut self, _delta_t: &std::time::Instant, t: &std::time::Instant) {
-        self.lights[0].pos(|x, y, z| {
-            *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-            *y = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-            *z = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        });
+    fn update(&mut self, _delta_t: &std::time::Instant, _t: &std::time::Instant) {
+        // self.lights[0].pos(|x, y, z| {
+        //     *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        //     *y = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        //     *z = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        // });
 
-        self.lights[1].pos(|x, y, z| {
-            *x = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-            *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-            *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        });
+        // self.lights[1].pos(|x, y, z| {
+        //     *x = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        //     *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        //     *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        // });
 
-        self.lights[2].pos(|x, y, z| {
-            *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-            *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-            *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        });
+        // self.lights[2].pos(|x, y, z| {
+        //     *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        //     *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
+        //     *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
+        // });
 
         // const SCALAR: f32 = 30.0;
         // self.ecs
@@ -262,6 +267,35 @@ impl IsotopeState for GameState {
         self.ecs
             .for_each_molecule_mut(|_entity, model: &mut Model| {
                 model.render(render_pass);
+            });
+    }
+
+    fn debug_render_elements(&self, render_pass: &mut wgpu::RenderPass) {
+        self.ecs
+            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
+                cube.render(render_pass);
+                unsafe { cube.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
+                monkey.render(render_pass);
+
+                unsafe { monkey.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
+                cone.render(render_pass);
+
+                unsafe { cone.model.debug_render(render_pass) };
+            });
+
+        self.ecs
+            .for_each_molecule_mut(|_entity, model: &mut Model| {
+                model.render(render_pass);
+
+                unsafe { model.debug_render(render_pass) };
             });
     }
 
@@ -338,6 +372,12 @@ impl IsotopeState for GameState {
                             });
                         });
                     });
+
+                self.ecs.for_each_duo_mut(
+                    |_entity, _cones: &mut Model, particle_system: &mut BosonObject| {
+                        particle_system.modify(|system| system.reset());
+                    },
+                );
             }
             _ => {}
         }
@@ -387,72 +427,6 @@ fn init(isotope: &mut Isotope) {
     isotope.set_state({
         let mut state = GameState::default();
 
-        // let cube = state.ecs.create_entity();
-        // state.ecs.add_molecule(
-        //     cube,
-        //     TestElement {
-        //         model: {
-        //             let mut model =
-        //                 Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
-
-        //             model.set_instances(&[
-        //                 ModelInstance {
-        //                     position: [0.0, 0.0, 0.0],
-        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_x(), Deg(45.0))
-        //                         .normalize()
-        //                         .into(),
-        //                 },
-        //                 ModelInstance {
-        //                     position: [5.0, 0.0, 0.0],
-        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_y(), Deg(45.0))
-        //                         .normalize()
-        //                         .into(),
-        //                 },
-        //                 ModelInstance {
-        //                     position: [0.0, 0.0, 5.0],
-        //                     rotation: Quaternion::from_axis_angle(Vector3::unit_z(), Deg(45.0))
-        //                         .normalize()
-        //                         .into(),
-        //                 },
-        //             ]);
-
-        //             model
-        //         },
-        //     },
-        // );
-
-        // let monkey = state.ecs.create_entity();
-        // let rb = BosonObject::new({
-        //     let mut body = RigidBody::new(10.0).unwrap();
-        //     body.position = Vector3 {
-        //         x: 0.0,
-        //         y: 5.0,
-        //         z: 0.0,
-        //     };
-
-        //     body.velocity = Vector3 {
-        //         x: 10.0,
-        //         y: 10.0,
-        //         z: 0.0,
-        //     };
-
-        //     body
-        // });
-        // state.ecs.add_molecule(
-        //     monkey,
-        //     MonkeyElement {
-        //         model: {
-        //             let mut model =
-        //                 Model::from_obj("test_files/monkey.obj", &isotope).expect("Failed");
-
-        //             model.link(rb.clone());
-
-        //             model
-        //         },
-        //         rigid_body: rb,
-        //     },
-        // );
-
         let cone = state.ecs.create_entity();
         let cone_rb = BosonObject::new({
             let mut body = RigidBody::new(10.0, ColliderBuilder::Cube).unwrap();
@@ -478,8 +452,13 @@ fn init(isotope: &mut Isotope) {
             cone,
             ConeElement {
                 model: {
-                    let mut model =
-                        Model::from_obj("test_files/cube.obj", &isotope).expect("Failed");
+                    let mut model = Model::from_obj("test_files/cube.obj", &isotope)
+                        .expect("Failed")
+                        .with_custom_shaders(
+                            include_str!("../test_files/test_vert.wgsl"),
+                            include_str!("../test_files/test_frag.wgsl"),
+                        )
+                        .expect("Failed");
 
                     model.link(cone_rb.clone());
                     model
@@ -499,6 +478,48 @@ fn init(isotope: &mut Isotope) {
             model
         });
 
+        // let cubes = state.ecs.create_entity();
+        // state.ecs.add_molecule(
+        //     cubes,
+        //     Model::from_obj("test_files/cube.obj", &isotope)
+        //         .expect("Failed")
+        //         .with_custom_time_instancer(include_str!("../test_files/test_instancer.wgsl"), 20),
+        // );
+
+        let particle_system = BosonObject::new({
+            let particle_system = ParticleSysytem::new(300, &isotope);
+
+            particle_system.set_initial_conditions(
+                (0..300)
+                    .into_iter()
+                    .map(|val| {
+                        let x = 3.0 * f32::sin(val as f32);
+                        let z = 3.0 * f32::cos(val as f32);
+
+                        InitialState {
+                            position: Vector3 {
+                                x: 0.0,
+                                y: 0.0,
+                                z: 0.0,
+                            },
+                            velocity: Vector3 { x, y: 20.0, z },
+                        }
+                    })
+                    .collect(),
+            );
+
+            particle_system
+        });
+
+        let cones = state.ecs.create_entity();
+        state.ecs.add_molecule(cones, {
+            let mut model = Model::from_obj("test_files/cone.obj", &isotope).expect("Failed");
+            model.link(particle_system.clone());
+            model
+        });
+
+        state.ecs.add_molecule(cones, particle_system);
+
         // let other_cube = state.ecs.create_entity();
         // state.ecs.add_molecule(
         //     other_cube,
@@ -508,6 +529,7 @@ fn init(isotope: &mut Isotope) {
         // );
 
         // state.lights[0].color = [1.0, 0.0, 0.0];
+        state.lights[0].position = [10.0, 10.0, 10.0];
         state.lights[0].color = [1.0, 1.0, 1.0];
         state.lights[0].intensity = 1.0;
         // state.lights[1].color = [0.0, 0.0, 1.0];
@@ -523,20 +545,13 @@ fn init(isotope: &mut Isotope) {
         .impulse()
         .key_is_pressed(|key_code, isotope| match key_code {
             KeyCode::Digit0 => {
-                isotope.modify_boson(|boson| {
-                    boson.modify_debugger(|debugger| {
-                        let debugger_on = match debugger {
-                            BosonDebugger::None => false,
-                            BosonDebugger::BasicDebugger => true,
-                        };
-
-                        if debugger_on {
-                            *debugger = BosonDebugger::None;
-                        } else {
-                            *debugger = BosonDebugger::BasicDebugger;
-                        }
-                    });
-                });
+                isotope.set_debbuging(|debugging| *debugging = !*debugging);
+            }
+            KeyCode::Digit9 => {
+                isotope.set_model_debugging(|debugging| *debugging = !*debugging);
+            }
+            KeyCode::Digit8 => {
+                isotope.set_boson_debbuging(|debugging| *debugging = !*debugging);
             }
             _ => {}
         });

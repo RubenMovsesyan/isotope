@@ -1,19 +1,21 @@
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use image::{GenericImageView, ImageReader};
 use log::*;
 use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, CompareFunction,
-    Extent3d, FilterMode, Sampler, SamplerDescriptor, SurfaceConfiguration, TexelCopyBufferLayout,
-    Texture, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, TextureView,
-    TextureViewDescriptor,
+    AddressMode, BindingResource, CompareFunction, Extent3d, FilterMode, Sampler,
+    SamplerDescriptor, TexelCopyBufferLayout, Texture, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
-use crate::GpuController;
-
-use super::photon_layouts::PhotonLayoutsManager;
+use crate::{
+    GpuController, bind_group_builder,
+    photon::render_descriptor::{
+        PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, SAMPLER, TEXTURE,
+    },
+};
 
 const ROW_SIZE: u32 = std::mem::size_of::<f32>() as u32;
 
@@ -30,14 +32,13 @@ pub(crate) struct PhotonTexture {
     texture: Texture,
     view: TextureView,
     sampler: Sampler,
-    pub bind_group: BindGroup,
+
+    // For rendering
+    pub(crate) render_descriptor: Arc<PhotonRenderDescriptor>,
 }
 
 impl PhotonTexture {
-    pub fn new_empty(
-        gpu_controller: &GpuController,
-        photon_layouts: &PhotonLayoutsManager,
-    ) -> Result<Self> {
+    pub fn new_empty(gpu_controller: Arc<GpuController>) -> Self {
         info!("Creating Empty Texture");
 
         let size = Extent3d {
@@ -69,36 +70,25 @@ impl PhotonTexture {
             ..Default::default()
         });
 
-        let bind_group = gpu_controller
-            .device
-            .create_bind_group(&BindGroupDescriptor {
-                label: Some("Photon Texture Empty Bind Group"),
-                layout: &photon_layouts.texture_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: BindingResource::TextureView(&view),
-                    },
-                    BindGroupEntry {
-                        binding: 1,
-                        resource: BindingResource::Sampler(&sampler),
-                    },
-                ],
-            });
+        let render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .with_label("Texture")
+            .add_bind_group_with_layout(bind_group_builder!(
+                gpu_controller.device,
+                "Texture",
+                (0, FRAGMENT, BindingResource::TextureView(&view), TEXTURE),
+                (1, FRAGMENT, BindingResource::Sampler(&sampler), SAMPLER)
+            ))
+            .build_module(gpu_controller);
 
-        Ok(Self {
+        Self {
             texture,
             view,
             sampler,
-            bind_group,
-        })
+            render_descriptor: Arc::new(render_descriptor), // bind_group,
+        }
     }
 
-    pub fn new_from_path<P>(
-        gpu_controller: &GpuController,
-        path: P,
-        photon_layouts: &PhotonLayoutsManager,
-    ) -> Result<Self>
+    pub fn new_from_path<P>(gpu_controller: Arc<GpuController>, path: P) -> Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -146,28 +136,6 @@ impl PhotonTexture {
             ..Default::default()
         });
 
-        let bind_group = gpu_controller
-            .device
-            .create_bind_group(&BindGroupDescriptor {
-                label: Some(&format!(
-                    "Photon Texture Bind Group: {}",
-                    path.as_ref()
-                        .to_str()
-                        .ok_or(anyhow!("Texture Path not available"))?,
-                )),
-                layout: &photon_layouts.texture_layout,
-                entries: &[
-                    BindGroupEntry {
-                        binding: 0,
-                        resource: BindingResource::TextureView(&view),
-                    },
-                    BindGroupEntry {
-                        binding: 1,
-                        resource: BindingResource::Sampler(&sampler),
-                    },
-                ],
-            });
-
         // Send the texture to the gpu
         gpu_controller.queue.write_texture(
             texture.as_image_copy(),
@@ -180,11 +148,21 @@ impl PhotonTexture {
             size,
         );
 
+        let render_descriptor = PhotonRenderDescriptorBuilder::default()
+            .with_label("Texture")
+            .add_bind_group_with_layout(bind_group_builder!(
+                gpu_controller.device,
+                "Texture",
+                (0, FRAGMENT, BindingResource::TextureView(&view), TEXTURE),
+                (1, FRAGMENT, BindingResource::Sampler(&sampler), SAMPLER)
+            ))
+            .build_module(gpu_controller);
+
         Ok(Self {
             texture,
             view,
             sampler,
-            bind_group,
+            render_descriptor: Arc::new(render_descriptor),
         })
     }
 }
@@ -204,10 +182,8 @@ pub struct PhotonDepthTexture {
 }
 
 impl PhotonDepthTexture {
-    pub fn new_depth_texture(
-        gpu_controller: &GpuController,
-        surface_configuration: &SurfaceConfiguration,
-    ) -> Self {
+    pub fn new_depth_texture(gpu_controller: &GpuController) -> Self {
+        let surface_configuration = gpu_controller.surface_configuration();
         let size = Extent3d {
             width: surface_configuration.width.max(1),
             height: surface_configuration.height.max(1),

@@ -3,10 +3,7 @@ use std::sync::Arc;
 use cgmath::{Quaternion, Rotation, Vector3, Zero};
 use obj_2_rust::obj_2_rust;
 
-use crate::{
-    element::model_vertex::ModelVertex, gpu_utils::GpuController,
-    photon::renderer::photon_layouts::PhotonLayoutsManager,
-};
+use crate::{element::model_vertex::ModelVertex, gpu_utils::GpuController};
 
 use super::{
     Collidable, Collider, CollisionPoints,
@@ -35,7 +32,6 @@ impl CubeCollider {
         edge_length: f32,
         orientation: Quaternion<f32>,
         gpu_controller: Arc<GpuController>,
-        photon_layout_manager: &PhotonLayoutsManager,
     ) -> Self {
         // Create the debug renderer for this collider
         let debug_renderer = DebugRenderer::new(
@@ -58,7 +54,6 @@ impl CubeCollider {
             center.into(),
             orientation.into(),
             gpu_controller,
-            photon_layout_manager,
         );
 
         Self {

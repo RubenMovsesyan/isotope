@@ -1,13 +1,16 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use log::debug;
 use renderer::PhotonRenderer;
-use wgpu::RenderPass;
+use wgpu::{CommandEncoder, RenderPass};
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
 use crate::{Light, gpu_utils::GpuController};
 
+pub mod instancer;
+pub mod render_descriptor;
 pub mod renderer;
 pub mod window;
 
@@ -27,8 +30,8 @@ impl PhotonManager {
             "Isotope",
         )?;
 
-        let mut renderer = PhotonRenderer::new(gpu_controller, &window.surface_configuration);
-        renderer.add_debug_render_pipeline(&window.surface_configuration); // Disable if debug not wanted
+        let mut renderer = PhotonRenderer::new(gpu_controller.clone());
+        renderer.add_debug_render_pipeline(); // Disable if debug not wanted
 
         Ok(Self { window, renderer })
     }
@@ -42,14 +45,33 @@ impl PhotonManager {
         self.renderer.resize(new_size);
     }
 
+    pub fn set_debugger<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut bool),
+    {
+        callback(&mut self.renderer.debugging);
+        debug!("Setting Photon Debugger: {}", self.renderer.debugging);
+    }
+
     // Call on request redraw
-    pub fn render<F, D>(&mut self, callback: F, lights: &[Light], debug_callback: D) -> Result<()>
+    pub fn render<F, U, D>(
+        &mut self,
+        callback: F,
+        update_callback: U,
+        lights: &[Light],
+        debug_callback: D,
+    ) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
+        U: FnOnce(&mut CommandEncoder),
         D: FnOnce(&mut RenderPass),
     {
         self.renderer.update_lights(lights);
-        self.renderer
-            .render(&self.window.surface, callback, debug_callback)
+        self.renderer.render(
+            &self.window.surface,
+            callback,
+            update_callback,
+            debug_callback,
+        )
     }
 }
