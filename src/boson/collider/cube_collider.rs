@@ -72,7 +72,7 @@ impl CubeCollider {
             let (x, y, z) = (
                 if index & 0x01 > 0 { size } else { -size },
                 if index & 0x02 > 0 { size } else { -size },
-                if index & 0x03 > 0 { size } else { -size },
+                if index & 0x04 > 0 { size } else { -size },
             );
 
             *vertex = self.orientation.rotate_vector(Vector3 { x, y, z }) + self.center

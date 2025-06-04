@@ -198,36 +198,98 @@ fn test_cube_plane(
 
     let cube_vertices = cube_collider.get_vertices();
 
-    // Keep track of extreme points
-    let mut most_negative_distance = f32::MAX;
-    let mut most_negative_vertex = cube_vertices[0];
+    // Returns the distance from the surface of the plane
+    let check_point = |point: Vector3<f32>| -> f32 { plane_normal.dot(point) - plane_distance };
 
-    cube_vertices.iter().for_each(|vertex| {
-        let vertex_plane_distance = vertex.dot(plane_normal) - plane_distance;
-
-        if vertex_plane_distance < most_negative_distance {
-            most_negative_distance = vertex_plane_distance;
-            most_negative_vertex = *vertex;
+    fn most_negative_distance(distances: Vec<f32>) -> Option<(usize, f32)> {
+        #[derive(PartialEq, Eq)]
+        enum Sign {
+            Positive,
+            Negative,
         }
-    });
 
-    // If the most negative distance is negative, there is a collision
-    if most_negative_distance < 0.0 {
-        let depth = -most_negative_distance;
-        let a_deep = most_negative_vertex;
+        fn get_sign(distance: f32) -> Sign {
+            if distance < 0.0 {
+                Sign::Negative
+            } else {
+                Sign::Positive
+            }
+        }
+
+        let sign = get_sign(distances[0]);
+        let mut colliding = false;
+        let mut most_negative_distance = (0, distances[0]);
+
+        for (point_index, point) in distances.iter().enumerate() {
+            if get_sign(*point) != sign {
+                colliding = true;
+            }
+
+            if *point < most_negative_distance.1 {
+                most_negative_distance = (point_index, *point);
+            }
+        }
+
+        if colliding {
+            Some(most_negative_distance)
+        } else {
+            None
+        }
+    }
+
+    let distances = cube_vertices
+        .iter()
+        .map(|vertex| check_point(*vertex))
+        .collect::<Vec<f32>>();
+
+    if let Some((point_index, point_distance)) = most_negative_distance(distances) {
+        let depth = f32::abs(point_distance);
+
+        let a_deep = cube_vertices[point_index];
         let b_deep = a_deep - plane_normal * depth;
         let contact_point = (a_deep + b_deep) * 0.5;
 
-        return Some(CollisionPoints {
+        Some(CollisionPoints {
             a_deep,
             b_deep,
             normal: plane_normal,
             depth,
             contact_point,
-        });
+        })
+    } else {
+        None
     }
 
-    None
+    // // Keep track of extreme points
+    // let mut most_negative_distance = f32::MAX;
+    // let mut most_negative_vertex = cube_vertices[0];
+
+    // cube_vertices.iter().for_each(|vertex| {
+    //     let vertex_plane_distance = vertex.dot(plane_normal) - plane_distance;
+
+    //     if vertex_plane_distance < most_negative_distance {
+    //         most_negative_distance = vertex_plane_distance;
+    //         most_negative_vertex = *vertex;
+    //     }
+    // });
+
+    // // If the most negative distance is negative, there is a collision
+    // if most_negative_distance < 0.0 {
+    //     let depth = -most_negative_distance;
+    //     let a_deep = most_negative_vertex;
+    //     let b_deep = a_deep - plane_normal * depth;
+    //     let contact_point = (a_deep + b_deep) * 0.5;
+
+    //     return Some(CollisionPoints {
+    //         a_deep,
+    //         b_deep,
+    //         normal: plane_normal,
+    //         depth,
+    //         contact_point,
+    //     });
+    // }
+
+    // None
 }
 
 #[allow(unused_variables)]
