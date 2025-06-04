@@ -8,7 +8,7 @@ pub(crate) type VertexUvCoord = [f32; 2];
 pub(crate) type VertexNormalVec = [f32; 3];
 
 #[repr(C)]
-#[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Default, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ModelVertex {
     pub(crate) position: VertexPosition,
     pub(crate) uv_coords: VertexUvCoord,

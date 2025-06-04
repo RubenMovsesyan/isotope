@@ -1,7 +1,6 @@
 use std::time::Instant;
 
 use cgmath::{Vector3, Zero};
-use log::debug;
 
 use crate::boson::collider::Collision;
 

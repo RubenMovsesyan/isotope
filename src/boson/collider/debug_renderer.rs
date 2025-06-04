@@ -22,7 +22,7 @@ pub(crate) trait DebugRender {
 }
 
 #[derive(Debug)]
-pub(crate) struct DebugRenderer {
+pub(crate) struct ColliderDebugRenderer {
     // For collider model
     vertex_buffer: Buffer,
     index_buffer: Buffer,
@@ -33,7 +33,7 @@ pub(crate) struct DebugRenderer {
     debug_render_descriptor: PhotonRenderDescriptor,
 }
 
-impl DebugRenderer {
+impl ColliderDebugRenderer {
     pub(crate) fn new(
         vertices: &[ModelVertex],
         indices: &[u32],
@@ -45,7 +45,7 @@ impl DebugRenderer {
             .device
             .create_buffer_init(&BufferInitDescriptor {
                 label: Some("Debug Collider Vertex Buffer"),
-                usage: BufferUsages::VERTEX,
+                usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 contents: bytemuck::cast_slice(vertices),
             });
 
@@ -53,7 +53,7 @@ impl DebugRenderer {
             .device
             .create_buffer_init(&BufferInitDescriptor {
                 label: Some("Debug Collider Index Buffer"),
-                usage: BufferUsages::INDEX,
+                usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
                 contents: bytemuck::cast_slice(indices),
             });
 

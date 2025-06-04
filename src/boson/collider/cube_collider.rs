@@ -7,7 +7,7 @@ use crate::{element::model_vertex::ModelVertex, gpu_utils::GpuController};
 
 use super::{
     Collidable, Collider, CollisionPoints,
-    debug_renderer::{DebugRender, DebugRenderer},
+    debug_renderer::{ColliderDebugRenderer, DebugRender},
     test_cube_cube, test_cube_plane, test_sphere_cube,
 };
 
@@ -23,7 +23,7 @@ pub struct CubeCollider {
     pub(crate) orientation: Quaternion<f32>,
 
     // For Debug Rendering
-    pub(crate) debug_renderer: DebugRenderer,
+    pub(crate) debug_renderer: ColliderDebugRenderer,
 }
 
 impl CubeCollider {
@@ -34,7 +34,7 @@ impl CubeCollider {
         gpu_controller: Arc<GpuController>,
     ) -> Self {
         // Create the debug renderer for this collider
-        let debug_renderer = DebugRenderer::new(
+        let debug_renderer = ColliderDebugRenderer::new(
             &{
                 let mut verts = CUBE
                     .0
