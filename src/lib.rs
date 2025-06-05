@@ -211,10 +211,13 @@ impl Isotope {
                                 );
 
                                 model.meshes.iter_mut().for_each(|mesh| {
-                                    mesh.shift_vertices(|model_vertex| {
-                                        model_vertex.position =
-                                            (Vector3::from(model_vertex.position) - center_of_mass)
-                                                .into();
+                                    mesh.with_write(|mesh| {
+                                        mesh.shift_vertices(|model_vertex| {
+                                            model_vertex.position =
+                                                (Vector3::from(model_vertex.position)
+                                                    - center_of_mass)
+                                                    .into();
+                                        });
                                     });
                                 });
                             },

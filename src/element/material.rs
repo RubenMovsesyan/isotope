@@ -9,6 +9,7 @@ use anyhow::{Result, anyhow};
 
 use crate::{
     bind_group_builder,
+    element::asset_manager::SharedAsset,
     photon::{
         render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
         renderer::texture::PhotonTexture,
@@ -44,7 +45,7 @@ pub struct MaterialColor {
 #[derive(Debug)]
 pub struct Material {
     pub name: String,
-    pub diffuse_texture: Arc<PhotonTexture>,
+    pub diffuse_texture: SharedAsset<PhotonTexture>,
     pub ambient_color: Color,
     pub diffuse_color: Color,
     pub specular_color: Color,
@@ -87,7 +88,7 @@ impl Material {
 
         Self {
             name: String::from("Material Default"),
-            diffuse_texture: Arc::new(texture),
+            diffuse_texture: SharedAsset::new(texture),
             ambient_color: ERROR_COLOR,
             diffuse_color: ERROR_COLOR,
             specular_color: ERROR_COLOR,
@@ -273,7 +274,7 @@ where
                         asset_manager.get_texture(diffuse_texture_path)
                     } else {
                         error!("Asset Manger not accessible");
-                        Arc::new(PhotonTexture::new_empty(gpu_controller.clone()))
+                        SharedAsset::new(PhotonTexture::new_empty(gpu_controller.clone()))
                     };
 
                     material.diffuse_texture = diffuse_texture;
@@ -281,7 +282,11 @@ where
                     debug!("Setting Texture Again");
                     material.render_descriptor = Arc::new(
                         PhotonRenderDescriptorBuilder::default()
-                            .add_render_chain(material.diffuse_texture.render_descriptor.clone())
+                            .add_render_chain(
+                                material
+                                    .diffuse_texture
+                                    .with_read(|texture| texture.render_descriptor.clone()),
+                            )
                             .with_label("Material")
                             .add_bind_group_with_layout(bind_group_builder!(
                                 gpu_controller.device,

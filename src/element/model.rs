@@ -29,7 +29,12 @@ use crate::{
     utils::file_io::read_lines,
 };
 
-use super::{asset_manager::AssetManager, buffered::Buffered, material::Material, mesh::Mesh};
+use super::{
+    asset_manager::{AssetManager, SharedAsset},
+    buffered::Buffered,
+    material::Material,
+    mesh::Mesh,
+};
 
 #[repr(C)]
 #[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -85,7 +90,7 @@ pub struct ModelTransform {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Model {
-    pub(crate) meshes: Vec<Mesh>,
+    pub(crate) meshes: Vec<SharedAsset<Mesh>>,
     materials: Vec<Arc<Material>>,
 
     // Global position and rotation
@@ -136,7 +141,7 @@ impl Model {
         let mut model_vertices: Vec<ModelVertex> = Vec::new();
         let mut indices: Vec<u32> = Vec::new();
 
-        let mut meshes: Vec<Mesh> = Vec::new();
+        let mut meshes: Vec<SharedAsset<Mesh>> = Vec::new();
         let mut materials: Vec<Arc<Material>> = Vec::new();
 
         let mut material_index: Option<usize> = None;
@@ -168,7 +173,7 @@ impl Model {
                 "o" => {
                     // If there is a mesh currently in the buffer then add it to the model
                     if let Some(name) = mesh_name.take() {
-                        let new_mesh = Mesh::new(
+                        let new_mesh = SharedAsset::new(Mesh::new(
                             name,
                             &model_vertices,
                             &indices,
@@ -179,7 +184,7 @@ impl Model {
                             } else {
                                 None
                             },
-                        );
+                        ));
 
                         meshes.push(new_mesh);
 
@@ -276,7 +281,7 @@ impl Model {
 
         // Add the remaining object to the list
         if let Some(name) = mesh_name.take() {
-            let new_mesh = Mesh::new(
+            let new_mesh = SharedAsset::new(Mesh::new(
                 name,
                 &model_vertices,
                 &indices,
@@ -287,7 +292,8 @@ impl Model {
                 } else {
                     None
                 },
-            );
+            ));
+
             meshes.push(new_mesh);
         }
 
@@ -339,7 +345,7 @@ impl Model {
         fragment_shader: &str,
     ) -> Result<Self> {
         self.meshes.iter_mut().for_each(|mesh| {
-            mesh.set_shaders(vertex_shader, fragment_shader);
+            mesh.with_write(|mesh| mesh.set_shaders(vertex_shader, fragment_shader));
         });
 
         Ok(self)
@@ -381,34 +387,6 @@ impl Model {
         self.transform_dirty = true;
     }
 
-    // // Linking a boson object to the model for physics
-    // pub fn link(&mut self, linkable: impl Into<Arc<RwLock<dyn Linkable>>>) {
-    //     let l: Arc<RwLock<dyn Linkable>> = linkable.into();
-    //     if let Ok(l) = l.write() {
-    //         self.position = l.get_position();
-    //         self.rotation = l.get_orientation();
-
-    //         if let Some(instancer) = l.get_instancer() {
-    //             self.instancer = instancer;
-    //         }
-    //     }
-
-    //     self.boson_link = Some(l);
-
-    //     // adujst the vertices of the model so that the center of mass is the origin
-    //     let center_of_mass = calculate_center_of_mass(self);
-    //     info!(
-    //         "Center of mass: {:#?}\nMoving origin to center",
-    //         center_of_mass
-    //     );
-
-    //     for mesh in self.meshes.iter_mut() {
-    //         mesh.shift_vertices(|model_vertex| {
-    //             model_vertex.position =
-    //                 (Vector3::from(model_vertex.position) - center_of_mass).into();
-    //         });
-    //     }
-    // }
     pub(crate) fn link_transform(&self, tranform: &Transform) {
         let model_transform = ModelTransform {
             position: tranform.position.into(),
@@ -428,46 +406,10 @@ impl Model {
     }
 
     pub fn render(&mut self, render_pass: &mut RenderPass) {
-        // // If the model is linked then update the position
-        // if let Some(boson_link) = self.boson_link.as_ref() {
-        //     if let Ok(boson_link) = boson_link.read() {
-        //         // Set the models position based off the boson object
-        //         self.position = boson_link.get_position();
-        //         self.rotation = boson_link.get_orientation();
-        //         self.transform_dirty = true;
-        //     }
-        // }
-
-        // let time_elapsed = self.time.elapsed().as_secs_f32();
-
-        // // Write the time to the buffer
-        // self.gpu_controller.queue.write_buffer(
-        //     &self.time_buffer,
-        //     0,
-        //     bytemuck::cast_slice(&[time_elapsed]),
-        // );
-
-        // if self.transform_dirty {
-        //     // Update the position buffer if changed
-        //     let model_transform = ModelTransform {
-        //         position: self.position.into(),
-        //         orientation: self.rotation.into(),
-        //         _padding: 0.0,
-        //     };
-
-        //     self.gpu_controller.queue.write_buffer(
-        //         &self.transform_buffer,
-        //         0,
-        //         bytemuck::cast_slice(&[model_transform]),
-        //     );
-
-        //     self.transform_dirty = false;
-        // }
-
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.render(render_pass, self.instancer.instance_count as u32);
+            mesh.with_read(|mesh| mesh.render(render_pass, self.instancer.instance_count as u32));
         }
     }
 
@@ -476,7 +418,9 @@ impl Model {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.debug_render(render_pass, self.instancer.instance_count as u32);
+            mesh.with_read(|mesh| {
+                mesh.debug_render(render_pass, self.instancer.instance_count as u32)
+            });
         }
     }
 }

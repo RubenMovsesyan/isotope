@@ -83,7 +83,7 @@ pub fn calculate_center_of_mass(model: &Model) -> Vector3<f32> {
     model
         .meshes
         .iter()
-        .for_each(|mesh| absolute_center += calculate_mesh_com(mesh));
+        .for_each(|mesh| mesh.with_read(|mesh| absolute_center += calculate_mesh_com(mesh)));
 
     absolute_center / model.meshes.len() as f32
 }
