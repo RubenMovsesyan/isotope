@@ -16,7 +16,7 @@ use wgpu::{
 };
 
 use crate::{
-    GpuController, Isotope, ParallelInstancerBuilder, bind_group_builder,
+    GpuController, ParallelInstancerBuilder, Transform, bind_group_builder,
     boson::{Linkable, boson_math::calculate_center_of_mass},
     element::{
         material::load_materials,
@@ -79,7 +79,7 @@ impl Default for ModelInstance {
 pub struct ModelTransform {
     position: [f32; 3],
     _padding: f32, // IMPORTANT: MAKE SURE TO HAVE THE PADDING IN THE RIGHT PLACE
-    rotation: [f32; 4],
+    orientation: [f32; 4],
 }
 
 #[allow(dead_code)]
@@ -110,7 +110,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_obj<P>(path: P, isotope: &Isotope) -> Result<Self>
+    pub fn from_obj<P>(path: P, gpu_controller: Arc<GpuController>) -> Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -120,8 +120,6 @@ impl Model {
                 .to_str()
                 .ok_or(anyhow!("Object Path Not Valid"))?
         );
-
-        let gpu_controller = isotope.gpu_controller.clone();
 
         // Obj file reading variables
         let mut mesh_name: Option<String> = None;
@@ -144,7 +142,7 @@ impl Model {
                 usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
                 contents: bytemuck::cast_slice(&[ModelTransform {
                     position: [0.0, 0.0, 0.0],
-                    rotation: [0.0, 0.0, 0.0, 1.0],
+                    orientation: [0.0, 0.0, 0.0, 1.0],
                     _padding: 0.0,
                 }]),
             },
@@ -321,7 +319,7 @@ impl Model {
             transform_dirty: false,
             transform_buffer,
             transform_bind_group,
-            gpu_controller: isotope.gpu_controller.clone(),
+            gpu_controller,
             boson_link: None,
             instancer: Arc::new(instancer),
             time_buffer,
@@ -377,33 +375,46 @@ impl Model {
         self.transform_dirty = true;
     }
 
-    // Linking a boson object to the model for physics
-    pub fn link(&mut self, linkable: impl Into<Arc<RwLock<dyn Linkable>>>) {
-        let l: Arc<RwLock<dyn Linkable>> = linkable.into();
-        if let Ok(l) = l.write() {
-            self.position = l.get_position();
-            self.rotation = l.get_orientation();
+    // // Linking a boson object to the model for physics
+    // pub fn link(&mut self, linkable: impl Into<Arc<RwLock<dyn Linkable>>>) {
+    //     let l: Arc<RwLock<dyn Linkable>> = linkable.into();
+    //     if let Ok(l) = l.write() {
+    //         self.position = l.get_position();
+    //         self.rotation = l.get_orientation();
 
-            if let Some(instancer) = l.get_instancer() {
-                self.instancer = instancer;
-            }
-        }
+    //         if let Some(instancer) = l.get_instancer() {
+    //             self.instancer = instancer;
+    //         }
+    //     }
 
-        self.boson_link = Some(l);
+    //     self.boson_link = Some(l);
 
-        // adujst the vertices of the model so that the center of mass is the origin
-        let center_of_mass = calculate_center_of_mass(self);
-        info!(
-            "Center of mass: {:#?}\nMoving origin to center",
-            center_of_mass
+    //     // adujst the vertices of the model so that the center of mass is the origin
+    //     let center_of_mass = calculate_center_of_mass(self);
+    //     info!(
+    //         "Center of mass: {:#?}\nMoving origin to center",
+    //         center_of_mass
+    //     );
+
+    //     for mesh in self.meshes.iter_mut() {
+    //         mesh.shift_vertices(|model_vertex| {
+    //             model_vertex.position =
+    //                 (Vector3::from(model_vertex.position) - center_of_mass).into();
+    //         });
+    //     }
+    // }
+    pub(crate) fn link_transform(&self, tranform: &Transform) {
+        let model_transform = ModelTransform {
+            position: tranform.position.into(),
+            orientation: tranform.orientation.into(),
+            _padding: 0.0,
+        };
+
+        self.gpu_controller.queue.write_buffer(
+            &self.transform_buffer,
+            0,
+            bytemuck::cast_slice(&[model_transform]),
         );
-
-        for mesh in self.meshes.iter_mut() {
-            mesh.shift_vertices(|model_vertex| {
-                model_vertex.position =
-                    (Vector3::from(model_vertex.position) - center_of_mass).into();
-            });
-        }
     }
 
     pub fn compute_instances(&self, encoder: &mut CommandEncoder) {
@@ -411,41 +422,41 @@ impl Model {
     }
 
     pub fn render(&mut self, render_pass: &mut RenderPass) {
-        // If the model is linked then update the position
-        if let Some(boson_link) = self.boson_link.as_ref() {
-            if let Ok(boson_link) = boson_link.read() {
-                // Set the models position based off the boson object
-                self.position = boson_link.get_position();
-                self.rotation = boson_link.get_orientation();
-                self.transform_dirty = true;
-            }
-        }
+        // // If the model is linked then update the position
+        // if let Some(boson_link) = self.boson_link.as_ref() {
+        //     if let Ok(boson_link) = boson_link.read() {
+        //         // Set the models position based off the boson object
+        //         self.position = boson_link.get_position();
+        //         self.rotation = boson_link.get_orientation();
+        //         self.transform_dirty = true;
+        //     }
+        // }
 
-        let time_elapsed = self.time.elapsed().as_secs_f32();
+        // let time_elapsed = self.time.elapsed().as_secs_f32();
 
-        // Write the time to the buffer
-        self.gpu_controller.queue.write_buffer(
-            &self.time_buffer,
-            0,
-            bytemuck::cast_slice(&[time_elapsed]),
-        );
+        // // Write the time to the buffer
+        // self.gpu_controller.queue.write_buffer(
+        //     &self.time_buffer,
+        //     0,
+        //     bytemuck::cast_slice(&[time_elapsed]),
+        // );
 
-        if self.transform_dirty {
-            // Update the position buffer if changed
-            let model_transform = ModelTransform {
-                position: self.position.into(),
-                rotation: self.rotation.into(),
-                _padding: 0.0,
-            };
+        // if self.transform_dirty {
+        //     // Update the position buffer if changed
+        //     let model_transform = ModelTransform {
+        //         position: self.position.into(),
+        //         orientation: self.rotation.into(),
+        //         _padding: 0.0,
+        //     };
 
-            self.gpu_controller.queue.write_buffer(
-                &self.transform_buffer,
-                0,
-                bytemuck::cast_slice(&[model_transform]),
-            );
+        //     self.gpu_controller.queue.write_buffer(
+        //         &self.transform_buffer,
+        //         0,
+        //         bytemuck::cast_slice(&[model_transform]),
+        //     );
 
-            self.transform_dirty = false;
-        }
+        //     self.transform_dirty = false;
+        // }
 
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 

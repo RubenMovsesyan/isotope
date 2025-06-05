@@ -55,6 +55,9 @@ impl BosonDebugger {
 #[derive(Debug)]
 pub struct BosonObject(Arc<RwLock<BosonBody>>);
 
+unsafe impl Send for BosonObject {}
+unsafe impl Sync for BosonObject {}
+
 impl BosonObject {
     pub fn new(object: impl Into<BosonBody>) -> Self {
         Self(Arc::new(RwLock::new(object.into())))
@@ -409,6 +412,9 @@ pub struct Boson {
     pub(crate) boson_debugger: BosonDebugger,
 }
 
+unsafe impl Send for Boson {}
+unsafe impl Sync for Boson {}
+
 impl Boson {
     pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Self {
         Self {
@@ -495,7 +501,6 @@ impl Boson {
     }
 
     pub(crate) fn set_debugger(&mut self, debugger: BosonDebugger) {
-        debug!("Setting Boson Debugger: {:#?}", debugger);
         self.boson_debugger = debugger;
 
         for object in self.objects.iter_mut() {
@@ -535,3 +540,6 @@ impl Boson {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct BosonAdded;

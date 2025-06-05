@@ -3,7 +3,7 @@ use std::{any::Any, fmt::Debug, time::Instant};
 use wgpu::RenderPass;
 use winit::{dpi::PhysicalPosition, keyboard::KeyCode, window::Window};
 
-use crate::{Light, PhotonCamera, boson::Boson};
+use crate::{Light, PhotonCamera, boson::Boson, compound::Compound};
 
 pub trait IsotopeState: Debug + Send + Sync {
     // This is run once when the game state is first added to Isotope ==========
@@ -19,6 +19,9 @@ pub trait IsotopeState: Debug + Send + Sync {
 
     #[allow(unused_variables)]
     fn update_with_window(&mut self, window: &Window, delta_t: &Instant, t: &Instant) {}
+
+    #[allow(unused_variables)]
+    fn update_with_ecs(&mut self, ecs: &Compound, delta_t: &Instant, t: &Instant) {}
 
     // Specific for rendering =================================================
     #[allow(unused_variables)]

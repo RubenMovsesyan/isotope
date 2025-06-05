@@ -143,6 +143,28 @@ impl Compound {
         }
     }
 
+    pub fn for_each_molecule_without<T, W, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let w_storage = self.get_or_create_storage::<W>();
+
+        let t_storage_guard = unsafe { t_storage.read().unwrap_unchecked() };
+        let w_storage_guard = unsafe { w_storage.read().unwrap_unchecked() };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                let t_data = t_cell.get();
+
+                f(*entity, &*t_data);
+            }
+        }
+    }
+
     pub fn for_each_duo<T1, T2, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -204,6 +226,28 @@ impl Compound {
         for (entity, cell) in &storage_guard.compounds {
             let mut data = cell.get_mut();
             f(*entity, &mut *data);
+        }
+    }
+
+    pub fn for_each_molecule_without_mut<T, W, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let w_storage = self.get_or_create_storage::<W>();
+
+        let t_storage_guard = unsafe { t_storage.read().unwrap_unchecked() };
+        let w_storage_guard = unsafe { w_storage.read().unwrap_unchecked() };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                let mut t_data = t_cell.get_mut();
+
+                f(*entity, &mut *t_data);
+            }
         }
     }
 

@@ -7,13 +7,14 @@ use std::{
 
 use anyhow::Result;
 use boson::{
-    BosonDebugger,
+    BosonAdded, BosonDebugger, Linkable,
     solver::{
         basic_impulse_solver::BasicImpulseSolver,
         position_solver::PositionSolver,
         // rotational_impulse_solver::RotationalImpulseSolver,
     },
 };
+use compound::Compound;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -38,8 +39,12 @@ pub use element::Element;
 pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::instancer::*;
-pub use photon::renderer::{camera::PhotonCamera, lights::light::Light};
+pub use photon::renderer::{
+    camera::PhotonCamera,
+    lights::light::{Color, Light},
+};
 pub use state::IsotopeState;
+pub use transform::Transform;
 pub use winit::keyboard::KeyCode; // Temp
 
 mod boson;
@@ -49,13 +54,14 @@ mod gpu_utils;
 mod impulse;
 mod photon;
 mod state;
+mod transform;
 mod utils;
 
 /// Main struct for the game engine app
 #[derive(Debug)]
 pub struct Isotope {
     // GPU
-    gpu_controller: Arc<GpuController>,
+    pub gpu_controller: Arc<GpuController>,
 
     // Window and Rendering
     photon: Option<PhotonManager>,
@@ -67,8 +73,10 @@ pub struct Isotope {
     impulse: ImpulseManager,
 
     // Keeping User defined variables
-    // state: Option<IsotopeState>,
     state: Option<Arc<RwLock<dyn IsotopeState>>>,
+
+    // ECS to tie everything together
+    compound: Arc<RwLock<Compound>>,
 
     // Isotope start function
     init_callback: fn(&mut Self),
@@ -81,7 +89,8 @@ pub struct Isotope {
     pub t: Arc<Instant>,
 
     // For physics
-    boson: Option<Arc<RwLock<Boson>>>,
+    boson: Arc<RwLock<Boson>>,
+    boson_thread: Option<JoinHandle<()>>,
 
     // Bool and thread handle for multithreading
     running: Arc<RwLock<bool>>,
@@ -95,7 +104,14 @@ pub fn new_isotope(
     init_callback: fn(&mut Isotope),
     update_callback: fn(&mut Isotope),
 ) -> Result<Isotope> {
+    info!("Creating Gpu Controller");
     let gpu_controller = Arc::new(GpuController::new()?);
+
+    info!("Creating ECS system");
+    let compound = Arc::new(RwLock::new(Compound::new()));
+
+    info!("Starting Boson Engine");
+    let boson = Arc::new(RwLock::new(Boson::new(gpu_controller.clone())));
 
     Ok(Isotope {
         gpu_controller,
@@ -103,36 +119,130 @@ pub fn new_isotope(
         elements: Vec::new(),
         impulse: ImpulseManager::default(),
         state: None,
+        compound,
         init_callback,
         update_callback,
         delta: Instant::now(),
         t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
         thread_handle: None,
-        boson: None,
+        boson,
+        boson_thread: None,
         debugging: false,
     })
 }
 
 impl Isotope {
+    /// This is where starting up every part of the engine happens all tied together with the ecs
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
+        // Initialize Photon rendering engine
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
 
-        if let Ok(mut running) = self.running.write() {
-            *running = true;
-        }
+        // Create references to all the necessary parts that boson needs
+        let boson = self.boson.clone();
+        let running = self.running.clone();
+        let compound = self.compound.clone();
+
+        // Initialize Boson Physics Engine
+        self.boson_thread = Some(std::thread::spawn(move || {
+            // Wait until The engine starts
+            loop {
+                if let Ok(running) = running.read() {
+                    if *running {
+                        break;
+                    }
+                }
+            }
+
+            info!("Starting Boson Thread");
+
+            // Temp
+            if let Ok(mut boson) = boson.write() {
+                boson.add_solver(PositionSolver);
+                boson.add_solver(BasicImpulseSolver);
+            }
+
+            let mut delta_t = Instant::now();
+            loop {
+                if let Ok(mut boson) = boson.write() {
+                    boson.step(&delta_t);
+                }
+
+                // Update delta_t
+                delta_t = Instant::now();
+
+                if let Ok(compound) = compound.read() {
+                    // Update all the transforms
+                    compound.for_each_duo_mut(
+                        |_entity, transform: &mut Transform, boson_object: &mut BosonObject| {
+                            boson_object.access(|object| {
+                                transform.position = object.get_position();
+                                transform.orientation = object.get_orientation();
+                            });
+                        },
+                    );
+
+                    // Add any new boson objects
+                    if let Ok(mut boson) = boson.write() {
+                        // TODO: Fix this stupidity
+                        let mut objects_to_add = Vec::new();
+                        let mut entities_to_add = Vec::new();
+
+                        compound.for_each_molecule_without::<_, BosonAdded, _>(
+                            |entity, object: &BosonObject| {
+                                entities_to_add.push(entity);
+                                objects_to_add.push(object.clone());
+                            },
+                        );
+
+                        entities_to_add.into_iter().for_each(|entity| {
+                            compound.add_molecule(entity, BosonAdded);
+                            debug!("Added To Boson: {}", entity);
+                        });
+
+                        for object in objects_to_add {
+                            boson.add_dynamic_object(object);
+                        }
+                    }
+                }
+
+                if let Ok(running) = running.read() {
+                    if !*running {
+                        break;
+                    }
+                }
+            }
+        }));
 
         (self.init_callback)(self);
 
-        Ok(())
-    }
+        // Add all the boson objects that the player added
+        if let Ok(compound) = self.compound.read() {
+            if let Ok(mut boson) = self.boson.write() {
+                // TODO: Fix this stupidity
+                let mut objects_to_add = Vec::new();
+                let mut entities_to_add = Vec::new();
 
-    // Initialize boson
-    pub fn initialize_boson(&mut self) -> Result<()> {
-        info!("Starting Boson Physics Engine");
-        self.boson = Some(Arc::new(RwLock::new(Boson::new(
-            self.gpu_controller.clone(),
-        ))));
+                compound.for_each_molecule(|entity, object: &BosonObject| {
+                    entities_to_add.push(entity);
+                    objects_to_add.push(object.clone());
+                });
+
+                entities_to_add.into_iter().for_each(|entity| {
+                    compound.add_molecule(entity, BosonAdded);
+                    debug!("Added To Boson: {}", entity);
+                });
+
+                for object in objects_to_add {
+                    boson.add_dynamic_object(object);
+                }
+            }
+        }
+
+        // Start the running checker
+        if let Ok(mut running) = self.running.write() {
+            *running = true;
+        }
 
         Ok(())
     }
@@ -144,20 +254,18 @@ impl Isotope {
     {
         callback(&mut self.debugging);
 
-        // Enable the boson debugger
-        if let Some(boson) = self.boson.as_mut() {
-            if let Ok(mut boson) = boson.write() {
-                boson.set_debugger(if self.debugging {
-                    BosonDebugger::new_basic(self.gpu_controller.clone())
-                } else {
-                    BosonDebugger::None
-                });
-            }
-        }
-
         // Enable debug rendering
         if let Some(photon) = self.photon.as_mut() {
             photon.set_debugger(|debugging| *debugging = self.debugging);
+        }
+
+        // Enable the boson debugger
+        if let Ok(mut boson) = self.boson.write() {
+            boson.set_debugger(if self.debugging {
+                BosonDebugger::new_basic(self.gpu_controller.clone())
+            } else {
+                BosonDebugger::None
+            });
         }
     }
 
@@ -177,21 +285,19 @@ impl Isotope {
         F: FnOnce(&mut bool),
     {
         // Enable the boson debugger
-        if let Some(boson) = self.boson.as_mut() {
-            if let Ok(mut boson) = boson.write() {
-                let mut debugging = match boson.boson_debugger {
-                    BosonDebugger::None => false,
-                    BosonDebugger::BasicDebugger { .. } => true,
-                };
+        if let Ok(mut boson) = self.boson.write() {
+            let mut debugging = match boson.boson_debugger {
+                BosonDebugger::None => false,
+                BosonDebugger::BasicDebugger { .. } => true,
+            };
 
-                callback(&mut debugging);
+            callback(&mut debugging);
 
-                boson.set_debugger(if debugging {
-                    BosonDebugger::new_basic(self.gpu_controller.clone())
-                } else {
-                    BosonDebugger::None
-                });
-            }
+            boson.set_debugger(if debugging {
+                BosonDebugger::new_basic(self.gpu_controller.clone())
+            } else {
+                BosonDebugger::None
+            });
         }
     }
 
@@ -199,16 +305,24 @@ impl Isotope {
     where
         F: FnOnce(&mut Boson),
     {
-        if let Some(boson) = self.boson.as_mut() {
-            if let Ok(mut boson) = boson.write() {
-                callback(&mut boson);
-            }
+        if let Ok(mut boson) = self.boson.write() {
+            callback(&mut boson);
         }
     }
 
     /// Add Elements to isotope
     pub fn add_element(&mut self, element: Arc<dyn Element>) {
         self.elements.push(element);
+    }
+
+    /// Allows modifications to the ecs and updates the game based on those modifications
+    pub fn ecs<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Compound),
+    {
+        if let Ok(mut compound) = self.compound.write() {
+            callback(&mut compound);
+        }
     }
 
     /// For handling input
@@ -252,28 +366,22 @@ impl Isotope {
         let state_clone = unsafe { self.state.as_ref().unwrap_unchecked().clone() };
         let t_clone = self.t.clone();
         let running_clone = self.running.clone();
-        let mut boson_clone = if let Some(boson) = self.boson.as_ref() {
-            Some(boson.clone())
-        } else {
-            None
-        };
+        let boson_clone = self.boson.clone();
 
         // Start an update thread that will run however fast it feels like
         self.thread_handle = Some(thread::spawn(move || {
             info!("Running Thread");
 
-            if let Some(boson) = boson_clone.as_mut() {
-                if let Ok(mut boson) = boson.write() {
-                    info!("Initializing Boson");
-                    if let Ok(mut state) = state_clone.write() {
-                        state.init_boson(&mut boson);
-                    }
-
-                    // Temp
-                    boson.add_solver(PositionSolver);
-                    boson.add_solver(BasicImpulseSolver);
-                    // boson.add_solver(RotationalImpulseSolver);
+            if let Ok(mut boson) = boson_clone.write() {
+                info!("Initializing Boson");
+                if let Ok(mut state) = state_clone.write() {
+                    state.init_boson(&mut boson);
                 }
+
+                // Temp
+                boson.add_solver(PositionSolver);
+                boson.add_solver(BasicImpulseSolver);
+                // boson.add_solver(RotationalImpulseSolver);
             }
 
             let mut delta_t = Instant::now();
@@ -282,10 +390,8 @@ impl Isotope {
                     state.update(&delta_t, &t_clone);
 
                     // Handle Boson updates here
-                    if let Some(boson) = boson_clone.as_mut() {
-                        if let Ok(mut boson) = boson.write() {
-                            boson.step(&delta_t);
-                        }
+                    if let Ok(mut boson) = boson_clone.write() {
+                        boson.step(&delta_t);
                     }
                 }
 
@@ -374,6 +480,31 @@ impl ApplicationHandler for Isotope {
         // TODO: extract into thread
         (self.update_callback)(self);
 
+        // Add any new boson objects
+        if let Ok(compound) = self.compound.read() {
+            if let Ok(mut boson) = self.boson.write() {
+                // TODO: Fix this stupidity
+                let mut objects_to_add = Vec::new();
+                let mut entities_to_add = Vec::new();
+
+                compound.for_each_molecule_without::<_, BosonAdded, _>(
+                    |entity, object: &BosonObject| {
+                        entities_to_add.push(entity);
+                        objects_to_add.push(object.clone());
+                    },
+                );
+
+                entities_to_add.into_iter().for_each(|entity| {
+                    compound.add_molecule(entity, BosonAdded);
+                    debug!("Added To Boson: {}", entity);
+                });
+
+                for object in objects_to_add {
+                    boson.add_dynamic_object(object);
+                }
+            }
+        }
+
         // Run the fixed update for the camera
         if let Some(camera) = self.camera() {
             // Store the camera pointer temporarily
@@ -421,36 +552,53 @@ impl ApplicationHandler for Isotope {
                 }
                 WindowEvent::RedrawRequested => {
                     if let Some(photon) = &mut self.photon {
-                        if let Some(state) = &mut self.state {
-                            if let Ok(state) = state.write() {
-                                // TODO: make this sligtly nicer looking
-                                _ = photon.render(
-                                    |render_pass: &mut RenderPass| {
-                                        state.render_elements(render_pass);
-                                    },
-                                    |encoder: &mut CommandEncoder| {
-                                        // TODO: move this to the top because update happens first
-                                        // Boson particle systems are tied to render thread because of delta_t
-                                        // Updating the instaces with the command encoder
-                                        if let Some(boson) = self.boson.as_ref() {
-                                            if let Ok(mut boson) = boson.write() {
-                                                boson.update_instances(encoder);
-                                            }
-                                        }
-                                    },
-                                    state.get_lights(),
-                                    |render_pass: &mut RenderPass| {
-                                        state.debug_render_elements(render_pass);
+                        // Get all the lights in the scene
+                        let mut lights: Vec<Light> = Vec::new();
 
-                                        if let Some(boson) = self.boson.as_ref() {
-                                            if let Ok(boson) = boson.read() {
-                                                boson.debug_render(render_pass);
-                                            }
-                                        }
-                                    },
-                                );
-                            }
+                        if let Ok(compound) = self.compound.read() {
+                            compound.for_each_molecule(|_entity, light: &Light| {
+                                lights.push(*light);
+                            });
                         }
+
+                        photon.renderer.update_lights(&lights);
+
+                        // Render all the models
+                        _ = photon.render(
+                            |render_pass: &mut RenderPass| {
+                                if let Ok(compound) = self.compound.read() {
+                                    // Update all the transform buffers of the models
+                                    compound.for_each_duo(
+                                        |_entity, model: &Model, transform: &Transform| {
+                                            model.link_transform(transform);
+                                        },
+                                    );
+
+                                    compound.for_each_molecule_mut(|_entity, model: &mut Model| {
+                                        model.render(render_pass);
+                                    });
+                                }
+                            },
+                            |encoder: &mut CommandEncoder| {
+                                if let Ok(mut boson) = self.boson.write() {
+                                    boson.update_instances(encoder);
+                                }
+                            },
+                            &lights,
+                            |render_pass: &mut RenderPass| {
+                                if let Ok(compound) = self.compound.read() {
+                                    compound.for_each_molecule_mut(
+                                        |_entity, model: &mut Model| unsafe {
+                                            model.debug_render(render_pass);
+                                        },
+                                    );
+                                }
+
+                                if let Ok(boson) = self.boson.write() {
+                                    boson.debug_render(render_pass);
+                                }
+                            },
+                        );
                     }
                 }
                 WindowEvent::Resized(new_size) => {

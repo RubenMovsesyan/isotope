@@ -78,7 +78,7 @@ impl ColliderDebugRenderer {
             .with_polygon_mode(PolygonMode::Fill)
             .with_vertex_shader(include_str!("debugging_shaders/collider_vert_debug.wgsl"))
             .with_fragment_shader(include_str!("debugging_shaders/collider_frag_debug.wgsl"))
-            .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
+            .with_vertex_buffer_layouts(&[ModelVertex::desc()])
             .add_bind_group_with_layout(bind_group_builder!(
                 gpu_controller.device,
                 "Boson Debugger",
