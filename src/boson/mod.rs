@@ -542,4 +542,4 @@ impl Boson {
 }
 
 #[derive(Debug)]
-pub struct BosonAdded;
+pub(crate) struct BosonAdded;

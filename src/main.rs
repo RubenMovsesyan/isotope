@@ -15,13 +15,11 @@ fn init(isotope: &mut Isotope) {
             }
             KeyCode::KeyR => {
                 let gpu_controller = isotope.gpu_controller.clone();
+                let model = Model::from_obj("test_files/cube.obj", gpu_controller).expect("Failed");
 
                 isotope.ecs(|ecs| {
                     let new_cube = ecs.create_entity();
-                    ecs.add_molecule(
-                        new_cube,
-                        Model::from_obj("test_files/cube.obj", gpu_controller).expect("Failed"),
-                    );
+                    ecs.add_molecule(new_cube, model);
                     ecs.add_molecule(new_cube, String::from(format!("Cube: {}", new_cube)));
                     ecs.add_molecule(new_cube, Transform::default());
 
@@ -32,9 +30,9 @@ fn init(isotope: &mut Isotope) {
                                 RigidBody::new(10.0, ColliderBuilder::Cube).expect("Failed");
 
                             rb.position = Vector3 {
-                                x: 10.0,
+                                x: -10.0,
                                 y: 0.0,
-                                z: 0.0,
+                                z: -10.0,
                             };
 
                             rb.velocity = Vector3 {
@@ -119,20 +117,7 @@ fn init(isotope: &mut Isotope) {
     });
 }
 
-fn update(isotope: &mut Isotope) {
-    let time = isotope.t.as_ref().elapsed().as_secs_f32();
-
-    isotope.ecs(|ecs| {
-        ecs.for_each_duo(|_entity, string: &String, object: &BosonObject| {
-            debug!("Object Name: {}", string);
-            let mut position: Vector3<f32> = Vector3::zero();
-            object.access(|object| {
-                position = object.get_pos();
-            });
-            debug!("Object Position: {:#?}", position);
-        });
-    })
-}
+fn update(isotope: &mut Isotope) {}
 
 fn main() {
     let mut app = new_isotope(init, update).expect("Failed");
