@@ -1,17 +1,22 @@
 use log::*;
-use std::{path::Path, sync::Arc};
+use std::{
+    path::Path,
+    sync::{Arc, RwLock},
+};
 use wgpu::{Buffer, BufferDescriptor, BufferUsages, Color};
 
 use anyhow::{Result, anyhow};
 
 use crate::{
-    GpuController, bind_group_builder,
+    bind_group_builder,
     photon::{
         render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
         renderer::texture::PhotonTexture,
     },
     utils::file_io::read_lines,
 };
+
+use super::asset_manager::AssetManager;
 
 // Default color to check for errors
 const ERROR_COLOR: Color = Color {
@@ -39,7 +44,7 @@ pub struct MaterialColor {
 #[derive(Debug)]
 pub struct Material {
     pub name: String,
-    pub diffuse_texture: PhotonTexture,
+    pub diffuse_texture: Arc<PhotonTexture>,
     pub ambient_color: Color,
     pub diffuse_color: Color,
     pub specular_color: Color,
@@ -54,7 +59,13 @@ pub struct Material {
 }
 
 impl Material {
-    pub fn new_default(gpu_controller: Arc<GpuController>) -> Self {
+    pub fn new_default(asset_manager: Arc<RwLock<AssetManager>>) -> Self {
+        let gpu_controller = if let Ok(asset_manager) = asset_manager.read() {
+            asset_manager.gpu_controller.clone()
+        } else {
+            unimplemented!();
+        };
+
         let texture = PhotonTexture::new_empty(gpu_controller.clone());
 
         let color_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
@@ -76,7 +87,7 @@ impl Material {
 
         Self {
             name: String::from("Material Default"),
-            diffuse_texture: texture,
+            diffuse_texture: Arc::new(texture),
             ambient_color: ERROR_COLOR,
             diffuse_color: ERROR_COLOR,
             specular_color: ERROR_COLOR,
@@ -116,10 +127,19 @@ impl Material {
     }
 }
 
-pub fn load_materials<P>(gpu_controller: Arc<GpuController>, path: P) -> Result<Vec<Arc<Material>>>
+pub fn load_materials<P>(
+    asset_manager: Arc<RwLock<AssetManager>>,
+    path: P,
+) -> Result<Vec<Arc<Material>>>
 where
     P: AsRef<Path>,
 {
+    let gpu_controller = if let Ok(asset_manager) = asset_manager.read() {
+        asset_manager.gpu_controller.clone()
+    } else {
+        return Err(anyhow!("Asset Manager Poisoned"));
+    };
+
     info!(
         "Loading Material: {}",
         path.as_ref()
@@ -155,7 +175,7 @@ where
                 }
 
                 current_material = Some({
-                    let mut mat = Material::new_default(gpu_controller.clone());
+                    let mut mat = Material::new_default(asset_manager.clone());
                     mat.name = line_split[1].to_string();
                     mat
                 });
@@ -248,8 +268,13 @@ where
 
                     debug!("Texture Path: {:#?}", diffuse_texture_path);
 
-                    let diffuse_texture =
-                        PhotonTexture::new_from_path(gpu_controller.clone(), diffuse_texture_path)?;
+                    // Get the material from the asset manager
+                    let diffuse_texture = if let Ok(mut asset_manager) = asset_manager.write() {
+                        asset_manager.get_texture(diffuse_texture_path)
+                    } else {
+                        error!("Asset Manger not accessible");
+                        Arc::new(PhotonTexture::new_empty(gpu_controller.clone()))
+                    };
 
                     material.diffuse_texture = diffuse_texture;
 

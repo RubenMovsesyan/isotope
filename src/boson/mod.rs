@@ -541,5 +541,6 @@ impl Boson {
     }
 }
 
+// Internal struct for keeping track of which obejects have been added to the boson engine
 #[derive(Debug)]
 pub(crate) struct BosonAdded;

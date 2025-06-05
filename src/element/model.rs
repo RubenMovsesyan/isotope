@@ -17,7 +17,7 @@ use wgpu::{
 
 use crate::{
     GpuController, ParallelInstancerBuilder, Transform, bind_group_builder,
-    boson::{Linkable, boson_math::calculate_center_of_mass},
+    boson::Linkable,
     element::{
         material::load_materials,
         model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
@@ -29,7 +29,7 @@ use crate::{
     utils::file_io::read_lines,
 };
 
-use super::{buffered::Buffered, material::Material, mesh::Mesh};
+use super::{asset_manager::AssetManager, buffered::Buffered, material::Material, mesh::Mesh};
 
 #[repr(C)]
 #[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -110,10 +110,16 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_obj<P>(path: P, gpu_controller: Arc<GpuController>) -> Result<Self>
+    pub fn from_obj<P>(path: P, asset_manager: Arc<RwLock<AssetManager>>) -> Result<Self>
     where
         P: AsRef<Path>,
     {
+        let gpu_controller = if let Ok(asset_manager) = asset_manager.read() {
+            asset_manager.gpu_controller.clone()
+        } else {
+            return Err(anyhow!("Asset Manager Poisoned"));
+        };
+
         info!(
             "Loading Object: {:#?}",
             path.as_ref()
@@ -167,7 +173,7 @@ impl Model {
                             &model_vertices,
                             &indices,
                             transform_buffer.clone(),
-                            gpu_controller.clone(),
+                            asset_manager.clone(),
                             if let Some(material_index) = material_index.take() {
                                 Some(materials[material_index].clone())
                             } else {
@@ -237,7 +243,7 @@ impl Model {
 
                     // Add all the found materials to the materials
                     materials.append(&mut load_materials(
-                        gpu_controller.clone(),
+                        asset_manager.clone(),
                         path_to_material,
                     )?);
                 }
@@ -275,7 +281,7 @@ impl Model {
                 &model_vertices,
                 &indices,
                 transform_buffer.clone(),
-                gpu_controller.clone(),
+                asset_manager.clone(),
                 if let Some(material_index) = material_index.take() {
                     Some(materials[material_index].clone())
                 } else {

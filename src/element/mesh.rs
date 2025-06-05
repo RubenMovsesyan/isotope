@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use log::*;
 use wgpu::{
@@ -14,7 +14,9 @@ use crate::{
     },
 };
 
-use super::{buffered::Buffered, material::Material, model_vertex::ModelVertex};
+use super::{
+    asset_manager::AssetManager, buffered::Buffered, material::Material, model_vertex::ModelVertex,
+};
 
 pub(crate) const INDEX_FORMAT: IndexFormat = IndexFormat::Uint32;
 
@@ -48,9 +50,16 @@ impl Mesh {
         vertices: &[ModelVertex],
         indices: &[u32],
         transform: Arc<Buffer>,
-        gpu_controller: Arc<GpuController>,
+        asset_manager: Arc<RwLock<AssetManager>>,
         material: Option<Arc<Material>>,
     ) -> Self {
+        // let gpu_controller = asset_manager.gpu_controller.clone();
+        let gpu_controller = if let Ok(asset_manager) = asset_manager.read() {
+            asset_manager.gpu_controller.clone()
+        } else {
+            unimplemented!();
+        };
+
         let vertex_buffer = gpu_controller
             .device
             .create_buffer_init(&BufferInitDescriptor {
@@ -130,7 +139,7 @@ impl Mesh {
         let material = if let Some(material) = material {
             material
         } else {
-            Arc::new(Material::new_default(gpu_controller.clone()))
+            Arc::new(Material::new_default(asset_manager))
         };
 
         let (mesh_bind_group_layout, mesh_bind_group) = bind_group_builder!(
