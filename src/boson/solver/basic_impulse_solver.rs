@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use cgmath::{InnerSpace, Vector2, Vector3, Zero};
+use log::error;
 
 use crate::boson::collider::Collision;
 
@@ -23,7 +24,7 @@ impl Solver for BasicImpulseSolver {
             let mut impulse: Vector3<f32> = Vector3::zero();
             let mut friction: Vector3<f32> = Vector3::zero();
 
-            collision.object_a.access(|a| {
+            match collision.object_a.access(|a| {
                 collision.object_b.access(|b| {
                     // Solving for impulse
 
@@ -70,25 +71,40 @@ impl Solver for BasicImpulseSolver {
                             friction = impulse_magnitude * tangent * mu;
                         }
                     }
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to access boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
             // Apply modifications
-            collision.object_a.modify(|a| {
+            match collision.object_a.modify(|a| {
                 let a_inv_mass = a.get_inv_mass();
                 a.vel(|velocity| {
                     *velocity -= impulse * a_inv_mass;
                     *velocity -= friction * a_inv_mass;
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
-            collision.object_b.modify(|b| {
+            match collision.object_b.modify(|b| {
                 let b_inv_mass = b.get_inv_mass();
                 b.vel(|velocity| {
                     *velocity += impulse * b_inv_mass;
                     *velocity += friction * b_inv_mass;
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 }

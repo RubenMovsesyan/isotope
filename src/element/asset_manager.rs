@@ -4,9 +4,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+use log::*;
+
 use crate::{gpu_utils::GpuController, photon::renderer::texture::PhotonTexture};
 
-use super::mesh::Mesh;
+use super::material::Material;
 
 #[derive(Debug)]
 pub(crate) struct SharedAsset<T>(Arc<RwLock<T>>);
@@ -14,6 +16,7 @@ pub(crate) struct SharedAsset<T>(Arc<RwLock<T>>);
 unsafe impl<T> Send for SharedAsset<T> {}
 unsafe impl<T> Sync for SharedAsset<T> {}
 
+#[allow(dead_code)]
 impl<T> SharedAsset<T> {
     pub(crate) fn new(t: T) -> Self {
         Self(Arc::new(RwLock::new(t)))
@@ -51,7 +54,7 @@ impl<T> Clone for SharedAsset<T> {
 #[derive(Debug)]
 pub struct AssetManager {
     textures: HashMap<String, SharedAsset<PhotonTexture>>,
-    meshes: HashMap<String, SharedAsset<Mesh>>,
+    materials: HashMap<String, SharedAsset<Material>>,
 
     // For loading assets
     pub(crate) gpu_controller: Arc<GpuController>,
@@ -61,7 +64,7 @@ impl AssetManager {
     pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Self {
         Self {
             textures: HashMap::new(),
-            meshes: HashMap::new(),
+            materials: HashMap::new(),
 
             gpu_controller,
         }
@@ -75,7 +78,6 @@ impl AssetManager {
         let texture_path = if let Some(path) = texture_path.as_ref().to_str() {
             path.to_string()
         } else {
-            // return Arc::new(PhotonTexture::new_empty(self.gpu_controller.clone()));
             return SharedAsset::new(PhotonTexture::new_empty(self.gpu_controller.clone()));
         };
 
@@ -98,25 +100,37 @@ impl AssetManager {
         }
     }
 
-    pub(crate) fn get_mesh<P>(&mut self, label: String) -> SharedAsset<Mesh> {
-        // If the texture path cannot be read for some reason just return an empty texture
-        if let Some(mesh) = self.meshes.get(&label) {
-            mesh.clone()
+    pub(crate) fn get_material(&mut self, material: String) -> SharedAsset<Material> {
+        if let Some(material) = self.materials.get(&material) {
+            material.clone()
         } else {
-            // let new_texture = SharedAsset::new(
-            //     if let Ok(texture) =
-            //         PhotonTexture::new_from_path(self.gpu_controller.clone(), &label)
-            //     {
-            //         texture
-            //     } else {
-            //         PhotonTexture::new_empty(self.gpu_controller.clone())
-            //     },
-            // );
+            let new_material = SharedAsset::new(Material::with_label(material.clone()));
 
-            // self.textures.insert(label, new_texture.clone());
+            self.materials.insert(material, new_material.clone());
 
-            // new_texture
-            todo!()
+            new_material
+        }
+    }
+
+    pub(crate) fn search_material(&self, material: String) -> Option<SharedAsset<Material>> {
+        if let Some(material) = self.materials.get(&material) {
+            Some(material.clone())
+        } else {
+            None
+        }
+    }
+
+    pub(crate) fn add_material(&mut self, material: Material) -> SharedAsset<Material> {
+        if let Some(material) = self.materials.get(&material.label()) {
+            warn!("Material Already in Shared Assets");
+            material.clone()
+        } else {
+            // First make sure to buffer the material onto the gpu
+
+            let label = material.label();
+            let shared_material = SharedAsset::new(material);
+            self.materials.insert(label, shared_material.clone());
+            shared_material
         }
     }
 }
