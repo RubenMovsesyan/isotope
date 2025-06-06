@@ -4,11 +4,11 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use log::{debug, info, warn};
+use log::*;
 
 use crate::{gpu_utils::GpuController, photon::renderer::texture::PhotonTexture};
 
-use super::{material::Material, mesh::Mesh};
+use super::material::Material;
 
 #[derive(Debug)]
 pub(crate) struct SharedAsset<T>(Arc<RwLock<T>>);
@@ -16,6 +16,7 @@ pub(crate) struct SharedAsset<T>(Arc<RwLock<T>>);
 unsafe impl<T> Send for SharedAsset<T> {}
 unsafe impl<T> Sync for SharedAsset<T> {}
 
+#[allow(dead_code)]
 impl<T> SharedAsset<T> {
     pub(crate) fn new(t: T) -> Self {
         Self(Arc::new(RwLock::new(t)))
@@ -53,7 +54,6 @@ impl<T> Clone for SharedAsset<T> {
 #[derive(Debug)]
 pub struct AssetManager {
     textures: HashMap<String, SharedAsset<PhotonTexture>>,
-    meshes: HashMap<String, SharedAsset<Mesh>>,
     materials: HashMap<String, SharedAsset<Material>>,
 
     // For loading assets
@@ -64,7 +64,6 @@ impl AssetManager {
     pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Self {
         Self {
             textures: HashMap::new(),
-            meshes: HashMap::new(),
             materials: HashMap::new(),
 
             gpu_controller,
@@ -132,40 +131,6 @@ impl AssetManager {
             let shared_material = SharedAsset::new(material);
             self.materials.insert(label, shared_material.clone());
             shared_material
-        }
-    }
-
-    pub(crate) fn get_mesh(&mut self, mesh: String) -> SharedAsset<Mesh> {
-        if let Some(mesh) = self.meshes.get(&mesh) {
-            mesh.clone()
-        } else {
-            let new_mesh = SharedAsset::new(Mesh::with_label(mesh.clone()));
-
-            self.meshes.insert(mesh, new_mesh.clone());
-
-            new_mesh
-        }
-    }
-
-    pub(crate) fn search_mesh(&self, mesh: String) -> Option<SharedAsset<Mesh>> {
-        if let Some(mesh) = self.meshes.get(&mesh) {
-            Some(mesh.clone())
-        } else {
-            None
-        }
-    }
-
-    pub(crate) fn add_mesh(&mut self, mesh: Mesh) -> SharedAsset<Mesh> {
-        if let Some(mesh) = self.meshes.get(&mesh.label()) {
-            warn!("Mesh Already in Shared Assets");
-            mesh.clone()
-        } else {
-            // First make sure to buffer the mesh onto the gpu
-
-            let label = mesh.label();
-            let shared_mesh = SharedAsset::new(mesh);
-            self.meshes.insert(label, shared_mesh.clone());
-            shared_mesh
         }
     }
 }

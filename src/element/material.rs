@@ -1,14 +1,9 @@
 use log::*;
-use std::{
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{path::Path, sync::Arc};
 use wgpu::{
-    Buffer, BufferDescriptor, BufferUsages, Color,
+    Buffer, BufferUsages,
     util::{BufferInitDescriptor, DeviceExt},
 };
-
-use anyhow::{Result, anyhow};
 
 use crate::{
     bind_group_builder,
@@ -17,22 +12,13 @@ use crate::{
         render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
         renderer::texture::PhotonTexture,
     },
-    utils::file_io::read_lines,
 };
 
-use super::asset_manager::{self, AssetManager};
-
-// Default color to check for errors
-const ERROR_COLOR: Color = Color {
-    r: 1.0,
-    g: 0.0,
-    b: 1.0,
-    a: 1.0,
-};
+use super::asset_manager::AssetManager;
 
 // For sending color data to gpu
 #[repr(C)]
-#[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Debug, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct MaterialColor {
     _padding: [u32; 2], // IMPORTANT! make sure padding is at the beginning because of alignment
     pub ambient_color: [f32; 3],
@@ -45,6 +31,24 @@ pub struct MaterialColor {
     pub optional_texture: u32, // 0 for false, 1 for true
 }
 
+// Error color as a default
+impl Default for MaterialColor {
+    fn default() -> Self {
+        Self {
+            _padding: [0, 0],
+            ambient_color: [1.0, 0.0, 1.0],
+            diffuse_color: [1.0, 0.0, 1.0],
+            specular_color: [1.0, 0.0, 1.0],
+            specular_focus: 100.0,
+            optical_density: 0.0,
+            dissolve: 0.0,
+            illum: 0,
+            optional_texture: 0,
+        }
+    }
+}
+
+#[allow(dead_code)]
 #[derive(Debug)]
 pub enum Material {
     Unbuffered {

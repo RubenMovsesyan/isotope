@@ -2,29 +2,20 @@ use std::{
     mem,
     path::Path,
     sync::{Arc, RwLock},
-    time::Instant,
 };
 
 use anyhow::{Result, anyhow};
-use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
 use obj_loader::Obj;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferAddress, BufferDescriptor,
-    BufferUsages, CommandEncoder, RenderPass, VertexAttribute, VertexBufferLayout, VertexFormat,
-    VertexStepMode,
-    util::{BufferInitDescriptor, DeviceExt},
+    Buffer, BufferAddress, BufferDescriptor, BufferUsages, CommandEncoder, RenderPass,
+    VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode,
 };
 
 use crate::{
-    GpuController, ParallelInstancerBuilder, Transform, bind_group_builder,
+    BosonBody, BosonObject, GpuController, Transform,
     boson::Linkable,
-    element::model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
-    photon::{
-        instancer::{Instance, InstanceBufferDescriptor, Instancer},
-        render_descriptor::STORAGE_RO,
-    },
-    utils::file_io::read_lines,
+    photon::instancer::{Instance, InstanceBufferDescriptor, Instancer},
 };
 
 use super::{
@@ -93,17 +84,10 @@ pub struct Model {
 
     // GPU
     transform_buffer: Arc<Buffer>,
-    // transform_bind_group: BindGroup,
     gpu_controller: Arc<GpuController>,
-
-    // Physics Linking
-    // boson_link: Option<Arc<RwLock<dyn Linkable>>>,
 
     // For gpu instancing
     instancer: Arc<Instancer<ModelInstance>>,
-    // Temp
-    // time_buffer: Buffer,
-    // time: Instant,
 }
 
 impl Model {
@@ -197,6 +181,22 @@ impl Model {
         );
     }
 
+    pub(crate) fn link_boson(&mut self, boson_object: &BosonObject) {
+        match boson_object.access(|object| match object {
+            BosonBody::ParticleSystem(particle_system) => {
+                if let Some(particle_instancer) = particle_system.get_instancer() {
+                    self.instancer = particle_instancer;
+                }
+            }
+            _ => {}
+        }) {
+            Ok(_) => {}
+            Err(err) => {
+                error!("Unable to link boson object due to: {}", err);
+            }
+        }
+    }
+
     pub fn compute_instances(&self, encoder: &mut CommandEncoder) {
         self.instancer.compute_instances(|_| {}, encoder);
     }
@@ -217,52 +217,4 @@ impl Model {
             mesh.debug_render(render_pass, self.instancer.instance_count as u32)
         }
     }
-
-    // pub fn with_custom_shaders(
-    //     mut self,
-    //     vertex_shader: &str,
-    //     fragment_shader: &str,
-    // ) -> Result<Self> {
-    //     self.meshes.iter_mut().for_each(|mesh| {
-    //         mesh.with_write(|mesh| mesh.set_shaders(vertex_shader, fragment_shader));
-    //     });
-
-    //     Ok(self)
-    // }
-
-    // pub fn with_custom_time_instancer(mut self, compute_shader: &str, instances: u64) -> Self {
-    //     let instancer: Instancer<ModelInstance> = ParallelInstancerBuilder::default()
-    //         .add_bind_group_with_layout(bind_group_builder!(
-    //             self.gpu_controller.device,
-    //             "Time Instancer",
-    //             (0, COMPUTE, self.time_buffer.as_entire_binding(), STORAGE_RO)
-    //         ))
-    //         .with_instance_count(instances)
-    //         .with_label("Time Instancer")
-    //         .with_compute_shader(compute_shader)
-    //         .build(self.gpu_controller.clone())
-    //         .expect("Failed to build model instancer");
-
-    //     self.instancer = Arc::new(instancer);
-
-    //     self
-    // }
-
-    // // Modifying the position
-    // pub fn pos<F>(&mut self, callback: F)
-    // where
-    //     F: FnOnce(&mut Vector3<f32>),
-    // {
-    //     callback(&mut self.position);
-    //     self.transform_dirty = true;
-    // }
-
-    // // Modifying the rotaition
-    // pub fn rot<F>(&mut self, callback: F)
-    // where
-    //     F: FnOnce(&mut Quaternion<f32>),
-    // {
-    //     callback(&mut self.rotation);
-    //     self.transform_dirty = true;
-    // }
 }

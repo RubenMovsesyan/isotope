@@ -94,15 +94,6 @@ impl Default for Mesh {
 }
 
 impl Mesh {
-    pub fn with_label(label: String) -> Self {
-        Self::Unbuffered {
-            vertices: Vec::new(),
-            indices: Vec::new(),
-            material: "".to_owned(),
-            label,
-        }
-    }
-
     pub fn label(&self) -> String {
         match self {
             Mesh::Unbuffered { label, .. } => label.to_owned(),

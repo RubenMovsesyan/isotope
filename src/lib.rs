@@ -58,7 +58,6 @@ mod impulse;
 mod photon;
 mod state;
 mod transform;
-mod utils;
 
 /// Main struct for the game engine app
 #[derive(Debug)]
@@ -185,10 +184,15 @@ impl Isotope {
                     // Update all the transforms
                     compound.for_each_duo_mut(
                         |_entity, transform: &mut Transform, boson_object: &mut BosonObject| {
-                            boson_object.access(|object| {
+                            match boson_object.access(|object| {
                                 transform.position = object.get_position();
                                 transform.orientation = object.get_orientation();
-                            });
+                            }) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    error!("Failed to Access Boson Object due to: {}", err);
+                                }
+                            }
                         },
                     );
 
@@ -217,6 +221,9 @@ impl Isotope {
                                                 .into();
                                     });
                                 });
+
+                                // Link the boson objects instancer to the model if it contains one
+                                model.link_boson(object);
                             },
                         );
 
