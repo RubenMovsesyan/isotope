@@ -8,6 +8,7 @@ use wgpu::{
 use crate::{
     bind_group_builder,
     element::asset_manager::SharedAsset,
+    gpu_utils::GpuController,
     photon::{
         render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
         renderer::texture::PhotonTexture,
@@ -63,6 +64,7 @@ pub enum Material {
         // For the gpu
         color_buffer: Buffer,
         render_descriptor: Arc<PhotonRenderDescriptor>,
+        gpu_controller: Arc<GpuController>,
     },
 }
 
@@ -187,13 +189,14 @@ impl Material {
                     "Material",
                     (0, FRAGMENT, color_buffer.as_entire_binding(), STORAGE_RO)
                 ))
-                .build_module(gpu_controller);
+                .build_module(gpu_controller.clone());
 
             Self::Buffered {
                 label,
                 color_buffer,
                 diffuse_texture,
                 render_descriptor: Arc::new(render_descriptor),
+                gpu_controller,
             }
         } else {
             self
