@@ -16,7 +16,8 @@ fn init(isotope: &mut Isotope) {
             }
             KeyCode::KeyR => {
                 let asset_manager = isotope.asset_manager.clone();
-                let model = Model::from_obj("test_files/cube.obj", asset_manager).expect("Failed");
+                let model =
+                    Model::from_obj("test_files/monkey.obj", asset_manager).expect("Failed");
 
                 isotope.ecs(|ecs| {
                     let new_cube = ecs.create_entity();

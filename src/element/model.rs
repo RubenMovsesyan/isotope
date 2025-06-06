@@ -8,6 +8,7 @@ use std::{
 use anyhow::{Result, anyhow};
 use cgmath::{One, Quaternion, Vector3, Zero};
 use log::*;
+use obj_loader::Obj;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferAddress, BufferDescriptor,
     BufferUsages, CommandEncoder, RenderPass, VertexAttribute, VertexBufferLayout, VertexFormat,
@@ -18,10 +19,7 @@ use wgpu::{
 use crate::{
     GpuController, ParallelInstancerBuilder, Transform, bind_group_builder,
     boson::Linkable,
-    element::{
-        material::load_materials,
-        model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
-    },
+    element::model_vertex::{ModelVertex, VertexNormalVec, VertexPosition, VertexUvCoord},
     photon::{
         instancer::{Instance, InstanceBufferDescriptor, Instancer},
         render_descriptor::STORAGE_RO,
@@ -90,28 +88,22 @@ pub struct ModelTransform {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Model {
-    pub(crate) meshes: Vec<SharedAsset<Mesh>>,
-    materials: Vec<Arc<Material>>,
-
-    // Global position and rotation
-    position: Vector3<f32>,
-    rotation: Quaternion<f32>,
-    transform_dirty: bool,
+    pub(crate) meshes: Vec<Mesh>,
+    materials: Vec<SharedAsset<Material>>,
 
     // GPU
     transform_buffer: Arc<Buffer>,
-    transform_bind_group: BindGroup,
+    // transform_bind_group: BindGroup,
     gpu_controller: Arc<GpuController>,
 
     // Physics Linking
-    boson_link: Option<Arc<RwLock<dyn Linkable>>>,
+    // boson_link: Option<Arc<RwLock<dyn Linkable>>>,
 
     // For gpu instancing
     instancer: Arc<Instancer<ModelInstance>>,
-
     // Temp
-    time_buffer: Buffer,
-    time: Instant,
+    // time_buffer: Buffer,
+    // time: Instant,
 }
 
 impl Model {
@@ -119,272 +111,76 @@ impl Model {
     where
         P: AsRef<Path>,
     {
-        let gpu_controller = if let Ok(asset_manager) = asset_manager.read() {
-            asset_manager.gpu_controller.clone()
-        } else {
-            return Err(anyhow!("Asset Manager Poisoned"));
-        };
+        debug!("Full Path: {:#?}", path.as_ref());
+        if let Ok(mut asset_manager) = asset_manager.write() {
+            let gpu_controller = asset_manager.gpu_controller.clone();
 
-        info!(
-            "Loading Object: {:#?}",
-            path.as_ref()
-                .to_str()
-                .ok_or(anyhow!("Object Path Not Valid"))?
-        );
+            let model_obj = if let Ok(obj) = Obj::new(&path) {
+                obj
+            } else {
+                todo!()
+            };
 
-        // Obj file reading variables
-        let mut mesh_name: Option<String> = None;
-        let mut vertices: Vec<VertexPosition> = Vec::new();
-        let mut uv_coords: Vec<VertexUvCoord> = Vec::new();
-        let mut normals: Vec<VertexNormalVec> = Vec::new();
-
-        let mut model_vertices: Vec<ModelVertex> = Vec::new();
-        let mut indices: Vec<u32> = Vec::new();
-
-        let mut meshes: Vec<SharedAsset<Mesh>> = Vec::new();
-        let mut materials: Vec<Arc<Material>> = Vec::new();
-
-        let mut material_index: Option<usize> = None;
-
-        // Create the buffer for global tranformations
-        let transform_buffer = Arc::new(gpu_controller.device.create_buffer_init(
-            &BufferInitDescriptor {
-                label: Some("Model Transform Buffer"),
+            // Create the transform buffer as it is needed for the meshes to reference
+            let transform_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+                label: Some("Model Transform"),
+                mapped_at_creation: false,
+                size: std::mem::size_of::<ModelTransform>() as u64,
                 usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-                contents: bytemuck::cast_slice(&[ModelTransform {
-                    position: [0.0, 0.0, 0.0],
-                    orientation: [0.0, 0.0, 0.0, 1.0],
-                    _padding: 0.0,
-                }]),
-            },
-        ));
-
-        let lines = read_lines(&path)?;
-
-        for line in lines.map_while(Result::ok) {
-            let line_split = line.split_whitespace().collect::<Vec<_>>();
-
-            if line_split.is_empty() {
-                continue;
-            }
-
-            match line_split[0] {
-                // Object definition
-                "o" => {
-                    // If there is a mesh currently in the buffer then add it to the model
-                    if let Some(name) = mesh_name.take() {
-                        let new_mesh = SharedAsset::new(Mesh::new(
-                            name,
-                            &model_vertices,
-                            &indices,
-                            transform_buffer.clone(),
-                            asset_manager.clone(),
-                            if let Some(material_index) = material_index.take() {
-                                Some(materials[material_index].clone())
-                            } else {
-                                None
-                            },
-                        ));
-
-                        meshes.push(new_mesh);
-
-                        model_vertices.clear();
-                        indices.clear();
-                    }
-
-                    mesh_name = Some(line_split[1].to_string());
-                }
-                // vertex
-                "v" => {
-                    vertices.push([
-                        line_split[1].parse::<f32>()?,
-                        line_split[2].parse::<f32>()?,
-                        line_split[3].parse::<f32>()?,
-                    ]);
-                }
-                // uv coordinate
-                "vt" => {
-                    uv_coords.push([
-                        1.0 - line_split[1].parse::<f32>()?,
-                        1.0 - line_split[2].parse::<f32>()?,
-                    ]);
-                }
-                // vertex normal
-                "vn" => {
-                    normals.push([
-                        line_split[1].parse::<f32>()?,
-                        line_split[2].parse::<f32>()?,
-                        line_split[3].parse::<f32>()?,
-                    ]);
-                }
-                // face
-                "f" => {
-                    for vertex_info in line_split[1..=3].iter() {
-                        let vertex_info_split = vertex_info.split('/').collect::<Vec<_>>();
-
-                        // Get the indices of each vertex, uv, and normal for the face
-                        let (vertex_index, uv_index, normal_index) = (
-                            vertex_info_split[0].parse::<usize>()? - 1,
-                            vertex_info_split[1].parse::<usize>()? - 1,
-                            vertex_info_split[2].parse::<usize>()? - 1,
-                        );
-
-                        model_vertices.push(ModelVertex::new(
-                            vertices[vertex_index],
-                            uv_coords[uv_index],
-                            normals[normal_index],
-                        ));
-
-                        indices.push(model_vertices.len() as u32 - 1);
-                    }
-                }
-                // material
-                "mtllib" => {
-                    let path_to_material = path
-                        .as_ref()
-                        .parent()
-                        .ok_or(anyhow!("Obj Path is invalid"))?
-                        .join(line_split[1]);
-
-                    // Add all the found materials to the materials
-                    materials.append(&mut load_materials(
-                        asset_manager.clone(),
-                        path_to_material,
-                    )?);
-                }
-                // object using the material
-                "usemtl" => {
-                    debug!("Searching for material: {}", line_split[1]);
-                    debug!("Num Materials: {}", materials.len());
-                    material_index = Some(
-                        *materials
-                            .iter()
-                            .enumerate()
-                            .filter_map(|(ind, m)| {
-                                info!("Searching: {}", m.name);
-                                if &m.name == line_split[1] {
-                                    info!("Found: {}", line_split[1]);
-                                    Some(ind)
-                                } else {
-                                    warn!("Skipping: {}", line_split[1]);
-                                    None
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .first()
-                            .ok_or(anyhow!("Material Invalid"))?,
-                    );
-                }
-                _ => {}
-            }
-        }
-
-        // Add the remaining object to the list
-        if let Some(name) = mesh_name.take() {
-            let new_mesh = SharedAsset::new(Mesh::new(
-                name,
-                &model_vertices,
-                &indices,
-                transform_buffer.clone(),
-                asset_manager.clone(),
-                if let Some(material_index) = material_index.take() {
-                    Some(materials[material_index].clone())
-                } else {
-                    None
-                },
-            ));
-
-            meshes.push(new_mesh);
-        }
-
-        // Create the bind group from the layout
-        let transform_bind_group = gpu_controller
-            .device
-            .create_bind_group(&BindGroupDescriptor {
-                label: Some("Model Transform Bind Group"),
-                // Safetey: Photon should alread exist at this point
-                layout: &gpu_controller.layouts.transform_layout,
-                entries: &[BindGroupEntry {
-                    binding: 0,
-                    resource: transform_buffer.as_entire_binding(),
-                }],
             });
 
-        let instancer = Instancer::new_series(
-            gpu_controller.clone(),
-            InstanceBufferDescriptor::Size(1),
-            "Default Model Instance",
-        );
+            let path_parent = if let Some(parent) = path.as_ref().parent() {
+                parent
+            } else {
+                Path::new("")
+            };
 
-        let time_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
-            label: Some("Time Buffer"),
-            mapped_at_creation: false,
-            size: std::mem::size_of::<f32>() as u64,
-            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-        });
+            // Load all the materials first in case we need some
+            let materials = model_obj
+                .materials
+                .iter()
+                .map(|(_, material)| {
+                    // Search for the material in the asset manager and add it if not in there
+                    let new_material: Material = material.into();
 
-        Ok(Self {
-            meshes,
-            materials,
-            position: Vector3::zero(),
-            rotation: Quaternion::one(),
-            transform_dirty: false,
-            transform_buffer,
-            transform_bind_group,
-            gpu_controller,
-            boson_link: None,
-            instancer: Arc::new(instancer),
-            time_buffer,
-            time: Instant::now(),
-        })
-    }
+                    if let Some(material) = asset_manager.search_material(new_material.label()) {
+                        material
+                    } else {
+                        info!(
+                            "Adding New Material to Asset Manager: {}",
+                            new_material.label()
+                        );
+                        let buffered = new_material.buffer(path_parent, &mut asset_manager);
+                        asset_manager.add_material(buffered)
+                    }
+                })
+                .collect::<Vec<SharedAsset<Material>>>();
 
-    pub fn with_custom_shaders(
-        mut self,
-        vertex_shader: &str,
-        fragment_shader: &str,
-    ) -> Result<Self> {
-        self.meshes.iter_mut().for_each(|mesh| {
-            mesh.with_write(|mesh| mesh.set_shaders(vertex_shader, fragment_shader));
-        });
+            let meshes = model_obj
+                .meshes
+                .iter()
+                .map(|mesh| {
+                    let new_mesh: Mesh = mesh.into();
+                    new_mesh.buffer(&transform_buffer, &mut asset_manager)
+                })
+                .collect::<Vec<Mesh>>();
 
-        Ok(self)
-    }
+            let instancer = Arc::new(Instancer::new_series(
+                gpu_controller.clone(),
+                InstanceBufferDescriptor::Size(1),
+                "Mesh",
+            ));
 
-    pub fn with_custom_time_instancer(mut self, compute_shader: &str, instances: u64) -> Self {
-        let instancer: Instancer<ModelInstance> = ParallelInstancerBuilder::default()
-            .add_bind_group_with_layout(bind_group_builder!(
-                self.gpu_controller.device,
-                "Time Instancer",
-                (0, COMPUTE, self.time_buffer.as_entire_binding(), STORAGE_RO)
-            ))
-            .with_instance_count(instances)
-            .with_label("Time Instancer")
-            .with_compute_shader(compute_shader)
-            .build(self.gpu_controller.clone())
-            .expect("Failed to build model instancer");
-
-        self.instancer = Arc::new(instancer);
-
-        self
-    }
-
-    // Modifying the position
-    pub fn pos<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut Vector3<f32>),
-    {
-        callback(&mut self.position);
-        self.transform_dirty = true;
-    }
-
-    // Modifying the rotaition
-    pub fn rot<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut Quaternion<f32>),
-    {
-        callback(&mut self.rotation);
-        self.transform_dirty = true;
+            Ok(Self {
+                gpu_controller,
+                meshes,
+                materials,
+                transform_buffer: Arc::new(transform_buffer),
+                instancer,
+            })
+        } else {
+            Err(anyhow!("Asset Manager Poisoned"))
+        }
     }
 
     pub(crate) fn link_transform(&self, tranform: &Transform) {
@@ -409,7 +205,7 @@ impl Model {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.with_read(|mesh| mesh.render(render_pass, self.instancer.instance_count as u32));
+            mesh.render(render_pass, self.instancer.instance_count as u32);
         }
     }
 
@@ -418,9 +214,55 @@ impl Model {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.with_read(|mesh| {
-                mesh.debug_render(render_pass, self.instancer.instance_count as u32)
-            });
+            mesh.debug_render(render_pass, self.instancer.instance_count as u32)
         }
     }
+
+    // pub fn with_custom_shaders(
+    //     mut self,
+    //     vertex_shader: &str,
+    //     fragment_shader: &str,
+    // ) -> Result<Self> {
+    //     self.meshes.iter_mut().for_each(|mesh| {
+    //         mesh.with_write(|mesh| mesh.set_shaders(vertex_shader, fragment_shader));
+    //     });
+
+    //     Ok(self)
+    // }
+
+    // pub fn with_custom_time_instancer(mut self, compute_shader: &str, instances: u64) -> Self {
+    //     let instancer: Instancer<ModelInstance> = ParallelInstancerBuilder::default()
+    //         .add_bind_group_with_layout(bind_group_builder!(
+    //             self.gpu_controller.device,
+    //             "Time Instancer",
+    //             (0, COMPUTE, self.time_buffer.as_entire_binding(), STORAGE_RO)
+    //         ))
+    //         .with_instance_count(instances)
+    //         .with_label("Time Instancer")
+    //         .with_compute_shader(compute_shader)
+    //         .build(self.gpu_controller.clone())
+    //         .expect("Failed to build model instancer");
+
+    //     self.instancer = Arc::new(instancer);
+
+    //     self
+    // }
+
+    // // Modifying the position
+    // pub fn pos<F>(&mut self, callback: F)
+    // where
+    //     F: FnOnce(&mut Vector3<f32>),
+    // {
+    //     callback(&mut self.position);
+    //     self.transform_dirty = true;
+    // }
+
+    // // Modifying the rotaition
+    // pub fn rot<F>(&mut self, callback: F)
+    // where
+    //     F: FnOnce(&mut Quaternion<f32>),
+    // {
+    //     callback(&mut self.rotation);
+    //     self.transform_dirty = true;
+    // }
 }
