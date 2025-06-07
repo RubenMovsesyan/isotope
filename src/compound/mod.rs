@@ -187,6 +187,34 @@ impl Compound {
         }
     }
 
+    pub fn for_each_duo_without<T1, T2, W, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2) + Send + Sync,
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let w_storage = self.get_or_create_storage::<W>();
+
+        let t1_storage_guard = unsafe { t1_storage.read().unwrap_unchecked() };
+        let t2_storage_guard = unsafe { t2_storage.read().unwrap_unchecked() };
+        let w_storage_guard = unsafe { w_storage.read().unwrap_unchecked() };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    let t1_data = t1_cell.get();
+                    let t2_data = t2_cell.get();
+
+                    f(*entity, &*t1_data, &*t2_data);
+                }
+            }
+        }
+    }
+
     pub fn for_each_trio<T1, T2, T3, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -269,6 +297,34 @@ impl Compound {
                 let mut t2_data = t2_cell.get_mut();
 
                 f(*entity, &mut *t1_data, &mut *t2_data);
+            }
+        }
+    }
+
+    pub fn for_each_duo_without_mut<T1, T2, W, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2) + Send + Sync,
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let w_storage = self.get_or_create_storage::<W>();
+
+        let t1_storage_guard = unsafe { t1_storage.read().unwrap_unchecked() };
+        let t2_storage_guard = unsafe { t2_storage.read().unwrap_unchecked() };
+        let w_storage_guard = unsafe { w_storage.read().unwrap_unchecked() };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    let mut t1_data = t1_cell.get_mut();
+                    let mut t2_data = t2_cell.get_mut();
+
+                    f(*entity, &mut *t1_data, &mut *t2_data);
+                }
             }
         }
     }

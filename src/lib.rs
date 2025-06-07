@@ -8,13 +8,16 @@ use std::{
 use anyhow::Result;
 use boson::{
     BosonAdded, BosonDebugger, Linkable,
+    boson_math::calculate_center_of_mass,
     solver::{
         basic_impulse_solver::BasicImpulseSolver,
         position_solver::PositionSolver,
         // rotational_impulse_solver::RotationalImpulseSolver,
     },
 };
+use cgmath::Vector3;
 use compound::Compound;
+use element::asset_manager::AssetManager;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -55,13 +58,15 @@ mod impulse;
 mod photon;
 mod state;
 mod transform;
-mod utils;
 
 /// Main struct for the game engine app
 #[derive(Debug)]
 pub struct Isotope {
     // GPU
     pub gpu_controller: Arc<GpuController>,
+
+    // Managing assets
+    pub asset_manager: Arc<RwLock<AssetManager>>,
 
     // Window and Rendering
     photon: Option<PhotonManager>,
@@ -113,8 +118,12 @@ pub fn new_isotope(
     info!("Starting Boson Engine");
     let boson = Arc::new(RwLock::new(Boson::new(gpu_controller.clone())));
 
+    info!("Starting Asset Manager");
+    let asset_manager = Arc::new(RwLock::new(AssetManager::new(gpu_controller.clone())));
+
     Ok(Isotope {
         gpu_controller,
+        asset_manager,
         photon: None,
         elements: Vec::new(),
         impulse: ImpulseManager::default(),
@@ -175,10 +184,15 @@ impl Isotope {
                     // Update all the transforms
                     compound.for_each_duo_mut(
                         |_entity, transform: &mut Transform, boson_object: &mut BosonObject| {
-                            boson_object.access(|object| {
+                            match boson_object.access(|object| {
                                 transform.position = object.get_position();
                                 transform.orientation = object.get_orientation();
-                            });
+                            }) {
+                                Ok(_) => {}
+                                Err(err) => {
+                                    error!("Failed to Access Boson Object due to: {}", err);
+                                }
+                            }
                         },
                     );
 
@@ -188,10 +202,28 @@ impl Isotope {
                         let mut objects_to_add = Vec::new();
                         let mut entities_to_add = Vec::new();
 
-                        compound.for_each_molecule_without::<_, BosonAdded, _>(
-                            |entity, object: &BosonObject| {
+                        compound.for_each_duo_without_mut::<_, _, BosonAdded, _>(
+                            |entity, object: &mut BosonObject, model: &mut Model| {
                                 entities_to_add.push(entity);
                                 objects_to_add.push(object.clone());
+
+                                // Shifting the center of mass of the model to fit with the boson physics model
+                                let center_of_mass = calculate_center_of_mass(model);
+                                info!(
+                                    "Center of mass: {:#?}\nMoving origin to center",
+                                    center_of_mass
+                                );
+
+                                model.meshes.iter_mut().for_each(|mesh| {
+                                    mesh.shift_vertices(|model_vertex| {
+                                        model_vertex.position =
+                                            (Vector3::from(model_vertex.position) - center_of_mass)
+                                                .into();
+                                    });
+                                });
+
+                                // Link the boson objects instancer to the model if it contains one
+                                model.link_boson(object);
                             },
                         );
 
@@ -215,29 +247,6 @@ impl Isotope {
         }));
 
         (self.init_callback)(self);
-
-        // Add all the boson objects that the player added
-        if let Ok(compound) = self.compound.read() {
-            if let Ok(mut boson) = self.boson.write() {
-                // TODO: Fix this stupidity
-                let mut objects_to_add = Vec::new();
-                let mut entities_to_add = Vec::new();
-
-                compound.for_each_molecule(|entity, object: &BosonObject| {
-                    entities_to_add.push(entity);
-                    objects_to_add.push(object.clone());
-                });
-
-                entities_to_add.into_iter().for_each(|entity| {
-                    compound.add_molecule(entity, BosonAdded);
-                    debug!("Added To Boson: {}", entity);
-                });
-
-                for object in objects_to_add {
-                    boson.add_dynamic_object(object);
-                }
-            }
-        }
 
         // Start the running checker
         if let Ok(mut running) = self.running.write() {
@@ -479,31 +488,6 @@ impl ApplicationHandler for Isotope {
         // Run the fixed update
         // TODO: extract into thread
         (self.update_callback)(self);
-
-        // Add any new boson objects
-        if let Ok(compound) = self.compound.read() {
-            if let Ok(mut boson) = self.boson.write() {
-                // TODO: Fix this stupidity
-                let mut objects_to_add = Vec::new();
-                let mut entities_to_add = Vec::new();
-
-                compound.for_each_molecule_without::<_, BosonAdded, _>(
-                    |entity, object: &BosonObject| {
-                        entities_to_add.push(entity);
-                        objects_to_add.push(object.clone());
-                    },
-                );
-
-                entities_to_add.into_iter().for_each(|entity| {
-                    compound.add_molecule(entity, BosonAdded);
-                    debug!("Added To Boson: {}", entity);
-                });
-
-                for object in objects_to_add {
-                    boson.add_dynamic_object(object);
-                }
-            }
-        }
 
         // Run the fixed update for the camera
         if let Some(camera) = self.camera() {

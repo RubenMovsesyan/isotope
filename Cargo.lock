@@ -874,6 +874,7 @@ dependencies = [
  "cgmath",
  "image",
  "log",
+ "obj-loader",
  "obj_2_rust",
  "pollster",
  "pretty_env_logger",
@@ -1262,6 +1263,14 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "obj-loader"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
 ]
 
 [[package]]

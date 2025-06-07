@@ -1,10 +1,11 @@
-use cgmath::{One, Point3, Quaternion, Vector3, Zero};
+use cgmath::{Point3, Vector3, Zero};
 use isotope::*;
-use log::debug;
+
+#[allow(unused_imports)]
+use log::*;
 
 fn init(isotope: &mut Isotope) {
-    let gpu_controller = isotope.gpu_controller.clone();
-
+    let asset_manager = isotope.asset_manager.clone();
     isotope
         .impulse()
         .key_is_pressed(|key_code, isotope| match key_code {
@@ -14,8 +15,9 @@ fn init(isotope: &mut Isotope) {
                 });
             }
             KeyCode::KeyR => {
-                let gpu_controller = isotope.gpu_controller.clone();
-                let model = Model::from_obj("test_files/cube.obj", gpu_controller).expect("Failed");
+                let asset_manager = isotope.asset_manager.clone();
+                let model =
+                    Model::from_obj("test_files/monkey.obj", asset_manager).expect("Failed");
 
                 isotope.ecs(|ecs| {
                     let new_cube = ecs.create_entity();
@@ -53,7 +55,7 @@ fn init(isotope: &mut Isotope) {
         let cube = ecs.create_entity();
         ecs.add_molecule(
             cube,
-            Model::from_obj("test_files/cube.obj", gpu_controller.clone()).expect("Failed"),
+            Model::from_obj("test_files/cube.obj", asset_manager.clone()).expect("Failed"),
         );
 
         ecs.add_molecule(cube, String::from("Cube"));
@@ -81,7 +83,7 @@ fn init(isotope: &mut Isotope) {
         let plane = ecs.create_entity();
         ecs.add_molecule(
             plane,
-            Model::from_obj("test_files/plane.obj", gpu_controller.clone()).expect("Failed"),
+            Model::from_obj("test_files/plane.obj", asset_manager.clone()).expect("Failed"),
         );
         ecs.add_molecule(plane, Transform::default());
         ecs.add_molecule(
@@ -117,7 +119,7 @@ fn init(isotope: &mut Isotope) {
     });
 }
 
-fn update(isotope: &mut Isotope) {}
+fn update(_isotope: &mut Isotope) {}
 
 fn main() {
     let mut app = new_isotope(init, update).expect("Failed");

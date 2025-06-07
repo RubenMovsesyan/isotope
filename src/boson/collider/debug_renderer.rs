@@ -7,9 +7,7 @@ use wgpu::{
 
 use crate::{
     bind_group_builder,
-    element::{
-        buffered::Buffered, mesh::INDEX_FORMAT, model::ModelInstance, model_vertex::ModelVertex,
-    },
+    element::{buffered::Buffered, mesh::INDEX_FORMAT, model_vertex::ModelVertex},
     gpu_utils::GpuController,
     photon::render_descriptor::{
         PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO,

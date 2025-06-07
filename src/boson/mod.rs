@@ -4,6 +4,7 @@ use std::{
     time::Instant,
 };
 
+use anyhow::{Result, anyhow};
 use cgmath::{Matrix3, One, Quaternion, Vector3, Zero};
 use collider::{
     Collision, CollisionPoints, cube_collider::CubeCollider, sphere_collider::SphereCollider,
@@ -63,21 +64,23 @@ impl BosonObject {
         Self(Arc::new(RwLock::new(object.into())))
     }
 
-    pub fn modify<F>(&mut self, callback: F)
+    pub fn modify<F, R>(&mut self, callback: F) -> Result<R>
     where
-        F: FnOnce(&mut BosonBody),
+        F: FnOnce(&mut BosonBody) -> R,
     {
-        if let Ok(mut boson_body) = self.0.write() {
-            callback(&mut boson_body);
+        match self.0.write() {
+            Ok(mut boson_body) => Ok(callback(&mut boson_body)),
+            Err(err) => Err(anyhow!("RwLock Poisoned: {}", err)),
         }
     }
 
-    pub fn access<F>(&self, callback: F)
+    pub fn access<F, R>(&self, callback: F) -> Result<R>
     where
-        F: FnOnce(&BosonBody),
+        F: FnOnce(&BosonBody) -> R,
     {
-        if let Ok(boson_body) = self.0.read() {
-            callback(&boson_body);
+        match self.0.read() {
+            Ok(boson_body) => Ok(callback(&boson_body)),
+            Err(err) => Err(anyhow!("RwLock Poisoned: {}", err)),
         }
     }
 }
@@ -426,7 +429,7 @@ impl Boson {
     }
 
     pub fn add_dynamic_object(&mut self, mut object: BosonObject) {
-        object.modify(|object| {
+        match object.modify(|object| {
             object.build_collider(
                 object.get_scale_factor(),
                 self.gpu_controller.clone(),
@@ -434,10 +437,15 @@ impl Boson {
             );
 
             object.attach_debugger(&self.boson_debugger);
-        });
-
-        self.objects.push(object);
-        info!("Added Object to Boson");
+        }) {
+            Ok(_) => {
+                self.objects.push(object);
+                info!("Added Object to Boson");
+            }
+            Err(err) => {
+                error!("Failed to add Boson Object due to: {}", err);
+            }
+        }
     }
 
     pub(crate) fn add_solver(&mut self, solver: impl Solver) {
@@ -452,12 +460,20 @@ impl Boson {
             let mut check_collision = true;
 
             // check if the collision needs to be checked
-            object_a.access(|object_a| match object_a {
+            match object_a.access(|object_a| match object_a {
                 BosonBody::StaticCollider(_) | BosonBody::ParticleSystem(_) => {
                     check_collision = false
                 }
                 _ => {}
-            });
+            }) {
+                Err(err) => {
+                    warn!(
+                        "Failed to check if collision needs to be checked due to: {}",
+                        err
+                    );
+                }
+                _ => {}
+            }
 
             if !check_collision {
                 continue;
@@ -470,11 +486,19 @@ impl Boson {
 
                 let mut collision = None;
 
-                object_a.access(|object_a| {
+                match object_a.access(|object_a| {
                     object_b.access(|object_b| {
                         collision = object_a.test_collision(object_b);
-                    });
-                });
+                    })
+                }) {
+                    Err(err) => {
+                        error!(
+                            "Failed to access Boson objects to check for collision due to: {}",
+                            err
+                        );
+                    }
+                    _ => {}
+                }
 
                 if let Some(points) = collision {
                     collisions.push(Collision {
@@ -504,9 +528,14 @@ impl Boson {
         self.boson_debugger = debugger;
 
         for object in self.objects.iter_mut() {
-            object.modify(|object| {
+            match object.modify(|object| {
                 object.attach_debugger(&self.boson_debugger);
-            });
+            }) {
+                Err(err) => {
+                    error!("Failed to set debugger on boson object due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -515,9 +544,14 @@ impl Boson {
             BosonDebugger::None => {}
             BosonDebugger::BasicDebugger { .. } => {
                 for object in self.objects.iter() {
-                    object.access(|object| {
+                    match object.access(|object| {
                         object.debug_render(render_pass);
-                    });
+                    }) {
+                        Err(err) => {
+                            error!("Failed to debug render boson object due to: {}", err);
+                        }
+                        _ => {}
+                    }
                 }
             }
         }
@@ -526,7 +560,12 @@ impl Boson {
     // Some GPU based systems should only be updated during render to avoid slowdown from writing to the gpu
     pub(crate) fn update_instances(&mut self, encoder: &mut CommandEncoder) {
         for object in self.objects.iter_mut() {
-            object.modify(|boson_body| boson_body.update_instances(encoder));
+            match object.modify(|boson_body| boson_body.update_instances(encoder)) {
+                Err(err) => {
+                    error!("Failed to update instances of boson object due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 
@@ -534,12 +573,18 @@ impl Boson {
         self.resolve_collisions(delta_t);
 
         for object in self.objects.iter_mut() {
-            object.modify(|boson_body| {
+            match object.modify(|boson_body| {
                 boson_body.update(delta_t);
-            });
+            }) {
+                Err(err) => {
+                    error!("Failed to step boson object due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 }
 
+// Internal struct for keeping track of which obejects have been added to the boson engine
 #[derive(Debug)]
 pub(crate) struct BosonAdded;

@@ -15,6 +15,7 @@ pub(crate) struct ModelVertex {
     pub(crate) normal_vec: VertexNormalVec,
 }
 
+#[allow(dead_code)]
 impl ModelVertex {
     pub(crate) fn new<PN, UV, NV>(position: PN, uv_coords: UV, normal_vec: NV) -> Self
     where
