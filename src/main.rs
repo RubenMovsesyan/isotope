@@ -28,8 +28,7 @@ fn init(isotope: &mut Isotope) {
                     ecs.add_molecule(
                         new_cube,
                         BosonObject::new({
-                            let mut rb =
-                                RigidBody::new(10.0, ColliderBuilder::Cube).expect("Failed");
+                            let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
 
                             rb.position = Vector3 {
                                 x: -10.0,
@@ -63,7 +62,7 @@ fn init(isotope: &mut Isotope) {
         ecs.add_molecule(
             cube,
             BosonObject::new({
-                let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube).expect("Failed");
+                let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
                 rb.position = Vector3 {
                     x: 0.0,
                     y: 10.0,

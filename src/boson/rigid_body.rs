@@ -1,6 +1,5 @@
 use std::{sync::Arc, time::Instant};
 
-use anyhow::Result;
 use cgmath::{ElementWise, InnerSpace, Matrix3, One, Quaternion, Rad, Rotation3, Vector3, Zero};
 use wgpu::RenderPass;
 
@@ -41,8 +40,8 @@ pub struct RigidBody {
 }
 
 impl RigidBody {
-    pub fn new(mass: f32, collider_builder: ColliderBuilder) -> Result<Self> {
-        Ok(Self {
+    pub fn new(mass: f32, collider_builder: ColliderBuilder) -> Self {
+        Self {
             position: Vector3::zero(),
             velocity: Vector3::zero(),
             current_acceleration: Vector3::zero(),
@@ -81,7 +80,7 @@ impl RigidBody {
             collider: Collider::Empty,
             collider_builder,
             debug_renderer: None,
-        })
+        }
     }
 
     pub fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {
