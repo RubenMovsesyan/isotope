@@ -35,7 +35,6 @@ pub struct PhotonRenderer {
 
     // Rendering requirements
     depth_texture: PhotonDepthTexture,
-    pub(crate) camera: PhotonCamera,
     pub(crate) lights: Lights,
 }
 
@@ -47,30 +46,30 @@ impl PhotonRenderer {
         // Initialie the camera
         // TODO: ADD INITIALIZATION OPTION
         // TODO: ADD CAMERA 2D
-        let camera = PhotonCamera::create_new_camera_3d(
-            gpu_controller.clone(),
-            &gpu_controller.layouts,
-            Point3 {
-                x: 2.0,
-                y: 2.0,
-                z: 2.0,
-            },
-            Vector3 {
-                x: -1.0,
-                y: -1.0,
-                z: -1.0,
-            },
-            Vector3 {
-                x: 0.0,
-                y: 1.0,
-                z: 0.0,
-            },
-            gpu_controller.surface_configuration().width as f32
-                / gpu_controller.surface_configuration().height as f32,
-            90.0,
-            0.1,
-            100.0,
-        );
+        // let camera = PhotonCamera::create_new_camera_3d(
+        //     gpu_controller.clone(),
+        //     &gpu_controller.layouts,
+        //     Point3 {
+        //         x: 2.0,
+        //         y: 2.0,
+        //         z: 2.0,
+        //     },
+        //     Vector3 {
+        //         x: -1.0,
+        //         y: -1.0,
+        //         z: -1.0,
+        //     },
+        //     Vector3 {
+        //         x: 0.0,
+        //         y: 1.0,
+        //         z: 0.0,
+        //     },
+        //     gpu_controller.surface_configuration().width as f32
+        //         / gpu_controller.surface_configuration().height as f32,
+        //     90.0,
+        //     0.1,
+        //     100.0,
+        // );
 
         // Initialize with no lights
         let lights = Lights::new_with_lights(&gpu_controller, &[]);
@@ -80,7 +79,6 @@ impl PhotonRenderer {
             debug_render_pipeline: None,
             debugging: false,
             depth_texture,
-            camera,
             lights,
         }
     }
@@ -121,8 +119,7 @@ impl PhotonRenderer {
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         self.depth_texture =
             PhotonDepthTexture::new_depth_texture_from_size(&self.gpu_controller, new_size);
-        self.camera
-            .set_aspect(new_size.width as f32 / new_size.height as f32);
+        // camera.set_aspect(new_size.width as f32 / new_size.height as f32);
     }
 
     // Renders all elements in the engine
@@ -132,6 +129,7 @@ impl PhotonRenderer {
         callback: F,
         update_callback: U,
         debug_callback: D,
+        camera: &mut PhotonCamera,
     ) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
@@ -139,7 +137,7 @@ impl PhotonRenderer {
         D: FnOnce(&mut RenderPass),
     {
         // Write to the camera buffer if needed
-        self.camera.write_buffer(); // only writing when rendering has a huge performance improvement
+        camera.write_buffer(); // only writing when rendering has a huge performance improvement
 
         let output = surface.get_current_texture()?;
 
@@ -182,7 +180,7 @@ impl PhotonRenderer {
 
             // Every render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
             // Camera
-            render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
+            render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
             render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
 
             callback(&mut render_pass);
@@ -216,7 +214,7 @@ impl PhotonRenderer {
                 render_pass.set_pipeline(&debug_pipeline);
 
                 // Camera
-                render_pass.set_bind_group(CAMERA_BIND_GROUP, &self.camera.bind_group, &[]);
+                render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
                 render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]); // Temp
 
                 debug_callback(&mut render_pass);

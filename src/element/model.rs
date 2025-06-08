@@ -91,80 +91,79 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_obj<P>(path: P, asset_manager: Arc<RwLock<AssetManager>>) -> Result<Self>
+    pub fn from_obj<P>(path: P, asset_manager: &mut AssetManager) -> Result<Self>
     where
         P: AsRef<Path>,
     {
         debug!("Full Path: {:#?}", path.as_ref());
-        if let Ok(mut asset_manager) = asset_manager.write() {
-            let gpu_controller = asset_manager.gpu_controller.clone();
+        // if let Ok(mut asset_manager) = asset_manager.write() {
+        let gpu_controller = asset_manager.gpu_controller.clone();
 
-            let model_obj = if let Ok(obj) = Obj::new(&path) {
-                obj
-            } else {
-                todo!()
-            };
-
-            // Create the transform buffer as it is needed for the meshes to reference
-            let transform_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
-                label: Some("Model Transform"),
-                mapped_at_creation: false,
-                size: std::mem::size_of::<ModelTransform>() as u64,
-                usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
-            });
-
-            let path_parent = if let Some(parent) = path.as_ref().parent() {
-                parent
-            } else {
-                Path::new("")
-            };
-
-            // Load all the materials first in case we need some
-            let materials = model_obj
-                .materials
-                .iter()
-                .map(|(_, material)| {
-                    // Search for the material in the asset manager and add it if not in there
-                    let new_material: Material = material.into();
-
-                    if let Some(material) = asset_manager.search_material(new_material.label()) {
-                        material
-                    } else {
-                        info!(
-                            "Adding New Material to Asset Manager: {}",
-                            new_material.label()
-                        );
-                        let buffered = new_material.buffer(path_parent, &mut asset_manager);
-                        asset_manager.add_material(buffered)
-                    }
-                })
-                .collect::<Vec<SharedAsset<Material>>>();
-
-            let meshes = model_obj
-                .meshes
-                .iter()
-                .map(|mesh| {
-                    let new_mesh: Mesh = mesh.into();
-                    new_mesh.buffer(&transform_buffer, &mut asset_manager)
-                })
-                .collect::<Vec<Mesh>>();
-
-            let instancer = Arc::new(Instancer::new_series(
-                gpu_controller.clone(),
-                InstanceBufferDescriptor::Size(1),
-                "Mesh",
-            ));
-
-            Ok(Self {
-                gpu_controller,
-                meshes,
-                materials,
-                transform_buffer: Arc::new(transform_buffer),
-                instancer,
-            })
+        let model_obj = if let Ok(obj) = Obj::new(&path) {
+            obj
         } else {
-            Err(anyhow!("Asset Manager Poisoned"))
-        }
+            todo!()
+        };
+
+        // Create the transform buffer as it is needed for the meshes to reference
+        let transform_buffer = gpu_controller.device.create_buffer(&BufferDescriptor {
+            label: Some("Model Transform"),
+            mapped_at_creation: false,
+            size: std::mem::size_of::<ModelTransform>() as u64,
+            usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+        });
+
+        let path_parent = if let Some(parent) = path.as_ref().parent() {
+            parent
+        } else {
+            Path::new("")
+        };
+
+        // Load all the materials first in case we need some
+        let materials = model_obj
+            .materials
+            .iter()
+            .map(|(_, material)| {
+                // Search for the material in the asset manager and add it if not in there
+                let new_material: Material = material.into();
+
+                if let Some(material) = asset_manager.search_material(new_material.label()) {
+                    material
+                } else {
+                    info!(
+                        "Adding New Material to Asset Manager: {}",
+                        new_material.label()
+                    );
+                    let buffered = new_material.buffer(path_parent, asset_manager);
+                    asset_manager.add_material(buffered)
+                }
+            })
+            .collect::<Vec<SharedAsset<Material>>>();
+
+        let meshes = model_obj
+            .meshes
+            .iter()
+            .map(|mesh| {
+                let new_mesh: Mesh = mesh.into();
+                new_mesh.buffer(&transform_buffer, asset_manager)
+            })
+            .collect::<Vec<Mesh>>();
+
+        let instancer = Arc::new(Instancer::new_series(
+            gpu_controller.clone(),
+            InstanceBufferDescriptor::Size(1),
+            "Mesh",
+        ));
+
+        Ok(Self {
+            gpu_controller,
+            meshes,
+            materials,
+            transform_buffer: Arc::new(transform_buffer),
+            instancer,
+        })
+        // } else { Err(anyhow!("Asset Manager Poisoned"))
+        // }
     }
 
     pub(crate) fn link_transform(&self, tranform: &Transform) {

@@ -6,7 +6,7 @@ use wgpu::{
     util::{BufferInitDescriptor, DeviceExt},
 };
 
-use crate::GpuController;
+use crate::{GpuController, Transform};
 
 use super::photon_layouts::PhotonLayoutsManager;
 
@@ -19,6 +19,9 @@ pub const OPENGL_TO_WGPU_MATIX: Matrix4<f32> = Matrix4::new(
 
 // Clamping constants
 const FOVY_CLAMP: (f32, f32) = (0.1, 179.9);
+
+#[derive(Debug)]
+pub struct Camera3D;
 
 #[derive(Debug)]
 pub struct PhotonCamera {
@@ -43,7 +46,6 @@ pub struct PhotonCamera {
 impl PhotonCamera {
     pub(crate) fn create_new_camera_3d(
         gpu_controller: Arc<GpuController>,
-        photon_layouts: &PhotonLayoutsManager,
         eye: Point3<f32>,
         target: Vector3<f32>,
         up: Vector3<f32>,
@@ -74,7 +76,7 @@ impl PhotonCamera {
             .device
             .create_bind_group(&BindGroupDescriptor {
                 label: Some("Photon Camera 3D Bind Group"),
-                layout: &photon_layouts.camera_layout,
+                layout: &gpu_controller.layouts.camera_layout,
                 entries: &[BindGroupEntry {
                     binding: 0,
                     resource: buffer.as_entire_binding(),
@@ -221,6 +223,28 @@ impl PhotonCamera {
         callback(&mut self.zfar);
 
         self.update();
+    }
+
+    pub(crate) fn link_transform(&mut self, transform: &Transform) {
+        let view = Matrix4::look_at_rh(
+            Point3::from_homogeneous(transform.position.extend(1.0)),
+            Point3::from_homogeneous((transform.position + self.target).extend(1.0)),
+            self.up,
+        );
+
+        let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+        let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+        self.camera_uniform = CameraUniform {
+            view_position: transform.position.extend(1.0).into(),
+            view_projection: view_proj.into(),
+        };
+
+        self.gpu_controller.queue.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
     }
 
     // Used internally for changing the screen size

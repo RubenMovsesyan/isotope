@@ -7,7 +7,7 @@ use wgpu::{CommandEncoder, RenderPass};
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
 use winit::{dpi::PhysicalSize, event_loop::ActiveEventLoop, window::Window};
 
-use crate::{Light, gpu_utils::GpuController};
+use crate::{Light, PhotonCamera, gpu_utils::GpuController};
 
 pub mod instancer;
 pub mod render_descriptor;
@@ -60,6 +60,7 @@ impl PhotonManager {
         update_callback: U,
         lights: &[Light],
         debug_callback: D,
+        camera: &mut PhotonCamera,
     ) -> Result<()>
     where
         F: FnOnce(&mut RenderPass),
@@ -72,6 +73,7 @@ impl PhotonManager {
             callback,
             update_callback,
             debug_callback,
+            camera,
         )
     }
 }
