@@ -142,7 +142,7 @@ impl IsotopeState for GameState {
             }
             KeyCode::Digit0 => {
                 ecs.for_each_molecule_mut(|_entity, debugger: &mut Debugger| {
-                    *debugger = debugger.toggle_boson();
+                    debugger.toggle_boson();
                 });
             }
             _ => {}

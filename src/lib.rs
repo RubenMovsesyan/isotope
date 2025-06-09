@@ -179,23 +179,27 @@ impl Isotope {
             loop {
                 // Enable Boson debugging if toggled
                 if let Ok(compound) = compound.read() {
-                    compound.for_each_molecule(|_entity, debugger: &Debugger| match debugger {
-                        Debugger::Boson | Debugger::ModelBoson => {
-                            if let Ok(mut boson) = boson.write() {
-                                boson.set_debugger(|debugging| {
-                                    *debugging = true;
-                                });
+                    compound.for_each_molecule_mut(
+                        |_entity, debugger: &mut Debugger| match debugger {
+                            Debugger::Boson | Debugger::ModelBoson => {
+                                if let Ok(mut boson) = boson.write() {
+                                    boson.set_debugger(|debugging| {
+                                        *debugging = true;
+                                    });
+                                }
+
+                                debugger.set_activated();
                             }
-                        }
-                        Debugger::None => {
-                            if let Ok(mut boson) = boson.write() {
-                                boson.set_debugger(|debugging| {
-                                    *debugging = false;
-                                });
+                            Debugger::None => {
+                                if let Ok(mut boson) = boson.write() {
+                                    boson.set_debugger(|debugging| {
+                                        *debugging = false;
+                                    });
+                                }
                             }
-                        }
-                        _ => {}
-                    });
+                            _ => {}
+                        },
+                    );
                 }
 
                 if let Ok(mut boson) = boson.write() {
