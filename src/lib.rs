@@ -7,7 +7,7 @@ use std::{
 
 use anyhow::Result;
 use boson::{
-    BosonAdded, BosonDebugger, Linkable,
+    BosonAdded, Linkable,
     boson_math::calculate_center_of_mass,
     solver::{
         basic_impulse_solver::BasicImpulseSolver,
@@ -17,7 +17,7 @@ use boson::{
 };
 use cgmath::{Point3, Vector3};
 use compound::Entity;
-use element::asset_manager;
+use debugger::Debugger;
 use gpu_utils::GpuController;
 use log::*;
 use photon::PhotonManager;
@@ -26,7 +26,6 @@ use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
-    window::Window,
 };
 
 // Publicly exposed types
@@ -60,6 +59,7 @@ pub const DEFAULT_TICK_RATE: Duration = Duration::from_micros(50);
 
 mod boson;
 pub mod compound;
+pub mod debugger;
 mod element;
 mod gpu_utils;
 mod impulse;
@@ -107,9 +107,6 @@ pub struct Isotope {
     state_thread_running: Arc<RwLock<bool>>,
     state_thread: Option<JoinHandle<()>>,
     tick_rate: Duration,
-
-    // For enabling or disabling debugging
-    debugging: bool,
 }
 
 pub fn new_isotope(
@@ -145,7 +142,6 @@ pub fn new_isotope(
         state_thread: None,
         boson,
         boson_thread: None,
-        debugging: false,
     })
 }
 
@@ -181,6 +177,27 @@ impl Isotope {
 
             let mut delta_t = Instant::now();
             loop {
+                // Enable Boson debugging if toggled
+                if let Ok(compound) = compound.read() {
+                    compound.for_each_molecule(|_entity, debugger: &Debugger| match debugger {
+                        Debugger::Boson | Debugger::ModelBoson => {
+                            if let Ok(mut boson) = boson.write() {
+                                boson.set_debugger(|debugging| {
+                                    *debugging = true;
+                                });
+                            }
+                        }
+                        Debugger::None => {
+                            if let Ok(mut boson) = boson.write() {
+                                boson.set_debugger(|debugging| {
+                                    *debugging = false;
+                                });
+                            }
+                        }
+                        _ => {}
+                    });
+                }
+
                 if let Ok(mut boson) = boson.write() {
                     boson.step(&delta_t);
                 }
@@ -265,26 +282,26 @@ impl Isotope {
     }
 
     // Set all debugging modes
-    pub fn set_debbuging<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut bool),
-    {
-        callback(&mut self.debugging);
+    // pub fn set_debbuging<F>(&mut self, callback: F)
+    // where
+    //     F: FnOnce(&mut bool),
+    // {
+    //     callback(&mut self.debugging);
 
-        // Enable debug rendering
-        if let Some(photon) = self.photon.as_mut() {
-            photon.set_debugger(|debugging| *debugging = self.debugging);
-        }
+    //     // Enable debug rendering
+    //     if let Some(photon) = self.photon.as_mut() {
+    //         photon.set_debugger(|debugging| *debugging = self.debugging);
+    //     }
 
-        // Enable the boson debugger
-        if let Ok(mut boson) = self.boson.write() {
-            boson.set_debugger(if self.debugging {
-                BosonDebugger::new_basic(self.gpu_controller.clone())
-            } else {
-                BosonDebugger::None
-            });
-        }
-    }
+    //     // Enable the boson debugger
+    //     if let Ok(mut boson) = self.boson.write() {
+    //         boson.set_debugger(if self.debugging {
+    //             BosonDebugger::new_basic(self.gpu_controller.clone())
+    //         } else {
+    //             BosonDebugger::None
+    //         });
+    //     }
+    // }
 
     // Only change the model debugging mode
     pub fn set_model_debugging<F>(&mut self, callback: F)
@@ -297,26 +314,26 @@ impl Isotope {
     }
 
     // Only set boson debugging mode
-    pub fn set_boson_debbuging<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut bool),
-    {
-        // Enable the boson debugger
-        if let Ok(mut boson) = self.boson.write() {
-            let mut debugging = match boson.boson_debugger {
-                BosonDebugger::None => false,
-                BosonDebugger::BasicDebugger { .. } => true,
-            };
+    // pub fn set_boson_debbuging<F>(&mut self, callback: F)
+    // where
+    //     F: FnOnce(&mut bool),
+    // {
+    //     // Enable the boson debugger
+    //     if let Ok(mut boson) = self.boson.write() {
+    //         // let mut debugging = match boson.boson_debugger {
+    //         //     BosonDebugger::None => false,
+    //         //     BosonDebugger::BasicDebugger { .. } => true,
+    //         // };
 
-            callback(&mut debugging);
+    //         callback(&mut debugging);
 
-            boson.set_debugger(if debugging {
-                BosonDebugger::new_basic(self.gpu_controller.clone())
-            } else {
-                BosonDebugger::None
-            });
-        }
-    }
+    //         // boson.set_debugger(if debugging {
+    //         //     BosonDebugger::new_basic(self.gpu_controller.clone())
+    //         // } else {
+    //         //     BosonDebugger::None
+    //         // });
+    //     }
+    // }
 
     pub fn modify_boson<F>(&mut self, callback: F)
     where
@@ -452,10 +469,6 @@ impl ApplicationHandler for Isotope {
         window_id: winit::window::WindowId,
         event: winit::event::WindowEvent,
     ) {
-        // Run the fixed update
-        // TODO: extract into thread
-        // (self.update_callback)(self);
-
         if let Ok(mut compound) = self.compound.write() {
             if let Ok(mut asset_manager) = self.asset_manager.write() {
                 (self.update_callback)(&mut compound, &mut asset_manager, &self.delta, &self.t);
@@ -528,6 +541,21 @@ impl ApplicationHandler for Isotope {
                                 lights.push(*light);
                             });
 
+                            compound.for_each_molecule(
+                                |_entity, debugger: &Debugger| match debugger {
+                                    Debugger::None => {
+                                        photon.set_debugger(|debugging| {
+                                            *debugging = false;
+                                        });
+                                    }
+                                    _ => {
+                                        photon.set_debugger(|debugging| {
+                                            *debugging = true;
+                                        });
+                                    }
+                                },
+                            );
+
                             photon.renderer.update_lights(&lights);
 
                             // Render all the models
@@ -597,16 +625,26 @@ impl ApplicationHandler for Isotope {
                         } => match state {
                             ElementState::Pressed => {
                                 // Game state update
-                                // if let Some(state) = self.state.as_mut() {
-                                //     if let Ok(mut state) = state.write() {
-                                //         match physical_key {
-                                //             winit::keyboard::PhysicalKey::Code(code) => {
-                                //                 state.key_is_pressed(code);
-                                //             }
-                                //             _ => {}
-                                //         }
-                                //     }
-                                // }
+                                if let Some(state) = self.state.as_mut() {
+                                    if let Ok(mut state) = state.write() {
+                                        if let Ok(mut compound) = self.compound.write() {
+                                            if let Ok(mut asset_manager) =
+                                                self.asset_manager.write()
+                                            {
+                                                match physical_key {
+                                                    winit::keyboard::PhysicalKey::Code(code) => {
+                                                        state.key_is_pressed(
+                                                            &mut compound,
+                                                            &mut asset_manager,
+                                                            code,
+                                                        );
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // Isotope update
                                 if let Some(callback) = self.impulse.key_is_pressed {
@@ -620,16 +658,26 @@ impl ApplicationHandler for Isotope {
                             }
                             ElementState::Released => {
                                 // Game state update
-                                // if let Some(state) = self.state.as_mut() {
-                                //     if let Ok(mut state) = state.write() {
-                                //         match physical_key {
-                                //             winit::keyboard::PhysicalKey::Code(code) => {
-                                //                 state.key_is_released(code);
-                                //             }
-                                //             _ => {}
-                                //         }
-                                //     }
-                                // }
+                                if let Some(state) = self.state.as_mut() {
+                                    if let Ok(mut state) = state.write() {
+                                        if let Ok(mut compound) = self.compound.write() {
+                                            if let Ok(mut asset_manager) =
+                                                self.asset_manager.write()
+                                            {
+                                                match physical_key {
+                                                    winit::keyboard::PhysicalKey::Code(code) => {
+                                                        state.key_is_released(
+                                                            &mut compound,
+                                                            &mut asset_manager,
+                                                            code,
+                                                        );
+                                                    }
+                                                    _ => {}
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
 
                                 // Isotope update
                                 if let Some(callback) = self.impulse.key_is_released {
@@ -676,26 +724,21 @@ impl ApplicationHandler for Isotope {
             }
         }
 
-        // // Run the fixed update for the window
-        // if let Some(photon) = &self.photon {
-        //     if let Some(state) = &self.state {
-        //         if let Ok(mut state_guard) = state.write() {
-        //             state_guard.update_with_window(&photon.window.window, &self.delta, &self.t);
-        //         }
-        //     }
-        // }
-
         // Update delta for the next go-around
         self.delta = Instant::now();
 
         match event {
             DeviceEvent::MouseMotion { delta } => {
                 // Game state update
-                // if let Some(state) = self.state.as_mut() {
-                //     if let Ok(mut state) = state.write() {
-                //         state.mouse_is_moved(delta);
-                //     }
-                // }
+                if let Some(state) = self.state.as_mut() {
+                    if let Ok(mut state) = state.write() {
+                        if let Ok(mut compound) = self.compound.write() {
+                            if let Ok(mut asset_manager) = self.asset_manager.write() {
+                                state.mouse_is_moved(&mut compound, &mut asset_manager, delta);
+                            }
+                        }
+                    }
+                }
 
                 // Run the Isotope callback for mouse movement
                 if let Some(callback) = self.impulse.mouse_is_moved {

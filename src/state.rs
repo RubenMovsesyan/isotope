@@ -1,9 +1,7 @@
-use std::{any::Any, fmt::Debug, time::Instant};
+use std::{any::Any, fmt::Debug};
+use winit::{dpi::PhysicalPosition, keyboard::KeyCode};
 
-use wgpu::RenderPass;
-use winit::{dpi::PhysicalPosition, keyboard::KeyCode, window::Window};
-
-use crate::{AssetManager, Light, PhotonCamera, boson::Boson, compound::Compound};
+use crate::{AssetManager, compound::Compound};
 
 pub trait IsotopeState: Debug + Send + Sync {
     // This is run once when the game state is first added to Isotope ==========
@@ -51,15 +49,42 @@ pub trait IsotopeState: Debug + Send + Sync {
     // #[allow(unused_variables)]
     // fn run_boson_updates(&mut self, boson: &mut Boson, delta_t: &Instant) {}
 
-    // // Key inputs in the gamestate ============================================
-    // #[allow(unused_variables)]
-    // fn key_is_pressed(&mut self, key_code: KeyCode) {}
-    // #[allow(unused_variables)]
-    // fn key_is_released(&mut self, key_code: KeyCode) {}
-    // #[allow(unused_variables)]
-    // fn cursor_moved(&mut self, position: PhysicalPosition<f64>) {}
-    // #[allow(unused_variables)]
-    // fn mouse_is_moved(&mut self, delta: (f64, f64)) {}
+    // Key inputs in the gamestate ============================================
+    #[allow(unused_variables)]
+    fn key_is_pressed(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+    ) {
+    }
+
+    #[allow(unused_variables)]
+    fn key_is_released(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+    ) {
+    }
+
+    #[allow(unused_variables)]
+    fn cursor_moved(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        position: PhysicalPosition<f64>,
+    ) {
+    }
+
+    #[allow(unused_variables)]
+    fn mouse_is_moved(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta: (f64, f64),
+    ) {
+    }
 
     // Required for downcasting ================================================
     fn as_any(&self) -> &dyn Any;

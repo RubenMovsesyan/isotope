@@ -8,8 +8,6 @@ use wgpu::{
 
 use crate::{GpuController, Transform};
 
-use super::photon_layouts::PhotonLayoutsManager;
-
 pub(crate) type Vector4 = [f32; 4];
 pub(crate) type Matrix4x4 = [[f32; 4]; 4];
 

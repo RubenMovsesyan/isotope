@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use camera::PhotonCamera;
-use cgmath::{Point3, Vector3};
 use lights::{Lights, light::Light};
 use texture::{PhotonDepthTexture, View};
 use wgpu::{

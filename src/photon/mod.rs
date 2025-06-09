@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use log::debug;
 use renderer::PhotonRenderer;
 use wgpu::{CommandEncoder, RenderPass};
 use window::{DEFAULT_HEIGHT, DEFAULT_WIDTH, PhotonWindow};
@@ -50,7 +49,7 @@ impl PhotonManager {
         F: FnOnce(&mut bool),
     {
         callback(&mut self.renderer.debugging);
-        debug!("Setting Photon Debugger: {}", self.renderer.debugging);
+        // debug!("Setting Photon Debugger: {}", self.renderer.debugging);
     }
 
     // Call on request redraw

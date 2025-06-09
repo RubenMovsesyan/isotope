@@ -1,10 +1,5 @@
-use std::{
-    mem,
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{mem, path::Path, sync::Arc};
 
-use anyhow::{Result, anyhow};
 use log::*;
 use obj_loader::Obj;
 use wgpu::{
@@ -91,7 +86,7 @@ pub struct Model {
 }
 
 impl Model {
-    pub fn from_obj<P>(path: P, asset_manager: &mut AssetManager) -> Result<Self>
+    pub fn from_obj<P>(path: P, asset_manager: &mut AssetManager) -> Self
     where
         P: AsRef<Path>,
     {
@@ -155,15 +150,13 @@ impl Model {
             "Mesh",
         ));
 
-        Ok(Self {
+        Self {
             gpu_controller,
             meshes,
             materials,
             transform_buffer: Arc::new(transform_buffer),
             instancer,
-        })
-        // } else { Err(anyhow!("Asset Manager Poisoned"))
-        // }
+        }
     }
 
     pub(crate) fn link_transform(&self, tranform: &Transform) {
