@@ -1,61 +1,29 @@
+use std::time::Instant;
+
 use cgmath::{Point3, Vector3, Zero};
+use isotope::debugger::*;
 use isotope::*;
 
 #[allow(unused_imports)]
 use log::*;
 
-fn init(isotope: &mut Isotope) {
-    let asset_manager = isotope.asset_manager.clone();
-    isotope
-        .impulse()
-        .key_is_pressed(|key_code, isotope| match key_code {
-            KeyCode::Digit0 => {
-                isotope.set_debbuging(|debugging| {
-                    *debugging = !*debugging;
-                });
-            }
-            KeyCode::KeyR => {
-                let asset_manager = isotope.asset_manager.clone();
-                let model =
-                    Model::from_obj("test_files/monkey.obj", asset_manager).expect("Failed");
+const CAMERA_SPEED: f32 = 10.0;
+const CAMERA_LOOK_SPEED: f32 = 50.0;
 
-                isotope.ecs(|ecs| {
-                    let new_cube = ecs.create_entity();
-                    ecs.add_molecule(new_cube, model);
-                    ecs.add_molecule(new_cube, String::from(format!("Cube: {}", new_cube)));
-                    ecs.add_molecule(new_cube, Transform::default());
+#[derive(Debug)]
+struct GameState {
+    w_pressed: bool,
+    s_pressed: bool,
+    a_pressed: bool,
+    d_pressed: bool,
 
-                    ecs.add_molecule(
-                        new_cube,
-                        BosonObject::new({
-                            let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
+    mouse_diff: (f32, f32),
+}
 
-                            rb.position = Vector3 {
-                                x: -10.0,
-                                y: 0.0,
-                                z: -10.0,
-                            };
-
-                            rb.velocity = Vector3 {
-                                x: 0.0,
-                                y: 10.0,
-                                z: 5.0,
-                            };
-
-                            rb
-                        }),
-                    );
-                });
-            }
-            _ => {}
-        });
-
-    isotope.ecs(|ecs| {
+impl IsotopeState for GameState {
+    fn init(&mut self, ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: f32, t: f32) {
         let cube = ecs.create_entity();
-        ecs.add_molecule(
-            cube,
-            Model::from_obj("test_files/cube.obj", asset_manager.clone()).expect("Failed"),
-        );
+        ecs.add_molecule(cube, Model::from_obj("test_files/cube.obj", asset_manager));
 
         ecs.add_molecule(cube, String::from("Cube"));
         ecs.add_molecule(cube, Transform::default());
@@ -82,7 +50,7 @@ fn init(isotope: &mut Isotope) {
         let plane = ecs.create_entity();
         ecs.add_molecule(
             plane,
-            Model::from_obj("test_files/plane.obj", asset_manager.clone()).expect("Failed"),
+            Model::from_obj("test_files/plane.obj", asset_manager),
         );
         ecs.add_molecule(plane, Transform::default());
         ecs.add_molecule(
@@ -115,13 +83,175 @@ fn init(isotope: &mut Isotope) {
                 1.0,
             ),
         );
-    });
+
+        let camera = ecs.create_entity();
+        ecs.add_molecule(camera, Camera3D);
+        // ecs.add_molecule(
+        //     camera,
+        //     Transform {
+        //         position: Vector3 {
+        //             x: 10.0,
+        //             y: 10.0,
+        //             z: 10.0,
+        //         },
+        //         ..Default::default()
+        //     },
+        // );
+        ecs.add_molecule(camera, CameraController::default());
+
+        let debugger = ecs.create_entity();
+        ecs.add_molecule(debugger, Debugger::None);
+    }
+
+    fn update(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta_t: f32,
+        t: f32,
+    ) {
+        ecs.for_each_duo_mut(
+            |_entity, _camera: &mut Camera3D, transform: &mut Transform| {
+                transform.position = Vector3 {
+                    x: 10.0 * f32::sin(t) + 10.0,
+                    y: 5.0,
+                    z: 10.0 * f32::cos(t) + 10.0,
+                };
+            },
+        );
+
+        if self.w_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.forward(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.s_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.backward(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.a_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_left(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.d_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_right(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            camera_controller.look((
+                self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+            ));
+        });
+
+        self.mouse_diff = (0.0, 0.0);
+    }
+
+    fn mouse_is_moved(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta: (f64, f64),
+        delta_t: f32,
+        t: f32,
+    ) {
+        self.mouse_diff = (-delta.0 as f32, -delta.1 as f32);
+    }
+
+    fn key_is_pressed(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
+    ) {
+        match key_code {
+            KeyCode::KeyR => {
+                let monkey = ecs.create_entity();
+                ecs.add_molecule(
+                    monkey,
+                    Model::from_obj("test_files/monkey.obj", asset_manager),
+                );
+
+                ecs.add_molecule(monkey, Transform::default());
+
+                ecs.add_molecule(
+                    monkey,
+                    BosonObject::new({
+                        let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
+
+                        rb.position = Vector3::new(-5.0, 0.0, -5.0);
+                        rb.velocity = Vector3::new(5.0, 10.0, 0.0);
+
+                        rb
+                    }),
+                );
+            }
+            KeyCode::Digit0 => {
+                ecs.for_each_molecule_mut(|_entity, debugger: &mut Debugger| {
+                    debugger.toggle_boson();
+                });
+            }
+            KeyCode::KeyW => self.w_pressed = true,
+            KeyCode::KeyS => self.s_pressed = true,
+            KeyCode::KeyA => self.a_pressed = true,
+            KeyCode::KeyD => self.d_pressed = true,
+            _ => {}
+        }
+    }
+
+    fn key_is_released(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
+    ) {
+        match key_code {
+            KeyCode::KeyW => self.w_pressed = false,
+            KeyCode::KeyS => self.s_pressed = false,
+            KeyCode::KeyA => self.a_pressed = false,
+            KeyCode::KeyD => self.d_pressed = false,
+            _ => {}
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self as &dyn Any
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self as &mut dyn Any
+    }
 }
 
-fn update(_isotope: &mut Isotope) {}
+fn update(ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: &Instant, t: &Instant) {}
 
 fn main() {
-    let mut app = new_isotope(init, update).expect("Failed");
+    let mut app = new_isotope(
+        |isotope: &mut Isotope| {
+            let game_state = GameState {
+                a_pressed: false,
+                s_pressed: false,
+                d_pressed: false,
+                w_pressed: false,
+
+                mouse_diff: (0.0, 0.0),
+            };
+            isotope.set_state(game_state);
+        },
+        update,
+    )
+    .expect("Failed");
 
     _ = start_isotope(&mut app);
 }
