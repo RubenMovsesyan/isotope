@@ -22,7 +22,6 @@ const VECTOR_IND_LEN: u32 = 2;
 #[repr(C)]
 #[derive(Debug, Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct VectorVertex {
-    // position: [f32; 3],
     vector_vertex: [f32; 3],
 }
 
@@ -32,18 +31,10 @@ impl Buffered for VectorVertex {
             array_stride: std::mem::size_of::<VectorVertex>() as BufferAddress,
             step_mode: VertexStepMode::Vertex,
             attributes: &[
-                // Position
-                // VertexAttribute {
-                //     format: VertexFormat::Float32x3,
-                //     offset: 0,
-                //     shader_location: 0,
-                // },
                 // Vector Vertex
                 VertexAttribute {
                     format: VertexFormat::Float32x3,
-                    // offset: std::mem::size_of::<[f32; 3]>() as BufferAddress,
                     offset: 0,
-                    // shader_location: 1,
                     shader_location: 0,
                 },
             ],
@@ -204,20 +195,6 @@ impl BosonDebugRenderer {
             &self.position_buffer,
             bytemuck::cast_slice(&position.into()),
         );
-        // let position_slice = position.into();
-
-        // self.velocity_render_descriptor
-        //     .write_buffer(&self.velocity_buffer, bytemuck::cast_slice(&position_slice));
-
-        // self.acceleration_render_descriptor.write_buffer(
-        //     &self.acceleration_buffer,
-        //     bytemuck::cast_slice(&position_slice),
-        // );
-
-        // self.angular_velocity_render_descriptor.write_buffer(
-        //     &self.angular_velocity_buffer,
-        //     bytemuck::cast_slice(&position_slice),
-        // );
     }
 
     #[inline]

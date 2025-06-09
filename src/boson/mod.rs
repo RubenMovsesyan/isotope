@@ -29,6 +29,52 @@ pub mod rigid_body;
 pub mod solver;
 pub mod static_collider;
 
+#[derive(Debug)]
+pub(crate) enum BosonDebugger {
+    None,
+    Inactive(BosonDebugRenderer),
+    Active(BosonDebugRenderer),
+}
+
+impl Default for BosonDebugger {
+    fn default() -> Self {
+        Self::None
+    }
+}
+
+#[allow(dead_code)]
+impl BosonDebugger {
+    pub(crate) fn set(self, debug_renderer: BosonDebugRenderer) -> Self {
+        Self::Inactive(debug_renderer)
+    }
+
+    pub(crate) fn set_active(self, debug_renderer: BosonDebugRenderer) -> Self {
+        Self::Active(debug_renderer)
+    }
+
+    pub(crate) fn activate(self) -> Self {
+        match self {
+            BosonDebugger::Inactive(debug_renderer) => Self::Active(debug_renderer),
+            BosonDebugger::Active(_) => self,
+            BosonDebugger::None => {
+                warn!("Boson Debug Renderer not set, cannot activate");
+                self
+            }
+        }
+    }
+
+    pub(crate) fn deactivate(self) -> Self {
+        match self {
+            BosonDebugger::Inactive(_) => self,
+            BosonDebugger::Active(debug_renderer) => Self::Inactive(debug_renderer),
+            BosonDebugger::None => {
+                warn!("Boson Debug Renderer not set, cannot deactivate");
+                self
+            }
+        }
+    }
+}
+
 // Wrapper struct
 #[derive(Debug)]
 pub struct BosonObject(Arc<RwLock<BosonBody>>);
@@ -251,21 +297,29 @@ impl BosonBody {
     }
 
     #[inline]
-    pub(crate) fn attach_debugger(&mut self, debugger: BosonDebugRenderer) {
+    pub fn activate_debugger(&mut self, gpu_controller: Arc<GpuController>) {
         match self {
             BosonBody::RigidBody(rigid_body) => {
-                rigid_body.debug_renderer = Some(debugger);
+                rigid_body.debugger(|debugger| match debugger {
+                    BosonDebugger::None => {
+                        *debugger = std::mem::take(debugger)
+                            .set_active(BosonDebugRenderer::new(gpu_controller));
+                    }
+                    _ => {
+                        *debugger = std::mem::take(debugger).activate();
+                    }
+                });
             }
             _ => {}
         }
     }
 
     #[inline]
-    pub(crate) fn remove_debugger(&mut self) {
+    pub(crate) fn deactivate_debugger(&mut self) {
         match self {
-            BosonBody::RigidBody(rigid_body) => {
-                rigid_body.debug_renderer = None;
-            }
+            BosonBody::RigidBody(rigid_body) => rigid_body.debugger(|debugger| {
+                *debugger = std::mem::take(debugger).deactivate();
+            }),
             _ => {}
         }
     }
@@ -403,7 +457,7 @@ impl Boson {
             object.build_collider(object.get_scale_factor(), self.gpu_controller.clone());
 
             if self.debugging {
-                object.attach_debugger(BosonDebugRenderer::new(self.gpu_controller.clone()));
+                object.activate_debugger(self.gpu_controller.clone());
             }
         }) {
             Ok(_) => {
@@ -496,8 +550,7 @@ impl Boson {
             if self.debugging {
                 for object in self.objects.iter_mut() {
                     match object.modify(|object| {
-                        object
-                            .attach_debugger(BosonDebugRenderer::new(self.gpu_controller.clone()));
+                        object.activate_debugger(self.gpu_controller.clone());
                     }) {
                         Err(err) => {
                             error!("Failed to set debugger on boson object due to: {}", err);
@@ -508,7 +561,7 @@ impl Boson {
             } else {
                 for object in self.objects.iter_mut() {
                     match object.modify(|object| {
-                        object.remove_debugger();
+                        object.deactivate_debugger();
                     }) {
                         Err(err) => {
                             error!("Failed to set debugger on boson object due to: {}", err);
@@ -519,22 +572,6 @@ impl Boson {
             }
         }
     }
-
-    // pub(crate) fn set_debugger(&mut self, debugger: BosonDebugger) {
-    //     self.boson_debugger = debugger;
-
-    //     for object in self.objects.iter_mut() {
-    //         match object.modify(|object| {
-    //             // object.attach_debugger(&self.boson_debugger, self.gpu_controller.clone());
-    //             object.attach_debugger(BosonDebugRenderer::new(self.gpu_controller.clone()));
-    //         }) {
-    //             Err(err) => {
-    //                 error!("Failed to set debugger on boson object due to: {}", err);
-    //             }
-    //             _ => {}
-    //         }
-    //     }
-    // }
 
     pub(crate) fn debug_render(&self, render_pass: &mut RenderPass) {
         if self.debugging {

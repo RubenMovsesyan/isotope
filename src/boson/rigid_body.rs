@@ -6,9 +6,8 @@ use wgpu::RenderPass;
 use crate::{ColliderBuilder, Instancer, element::model::ModelInstance};
 
 use super::{
-    BosonBody, Linkable,
+    BosonBody, BosonDebugger, Linkable,
     collider::{Collider, CollisionPoints},
-    debug_renderer::BosonDebugRenderer,
 };
 
 const ANGULAR_ACCELERATION_THRESHOLD: f32 = 0.001;
@@ -36,7 +35,8 @@ pub struct RigidBody {
     pub(crate) collider: Collider,
     pub collider_builder: ColliderBuilder,
 
-    pub(crate) debug_renderer: Option<BosonDebugRenderer>,
+    // pub(crate) debug_renderer: Option<BosonDebugRenderer>,
+    pub(crate) debugger: BosonDebugger,
 }
 
 impl RigidBody {
@@ -79,8 +79,15 @@ impl RigidBody {
             },
             collider: Collider::Empty,
             collider_builder,
-            debug_renderer: None,
+            debugger: BosonDebugger::None,
         }
+    }
+
+    pub(crate) fn debugger<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut BosonDebugger),
+    {
+        callback(&mut self.debugger);
     }
 
     pub fn apply_force(&mut self, force: Vector3<f32>, delta_t: &Instant) {
@@ -154,14 +161,16 @@ impl RigidBody {
         // Render the collider
         self.collider.debug_render(render_pass);
 
-        // Render the velocity
-        if let Some(debug_renderer) = self.debug_renderer.as_ref() {
-            debug_renderer.update_pos(self.position);
-            debug_renderer.update_vel(self.velocity);
-            debug_renderer.update_acc(self.current_acceleration);
-            debug_renderer.update_ang_vel(self.angular_velocity);
+        match &self.debugger {
+            BosonDebugger::Active(debug_renderer) => {
+                debug_renderer.update_pos(self.position);
+                debug_renderer.update_vel(self.velocity);
+                debug_renderer.update_acc(self.current_acceleration);
+                debug_renderer.update_ang_vel(self.angular_velocity);
 
-            debug_renderer.render(render_pass);
+                debug_renderer.render(render_pass);
+            }
+            _ => {}
         }
     }
 
