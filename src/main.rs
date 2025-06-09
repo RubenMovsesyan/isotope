@@ -7,9 +7,17 @@ use isotope::*;
 #[allow(unused_imports)]
 use log::*;
 
+const CAMERA_SPEED: f32 = 10.0;
+const CAMERA_LOOK_SPEED: f32 = 50.0;
+
 #[derive(Debug)]
-enum GameState {
-    InitialState,
+struct GameState {
+    w_pressed: bool,
+    s_pressed: bool,
+    a_pressed: bool,
+    d_pressed: bool,
+
+    mouse_diff: (f32, f32),
 }
 
 impl IsotopeState for GameState {
@@ -78,17 +86,18 @@ impl IsotopeState for GameState {
 
         let camera = ecs.create_entity();
         ecs.add_molecule(camera, Camera3D);
-        ecs.add_molecule(
-            camera,
-            Transform {
-                position: Vector3 {
-                    x: 10.0,
-                    y: 10.0,
-                    z: 10.0,
-                },
-                ..Default::default()
-            },
-        );
+        // ecs.add_molecule(
+        //     camera,
+        //     Transform {
+        //         position: Vector3 {
+        //             x: 10.0,
+        //             y: 10.0,
+        //             z: 10.0,
+        //         },
+        //         ..Default::default()
+        //     },
+        // );
+        ecs.add_molecule(camera, CameraController::default());
 
         let debugger = ecs.create_entity();
         ecs.add_molecule(debugger, Debugger::None);
@@ -104,12 +113,56 @@ impl IsotopeState for GameState {
         ecs.for_each_duo_mut(
             |_entity, _camera: &mut Camera3D, transform: &mut Transform| {
                 transform.position = Vector3 {
-                    x: f32::sin(t) + 10.0,
+                    x: 10.0 * f32::sin(t) + 10.0,
                     y: 5.0,
-                    z: f32::cos(t) + 10.0,
+                    z: 10.0 * f32::cos(t) + 10.0,
                 };
             },
         );
+
+        if self.w_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.forward(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.s_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.backward(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.a_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_left(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        if self.d_pressed {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_right(CAMERA_SPEED * delta_t);
+            });
+        }
+
+        ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            camera_controller.look((
+                self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+            ));
+        });
+
+        self.mouse_diff = (0.0, 0.0);
+    }
+
+    fn mouse_is_moved(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta: (f64, f64),
+        delta_t: f32,
+        t: f32,
+    ) {
+        self.mouse_diff = (-delta.0 as f32, -delta.1 as f32);
     }
 
     fn key_is_pressed(
@@ -117,6 +170,8 @@ impl IsotopeState for GameState {
         ecs: &mut Compound,
         asset_manager: &mut AssetManager,
         key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
     ) {
         match key_code {
             KeyCode::KeyR => {
@@ -145,6 +200,27 @@ impl IsotopeState for GameState {
                     debugger.toggle_boson();
                 });
             }
+            KeyCode::KeyW => self.w_pressed = true,
+            KeyCode::KeyS => self.s_pressed = true,
+            KeyCode::KeyA => self.a_pressed = true,
+            KeyCode::KeyD => self.d_pressed = true,
+            _ => {}
+        }
+    }
+
+    fn key_is_released(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
+    ) {
+        match key_code {
+            KeyCode::KeyW => self.w_pressed = false,
+            KeyCode::KeyS => self.s_pressed = false,
+            KeyCode::KeyA => self.a_pressed = false,
+            KeyCode::KeyD => self.d_pressed = false,
             _ => {}
         }
     }
@@ -163,7 +239,14 @@ fn update(ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: &Instan
 fn main() {
     let mut app = new_isotope(
         |isotope: &mut Isotope| {
-            let game_state = GameState::InitialState;
+            let game_state = GameState {
+                a_pressed: false,
+                s_pressed: false,
+                d_pressed: false,
+                w_pressed: false,
+
+                mouse_diff: (0.0, 0.0),
+            };
             isotope.set_state(game_state);
         },
         update,

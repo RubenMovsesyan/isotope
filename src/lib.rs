@@ -20,7 +20,7 @@ use compound::Entity;
 use debugger::Debugger;
 use gpu_utils::GpuController;
 use log::*;
-use photon::PhotonManager;
+use photon::{PhotonManager, renderer::camera::PhotonCamera};
 use wgpu::{CommandEncoder, RenderPass};
 use winit::{
     application::ApplicationHandler,
@@ -44,7 +44,7 @@ pub use element::model::Model;
 pub use impulse::{ImpulseManager, KeyIsPressed};
 pub use photon::instancer::*;
 pub use photon::renderer::{
-    camera::{Camera3D, PhotonCamera},
+    camera::{Camera3D, CameraController},
     lights::light::{Color, Light},
 };
 pub use state::IsotopeState;
@@ -404,6 +404,52 @@ impl ApplicationHandler for Isotope {
         // Check for any cameras that have been added
         if let Ok(compound) = self.compound.write() {
             let mut camera: Option<Entity> = None;
+            compound.for_each_duo_without::<_, _, PhotonCamera, _>(
+                |entity, _camera: &Camera3D, _camera_controller: &CameraController| {
+                    camera = Some(entity);
+                },
+            );
+
+            if let Some(camera) = camera {
+                info!("Adding Camera");
+                compound.add_molecule(
+                    camera,
+                    PhotonCamera::create_new_camera_3d(
+                        self.gpu_controller.clone(),
+                        Point3 {
+                            x: 10.0,
+                            y: 10.0,
+                            z: 10.0,
+                        },
+                        Vector3 {
+                            x: -5.0,
+                            y: -5.0,
+                            z: -5.0,
+                        },
+                        Vector3::unit_y(),
+                        self.gpu_controller.surface_configuration().width as f32
+                            / self.gpu_controller.surface_configuration().height as f32,
+                        90.0,
+                        0.1,
+                        100.0,
+                    ),
+                );
+
+                // Now set the aspect ratio of the camera controller
+                compound.for_each_molecule_mut(
+                    |entity, camera_controller: &mut CameraController| {
+                        if entity == camera {
+                            camera_controller.set_aspect(
+                                self.gpu_controller.surface_configuration().width as f32
+                                    / self.gpu_controller.surface_configuration().height as f32,
+                            );
+                        }
+                    },
+                );
+            }
+
+            // Check for cameras without a camera controller
+            let mut camera: Option<Entity> = None;
             compound.for_each_molecule_without::<_, PhotonCamera, _>(
                 |entity, _camera: &Camera3D| {
                     camera = Some(entity);
@@ -436,9 +482,6 @@ impl ApplicationHandler for Isotope {
                 );
             }
         }
-
-        // Update delta for the next go-around
-        self.delta = Instant::now();
 
         if unsafe { self.photon.as_ref().unwrap_unchecked().window().id() } == window_id {
             match event {
@@ -484,48 +527,58 @@ impl ApplicationHandler for Isotope {
 
                             photon.renderer.update_lights(&lights);
 
-                            // Render all the models
-                            compound.for_each_duo_mut(
+                            // Update the cameras with the transforms or the camera controllers
+                            compound.for_each_duo_without_mut::<_, _, CameraController, _>(
                                 |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
-                                    // Update the transforms for the camera
                                     camera.link_transform(transform);
-
-                                    _ = photon.render(
-                                        |render_pass: &mut RenderPass| {
-                                            // Update all the transform buffers of the models
-                                            compound.for_each_duo(
-                                                |_entity, model: &Model, transform: &Transform| {
-                                                    model.link_transform(transform);
-                                                },
-                                            );
-
-                                            compound.for_each_molecule_mut(
-                                                |_entity, model: &mut Model| {
-                                                    model.render(render_pass);
-                                                },
-                                            );
-                                        },
-                                        |encoder: &mut CommandEncoder| {
-                                            if let Ok(mut boson) = self.boson.write() {
-                                                boson.update_instances(encoder);
-                                            }
-                                        },
-                                        &lights,
-                                        |render_pass: &mut RenderPass| {
-                                            compound.for_each_molecule_mut(
-                                                |_entity, model: &mut Model| unsafe {
-                                                    model.debug_render(render_pass);
-                                                },
-                                            );
-
-                                            if let Ok(boson) = self.boson.write() {
-                                                boson.debug_render(render_pass);
-                                            }
-                                        },
-                                        camera,
-                                    );
                                 },
                             );
+
+                            compound.for_each_duo_without_mut::<_, _, Transform, _>(
+                                |_entity,
+                                 camera: &mut PhotonCamera,
+                                 camera_controller: &mut CameraController| {
+                                    camera.link_cam_controller(camera_controller);
+                                },
+                            );
+
+                            // Render all the models
+                            compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {
+                                _ = photon.render(
+                                    |render_pass: &mut RenderPass| {
+                                        // Update all the transform buffers of the models
+                                        compound.for_each_duo(
+                                            |_entity, model: &Model, transform: &Transform| {
+                                                model.link_transform(transform);
+                                            },
+                                        );
+
+                                        compound.for_each_molecule_mut(
+                                            |_entity, model: &mut Model| {
+                                                model.render(render_pass);
+                                            },
+                                        );
+                                    },
+                                    |encoder: &mut CommandEncoder| {
+                                        if let Ok(mut boson) = self.boson.write() {
+                                            boson.update_instances(encoder);
+                                        }
+                                    },
+                                    &lights,
+                                    |render_pass: &mut RenderPass| {
+                                        compound.for_each_molecule_mut(
+                                            |_entity, model: &mut Model| unsafe {
+                                                model.debug_render(render_pass);
+                                            },
+                                        );
+
+                                        if let Ok(boson) = self.boson.write() {
+                                            boson.debug_render(render_pass);
+                                        }
+                                    },
+                                    camera,
+                                );
+                            });
                         }
                     }
                 }
@@ -536,9 +589,20 @@ impl ApplicationHandler for Isotope {
 
                     // Update the camera if there is one
                     if let Ok(compound) = self.compound.write() {
-                        compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {
-                            camera.set_aspect(new_size.width as f32 / new_size.height as f32);
-                        });
+                        // Update cameras without the controller
+                        compound.for_each_molecule_without_mut::<_, CameraController, _>(
+                            |_entity, camera: &mut PhotonCamera| {
+                                camera.set_aspect(new_size.width as f32 / new_size.height as f32);
+                            },
+                        );
+
+                        // Update cameras with the controller
+                        compound.for_each_molecule_mut(
+                            |_entity, camera_controller: &mut CameraController| {
+                                camera_controller
+                                    .set_aspect(new_size.width as f32 / new_size.height as f32);
+                            },
+                        );
                     }
                 }
                 WindowEvent::KeyboardInput { event, .. } => {
@@ -563,6 +627,8 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
+                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
                                                     _ => {}
@@ -596,6 +662,8 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
+                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
                                                     _ => {}
@@ -624,7 +692,13 @@ impl ApplicationHandler for Isotope {
                         if let Ok(mut state) = state.write() {
                             if let Ok(mut compound) = self.compound.write() {
                                 if let Ok(mut asset_manager) = self.asset_manager.write() {
-                                    state.cursor_moved(&mut compound, &mut asset_manager, position);
+                                    state.cursor_moved(
+                                        &mut compound,
+                                        &mut asset_manager,
+                                        position,
+                                        self.delta.elapsed().as_secs_f32(),
+                                        self.t.elapsed().as_secs_f32(),
+                                    );
                                 }
                             }
                         }
@@ -638,6 +712,9 @@ impl ApplicationHandler for Isotope {
                 _ => {}
             }
         }
+
+        // Update delta for the next go-around
+        self.delta = Instant::now();
     }
 
     fn device_event(
@@ -654,9 +731,6 @@ impl ApplicationHandler for Isotope {
             }
         }
 
-        // Update delta for the next go-around
-        self.delta = Instant::now();
-
         match event {
             DeviceEvent::MouseMotion { delta } => {
                 // Game state update
@@ -664,7 +738,13 @@ impl ApplicationHandler for Isotope {
                     if let Ok(mut state) = state.write() {
                         if let Ok(mut compound) = self.compound.write() {
                             if let Ok(mut asset_manager) = self.asset_manager.write() {
-                                state.mouse_is_moved(&mut compound, &mut asset_manager, delta);
+                                state.mouse_is_moved(
+                                    &mut compound,
+                                    &mut asset_manager,
+                                    delta,
+                                    self.delta.elapsed().as_secs_f32(),
+                                    self.t.elapsed().as_secs_f32(),
+                                );
                             }
                         }
                     }
@@ -677,6 +757,9 @@ impl ApplicationHandler for Isotope {
             }
             _ => {}
         }
+
+        // Update delta for the next go-around
+        self.delta = Instant::now();
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {

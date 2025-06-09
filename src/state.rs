@@ -56,6 +56,8 @@ pub trait IsotopeState: Debug + Send + Sync {
         ecs: &mut Compound,
         asset_manager: &mut AssetManager,
         key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
     ) {
     }
 
@@ -65,6 +67,8 @@ pub trait IsotopeState: Debug + Send + Sync {
         ecs: &mut Compound,
         asset_manager: &mut AssetManager,
         key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
     ) {
     }
 
@@ -74,6 +78,8 @@ pub trait IsotopeState: Debug + Send + Sync {
         ecs: &mut Compound,
         asset_manager: &mut AssetManager,
         position: PhysicalPosition<f64>,
+        delta_t: f32,
+        t: f32,
     ) {
     }
 
@@ -83,6 +89,8 @@ pub trait IsotopeState: Debug + Send + Sync {
         ecs: &mut Compound,
         asset_manager: &mut AssetManager,
         delta: (f64, f64),
+        delta_t: f32,
+        t: f32,
     ) {
     }
 
