@@ -281,84 +281,6 @@ impl Isotope {
         Ok(())
     }
 
-    // Set all debugging modes
-    // pub fn set_debbuging<F>(&mut self, callback: F)
-    // where
-    //     F: FnOnce(&mut bool),
-    // {
-    //     callback(&mut self.debugging);
-
-    //     // Enable debug rendering
-    //     if let Some(photon) = self.photon.as_mut() {
-    //         photon.set_debugger(|debugging| *debugging = self.debugging);
-    //     }
-
-    //     // Enable the boson debugger
-    //     if let Ok(mut boson) = self.boson.write() {
-    //         boson.set_debugger(if self.debugging {
-    //             BosonDebugger::new_basic(self.gpu_controller.clone())
-    //         } else {
-    //             BosonDebugger::None
-    //         });
-    //     }
-    // }
-
-    // Only change the model debugging mode
-    pub fn set_model_debugging<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut bool),
-    {
-        if let Some(photon) = self.photon.as_mut() {
-            photon.set_debugger(callback);
-        }
-    }
-
-    // Only set boson debugging mode
-    // pub fn set_boson_debbuging<F>(&mut self, callback: F)
-    // where
-    //     F: FnOnce(&mut bool),
-    // {
-    //     // Enable the boson debugger
-    //     if let Ok(mut boson) = self.boson.write() {
-    //         // let mut debugging = match boson.boson_debugger {
-    //         //     BosonDebugger::None => false,
-    //         //     BosonDebugger::BasicDebugger { .. } => true,
-    //         // };
-
-    //         callback(&mut debugging);
-
-    //         // boson.set_debugger(if debugging {
-    //         //     BosonDebugger::new_basic(self.gpu_controller.clone())
-    //         // } else {
-    //         //     BosonDebugger::None
-    //         // });
-    //     }
-    // }
-
-    pub fn modify_boson<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut Boson),
-    {
-        if let Ok(mut boson) = self.boson.write() {
-            callback(&mut boson);
-        }
-    }
-
-    /// Allows modifications to the ecs and updates the game based on those modifications
-    pub fn ecs<F>(&mut self, callback: F)
-    where
-        F: FnOnce(&mut Compound),
-    {
-        if let Ok(mut compound) = self.compound.write() {
-            callback(&mut compound);
-        }
-    }
-
-    /// For handling input
-    pub fn impulse(&mut self) -> &mut ImpulseManager {
-        &mut self.impulse
-    }
-
     /// Change the update callback
     pub fn set_update_callback(&mut self, update_callback: UpdateCallback) {
         self.update_callback = update_callback;
@@ -694,11 +616,15 @@ impl ApplicationHandler for Isotope {
                 }
                 WindowEvent::CursorMoved { position, .. } => {
                     // Game state update
-                    // if let Some(state) = self.state.as_mut() {
-                    //     if let Ok(mut state) = state.write() {
-                    //         state.cursor_moved(position);
-                    //     }
-                    // }
+                    if let Some(state) = self.state.as_mut() {
+                        if let Ok(mut state) = state.write() {
+                            if let Ok(mut compound) = self.compound.write() {
+                                if let Ok(mut asset_manager) = self.asset_manager.write() {
+                                    state.cursor_moved(&mut compound, &mut asset_manager, position);
+                                }
+                            }
+                        }
+                    }
 
                     // Run the callback of the Impulse manager for cursor movement
                     if let Some(callback) = self.impulse.cursor_moved {
