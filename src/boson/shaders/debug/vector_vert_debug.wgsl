@@ -50,18 +50,6 @@ fn main(
 ) -> VertexOutput {
     var out: VertexOutput;
 
-    // let combined_rotation = quat_norm(hamilton_prod(global_transform.rotation, instance.rotation));
-
-    // Rotate the point first
-    // let conj = quat_conj(instance.rotation);
-
-    // let rot: vec4<f32> = hamilton_prod(
-    //     hamilton_prod(
-    //         instance.rotation,
-    //         vec4<f32>(model.position, 0.0),
-    //     ),
-    //     conj
-    // );
 
     // Offset the point
     let world_position: vec4<f32> = vec4<f32>(model.position.xyz + global_position, 1.0);

@@ -1,9 +1,9 @@
 use cgmath::{Point3, Vector3};
 
 pub struct Color {
-    r: f32,
-    g: f32,
-    b: f32,
+    pub r: f32,
+    pub g: f32,
+    pub b: f32,
 }
 
 impl Into<[f32; 3]> for Color {

@@ -1,6 +1,6 @@
-use std::time::Instant;
-
 use cgmath::{InnerSpace, SquareMatrix, Vector2, Vector3, Zero};
+use log::*;
+use std::time::Instant;
 
 use crate::boson::collider::Collision;
 
@@ -31,7 +31,7 @@ impl Solver for RotationalImpulseSolver {
             // let mut angular_friction_a: Vector3<f32> = Vector3::zero();
             // let mut angular_friction_b: Vector3<f32> = Vector3::zero();
 
-            collision.object_a.access(|a| {
+            match collision.object_a.access(|a| {
                 collision.object_b.access(|b| {
                     // Solving for impulse
                     let angular_vel_a = a.get_angular_vel();
@@ -110,11 +110,16 @@ impl Solver for RotationalImpulseSolver {
                             // angular_friction_b = b_inv_inertia * rb.cross(friction);
                         }
                     }
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to access boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
             // Apply modifications
-            collision.object_a.modify(|a| {
+            match collision.object_a.modify(|a| {
                 let a_inv_mass = a.get_inv_mass();
                 a.vel(|velocity| {
                     *velocity -= impulse * a_inv_mass;
@@ -124,9 +129,14 @@ impl Solver for RotationalImpulseSolver {
                 a.angular_vel(|angular_velocity| {
                     *angular_velocity -= angular_vel_a_change;
                 });
-            });
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
-            collision.object_b.modify(|b| {
+            match collision.object_b.modify(|b| {
                 let b_inv_mass = b.get_inv_mass();
                 b.vel(|velocity| {
                     *velocity += impulse * b_inv_mass;
@@ -136,7 +146,12 @@ impl Solver for RotationalImpulseSolver {
                 b.angular_vel(|angular_velocity| {
                     *angular_velocity -= angular_vel_b_change;
                 });
-            });
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 }

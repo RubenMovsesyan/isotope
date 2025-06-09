@@ -2,6 +2,7 @@ use std::{any::Any, fmt::Debug};
 
 use wgpu::RenderPass;
 
+pub mod asset_manager;
 pub mod buffered;
 pub mod material;
 pub mod mesh;

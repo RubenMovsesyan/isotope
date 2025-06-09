@@ -13,11 +13,20 @@ pub fn calculate_center_of_mass(model: &Model) -> Vector3<f32> {
     // Calcuate the center of mass of a mesh
     fn calculate_mesh_com(mesh: &Mesh) -> Vector3<f32> {
         // The indices should be divisible by 3 otherwise the mesh is not triangulated
-        if mesh.indices.len() % 3 != 0 {
+        let (indices, vertices) = match mesh {
+            Mesh::Unbuffered {
+                indices, vertices, ..
+            }
+            | Mesh::Buffered {
+                indices, vertices, ..
+            } => (indices, vertices),
+        };
+
+        if indices.len() % 3 != 0 {
             error!(
                 "Mesh labeled {} indices of length {} is not triangulated",
-                mesh.label,
-                mesh.indices.len()
+                mesh.label(),
+                indices.len()
             );
 
             // panic for now because I don't want to deal with error handling yet
@@ -28,7 +37,7 @@ pub fn calculate_center_of_mass(model: &Model) -> Vector3<f32> {
 
         // closure that gets the points from the mesh given the index
         let point = |index: u32| -> Vector3<f32> {
-            let vertex = mesh.vertices[index as usize];
+            let vertex = vertices[index as usize];
 
             Vector3::from(vertex.position)
         };
@@ -52,8 +61,7 @@ pub fn calculate_center_of_mass(model: &Model) -> Vector3<f32> {
         // Helper functions ====================================================
 
         // Iterate through all the indices chunked
-        let triangle_info = mesh
-            .indices
+        let triangle_info = indices
             .chunks(TRIANGLE_SIZE)
             .map(|triangle| {
                 // points of each of the vertices

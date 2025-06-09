@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use cgmath::{Vector3, Zero};
+use log::*;
 
 use crate::boson::collider::Collision;
 
@@ -21,7 +22,7 @@ impl Solver for PositionSolver {
             let mut delta_a: Vector3<f32> = Vector3::zero();
             let mut delta_b: Vector3<f32> = Vector3::zero();
 
-            collision.object_a.access(|a| {
+            match collision.object_a.access(|a| {
                 collision.object_b.access(|b| {
                     let a_inv_mass = a.get_inv_mass();
                     let b_inv_mass = b.get_inv_mass();
@@ -31,20 +32,35 @@ impl Solver for PositionSolver {
 
                     delta_a = a_inv_mass * correction;
                     delta_b = b_inv_mass * correction;
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to access boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
-            collision.object_a.modify(|a| {
+            match collision.object_a.modify(|a| {
                 a.pos(|position| {
                     *position += delta_a;
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
 
-            collision.object_b.modify(|b| {
+            match collision.object_b.modify(|b| {
                 b.pos(|position| {
                     *position -= delta_b;
-                });
-            });
+                })
+            }) {
+                Err(err) => {
+                    error!("Failed to modify boson objects due to: {}", err);
+                }
+                _ => {}
+            }
         }
     }
 }

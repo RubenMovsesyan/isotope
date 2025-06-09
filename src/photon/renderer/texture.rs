@@ -1,7 +1,7 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::{Result, anyhow};
-use image::{GenericImageView, ImageReader};
+use image::ImageReader;
 use log::*;
 use wgpu::{
     AddressMode, BindingResource, CompareFunction, Extent3d, FilterMode, Sampler,
@@ -29,9 +29,11 @@ pub(crate) trait View {
 #[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct PhotonTexture {
-    texture: Texture,
-    view: TextureView,
-    sampler: Sampler,
+    pub(crate) texture: Texture,
+    pub(crate) view: TextureView,
+    pub(crate) sampler: Sampler,
+
+    pub(crate) updated: bool,
 
     // For rendering
     pub(crate) render_descriptor: Arc<PhotonRenderDescriptor>,
@@ -84,6 +86,7 @@ impl PhotonTexture {
             texture,
             view,
             sampler,
+            updated: false,
             render_descriptor: Arc::new(render_descriptor), // bind_group,
         }
     }
@@ -95,9 +98,10 @@ impl PhotonTexture {
         info!("Loading Texture: {:#?}", path.as_ref());
 
         // Load the image from path
-        let img = ImageReader::open(path.as_ref())?.decode()?;
-        let rgba = img.to_rgba8();
-        let dimensions = img.dimensions();
+        // let img = ImageReader::open(path.as_ref())?.decode()?;
+        // let rgba = img.to_rgba8();
+        let img_reader = ImageReader::open(path.as_ref())?;
+        let dimensions = img_reader.into_dimensions()?;
 
         let size = Extent3d {
             width: dimensions.0,
@@ -136,18 +140,6 @@ impl PhotonTexture {
             ..Default::default()
         });
 
-        // Send the texture to the gpu
-        gpu_controller.queue.write_texture(
-            texture.as_image_copy(),
-            &rgba,
-            TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(ROW_SIZE * dimensions.0),
-                rows_per_image: Some(dimensions.1),
-            },
-            size,
-        );
-
         let render_descriptor = PhotonRenderDescriptorBuilder::default()
             .with_label("Texture")
             .add_bind_group_with_layout(bind_group_builder!(
@@ -156,12 +148,41 @@ impl PhotonTexture {
                 (0, FRAGMENT, BindingResource::TextureView(&view), TEXTURE),
                 (1, FRAGMENT, BindingResource::Sampler(&sampler), SAMPLER)
             ))
-            .build_module(gpu_controller);
+            .build_module(gpu_controller.clone());
+
+        // Create a thread to read the image and then write it to the texture when it is done
+        if let Some(path) = path.as_ref().to_str() {
+            let texture_clone = texture.clone();
+            let path_clone = path.to_string();
+            std::thread::spawn(move || {
+                if let Ok(img) = ImageReader::open(&path_clone) {
+                    if let Ok(img) = img.decode() {
+                        let rgba = img.to_rgba8();
+
+                        info!("Texture Loaded Writing to buffer");
+                        gpu_controller.queue.write_texture(
+                            texture_clone.as_image_copy(),
+                            &rgba,
+                            TexelCopyBufferLayout {
+                                offset: 0,
+                                bytes_per_row: Some(ROW_SIZE * dimensions.0),
+                                rows_per_image: Some(dimensions.1),
+                            },
+                            size,
+                        );
+                    } else {
+                        error!("Error Reading Image");
+                        return;
+                    }
+                }
+            });
+        }
 
         Ok(Self {
             texture,
             view,
             sampler,
+            updated: false,
             render_descriptor: Arc::new(render_descriptor),
         })
     }

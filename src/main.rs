@@ -1,565 +1,257 @@
-use cgmath::{InnerSpace, Quaternion, Rotation, Vector3, Zero};
-use isotope::{compound::Compound, *};
+use std::time::Instant;
+
+use cgmath::{Point3, Vector3, Zero};
+use isotope::debugger::*;
+use isotope::*;
 
 #[allow(unused_imports)]
 use log::*;
 
-#[derive(Debug, Default)]
-pub struct GameState {
-    pub w_pressed: bool,
-    pub s_pressed: bool,
-    pub a_pressed: bool,
-    pub d_pressed: bool,
-    pub shift_pressed: bool,
-    pub space_pressed: bool,
-
-    pub mouse_diff: (f64, f64),
-
-    pub mouse_focused: bool,
-
-    pub ecs: Compound,
-    pub lights: [Light; 3],
-}
+const CAMERA_SPEED: f32 = 10.0;
+const CAMERA_LOOK_SPEED: f32 = 50.0;
 
 #[derive(Debug)]
-pub struct TestElement {
-    model: Model,
+struct GameState {
+    w_pressed: bool,
+    s_pressed: bool,
+    a_pressed: bool,
+    d_pressed: bool,
+
+    mouse_diff: (f32, f32),
 }
-
-impl Element for TestElement {
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
-        self.model.render(render_pass);
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self as &mut dyn std::any::Any
-    }
-}
-
-#[derive(Debug)]
-pub struct MonkeyElement {
-    model: Model,
-    rigid_body: BosonObject,
-}
-
-impl Element for MonkeyElement {
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
-        self.model.render(render_pass);
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self as &mut dyn std::any::Any
-    }
-}
-
-#[derive(Debug)]
-pub struct ConeElement {
-    model: Model,
-    rigid_body: BosonObject,
-}
-
-impl Element for ConeElement {
-    fn render(&mut self, render_pass: &mut wgpu::RenderPass) {
-        self.model.render(render_pass);
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self as &mut dyn std::any::Any
-    }
-}
-
-const CAMERA_SPEED: f32 = 7.0;
-const CAMERA_LOOK_SPEED: f32 = 0.01;
 
 impl IsotopeState for GameState {
-    fn update_with_camera(
+    fn init(&mut self, ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: f32, t: f32) {
+        let cube = ecs.create_entity();
+        ecs.add_molecule(cube, Model::from_obj("test_files/cube.obj", asset_manager));
+
+        ecs.add_molecule(cube, String::from("Cube"));
+        ecs.add_molecule(cube, Transform::default());
+        ecs.add_molecule(
+            cube,
+            BosonObject::new({
+                let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
+                rb.position = Vector3 {
+                    x: 0.0,
+                    y: 10.0,
+                    z: 0.0,
+                };
+
+                rb.velocity = Vector3 {
+                    x: 0.0,
+                    y: 10.0,
+                    z: 0.0,
+                };
+
+                rb
+            }),
+        );
+
+        let plane = ecs.create_entity();
+        ecs.add_molecule(
+            plane,
+            Model::from_obj("test_files/plane.obj", asset_manager),
+        );
+        ecs.add_molecule(plane, Transform::default());
+        ecs.add_molecule(
+            plane,
+            BosonObject::new(StaticCollider::new(
+                Vector3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                Collider::new_plane(Vector3::unit_y(), 0.0),
+            )),
+        );
+
+        let light = ecs.create_entity();
+        ecs.add_molecule(
+            light,
+            Light::new(
+                Point3 {
+                    x: 10.0,
+                    y: 10.0,
+                    z: 10.0,
+                },
+                Vector3::zero(),
+                Color {
+                    r: 1.0,
+                    g: 1.0,
+                    b: 1.0,
+                },
+                1.0,
+            ),
+        );
+
+        let camera = ecs.create_entity();
+        ecs.add_molecule(camera, Camera3D);
+        // ecs.add_molecule(
+        //     camera,
+        //     Transform {
+        //         position: Vector3 {
+        //             x: 10.0,
+        //             y: 10.0,
+        //             z: 10.0,
+        //         },
+        //         ..Default::default()
+        //     },
+        // );
+        ecs.add_molecule(camera, CameraController::default());
+
+        let debugger = ecs.create_entity();
+        ecs.add_molecule(debugger, Debugger::None);
+    }
+
+    fn update(
         &mut self,
-        camera: &mut isotope::PhotonCamera,
-        delta_t: &std::time::Instant,
-        _t: &std::time::Instant,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta_t: f32,
+        t: f32,
     ) {
-        let dt = delta_t.elapsed().as_secs_f32();
+        ecs.for_each_duo_mut(
+            |_entity, _camera: &mut Camera3D, transform: &mut Transform| {
+                transform.position = Vector3 {
+                    x: 10.0 * f32::sin(t) + 10.0,
+                    y: 5.0,
+                    z: 10.0 * f32::cos(t) + 10.0,
+                };
+            },
+        );
 
         if self.w_pressed {
-            camera.modify(|eye, target, _, _, _, _, _| {
-                *eye += target.normalize() * dt * CAMERA_SPEED;
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.forward(CAMERA_SPEED * delta_t);
             });
         }
 
         if self.s_pressed {
-            camera.modify(|eye, target, _, _, _, _, _| {
-                *eye -= target.normalize() * dt * CAMERA_SPEED;
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.backward(CAMERA_SPEED * delta_t);
             });
         }
 
         if self.a_pressed {
-            camera.modify(|eye, target, up, _, _, _, _| {
-                *eye += up.clone().cross(*target).normalize() * dt * CAMERA_SPEED;
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_left(CAMERA_SPEED * delta_t);
             });
         }
 
         if self.d_pressed {
-            camera.modify(|eye, target, up, _, _, _, _| {
-                *eye -= up.clone().cross(*target).normalize() * dt * CAMERA_SPEED;
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.strafe_right(CAMERA_SPEED * delta_t);
             });
         }
 
-        if self.space_pressed {
-            camera.modify(|eye, _, up, _, _, _, _| {
-                *eye += up.normalize() * dt * CAMERA_SPEED;
-            });
-        }
-
-        if self.shift_pressed {
-            camera.modify(|eye, _, up, _, _, _, _| {
-                *eye -= up.normalize() * dt * CAMERA_SPEED;
-            });
-        }
-
-        // Change where the camera is looking
-        camera.modify(|_, target, up, _, _, _, _| {
-            // Change pitch
-            let forward_norm = target.normalize();
-            let right = forward_norm.cross(*up);
-
-            let rotation = Quaternion {
-                v: right * f32::sin(self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED / 2.0),
-                s: f32::cos(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
-            }
-            .normalize();
-
-            *target = rotation.rotate_vector(*target);
-
-            // Change yaw
-            let up_norm = up.normalize();
-            let rotation = Quaternion {
-                v: up_norm * f32::sin(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
-                s: f32::cos(self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED / 2.0),
-            }
-            .normalize();
-
-            *target = rotation.rotate_vector(*target);
+        ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            camera_controller.look((
+                self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+            ));
         });
 
         self.mouse_diff = (0.0, 0.0);
     }
 
-    fn get_lights(&self) -> &[Light] {
-        &self.lights
-    }
-
-    fn init_boson(&mut self, boson: &mut Boson) {
-        self.ecs
-            .for_each_molecule(|_entity, monkey: &MonkeyElement| {
-                boson.add_dynamic_object(monkey.rigid_body.clone());
-            });
-
-        self.ecs.for_each_molecule(|_entity, cone: &ConeElement| {
-            boson.add_dynamic_object(cone.rigid_body.clone());
-        });
-
-        self.ecs
-            .for_each_molecule(|_entity, boson_object: &BosonObject| {
-                boson.add_dynamic_object(boson_object.clone());
-            });
-
-        boson.add_dynamic_object(BosonObject::new(StaticCollider::new(
-            Vector3::zero(),
-            Collider::new_plane(Vector3::unit_y(), 0.0),
-        )));
-    }
-
-    fn update(&mut self, _delta_t: &std::time::Instant, _t: &std::time::Instant) {
-        // self.lights[0].pos(|x, y, z| {
-        //     *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        //     *y = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        //     *z = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        // });
-
-        // self.lights[1].pos(|x, y, z| {
-        //     *x = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        //     *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        //     *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        // });
-
-        // self.lights[2].pos(|x, y, z| {
-        //     *x = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        //     *y = 10.0 * f32::cos(t.elapsed().as_secs_f32());
-        //     *z = 10.0 * f32::sin(t.elapsed().as_secs_f32());
-        // });
-
-        // const SCALAR: f32 = 30.0;
-        // self.ecs
-        //     .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
-        //         cube.model.modify_instances(|instances| {
-        //             instances[0].rotation = Quaternion::from_axis_angle(
-        //                 Vector3::unit_x(),
-        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
-        //             )
-        //             .normalize()
-        //             .into();
-
-        //             instances[1].rotation = Quaternion::from_axis_angle(
-        //                 Vector3::unit_y(),
-        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
-        //             )
-        //             .normalize()
-        //             .into();
-
-        //             instances[2].rotation = Quaternion::from_axis_angle(
-        //                 Vector3::unit_z(),
-        //                 Deg(SCALAR * t.elapsed().as_secs_f32()),
-        //             )
-        //             .normalize()
-        //             .into();
-        //         });
-
-        //         cube.model.pos(|position| {
-        //             position.x = f32::cos(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
-        //             position.y = f32::sin(SCALAR * t.elapsed().as_secs_f32() * PI / 180.0);
-        //         });
-        //     });
-    }
-
-    fn update_with_window(
+    fn mouse_is_moved(
         &mut self,
-        window: &winit::window::Window,
-        _delta_t: &std::time::Instant,
-        _t: &std::time::Instant,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        delta: (f64, f64),
+        delta_t: f32,
+        t: f32,
     ) {
-        if self.mouse_focused {
-            _ = window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
-            window.set_cursor_visible(false);
-        } else {
-            _ = window.set_cursor_grab(winit::window::CursorGrabMode::None);
-            window.set_cursor_visible(true);
-        }
+        self.mouse_diff = (-delta.0 as f32, -delta.1 as f32);
     }
 
-    fn render_elements(&self, render_pass: &mut wgpu::RenderPass) {
-        self.ecs
-            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
-                cube.render(render_pass);
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
-                monkey.render(render_pass);
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
-                cone.render(render_pass);
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, model: &mut Model| {
-                model.render(render_pass);
-            });
-    }
-
-    fn debug_render_elements(&self, render_pass: &mut wgpu::RenderPass) {
-        self.ecs
-            .for_each_molecule_mut(|_entity, cube: &mut TestElement| {
-                cube.render(render_pass);
-                unsafe { cube.model.debug_render(render_pass) };
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
-                monkey.render(render_pass);
-
-                unsafe { monkey.model.debug_render(render_pass) };
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
-                cone.render(render_pass);
-
-                unsafe { cone.model.debug_render(render_pass) };
-            });
-
-        self.ecs
-            .for_each_molecule_mut(|_entity, model: &mut Model| {
-                model.render(render_pass);
-
-                unsafe { model.debug_render(render_pass) };
-            });
-    }
-
-    fn key_is_pressed(&mut self, key_code: KeyCode) {
+    fn key_is_pressed(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
+    ) {
         match key_code {
-            KeyCode::KeyW => {
-                self.w_pressed = true;
-            }
-            KeyCode::KeyS => {
-                self.s_pressed = true;
-            }
-            KeyCode::KeyA => {
-                self.a_pressed = true;
-            }
-            KeyCode::KeyD => {
-                self.d_pressed = true;
-            }
-            KeyCode::Escape => {
-                self.mouse_focused = !self.mouse_focused;
-            }
-            KeyCode::Space => {
-                self.space_pressed = true;
-            }
-            KeyCode::ShiftLeft => {
-                self.shift_pressed = true;
-            }
             KeyCode::KeyR => {
-                self.ecs
-                    .for_each_molecule_mut(|_entity, monkey: &mut MonkeyElement| {
-                        monkey.rigid_body.modify(|boson_body| {
-                            boson_body.pos(|position| {
-                                *position = Vector3 {
-                                    x: 0.0,
-                                    y: 5.0,
-                                    z: 0.0,
-                                };
-                            });
+                let monkey = ecs.create_entity();
+                ecs.add_molecule(
+                    monkey,
+                    Model::from_obj("test_files/monkey.obj", asset_manager),
+                );
 
-                            boson_body.vel(|velocity| {
-                                *velocity = Vector3 {
-                                    x: 10.0,
-                                    y: 10.0,
-                                    z: 0.0,
-                                };
-                            });
-                        });
-                    });
+                ecs.add_molecule(monkey, Transform::default());
 
-                self.ecs
-                    .for_each_molecule_mut(|_entity, cone: &mut ConeElement| {
-                        cone.rigid_body.modify(|boson_body| {
-                            boson_body.pos(|position| {
-                                *position = Vector3 {
-                                    x: 0.0,
-                                    y: 10.0,
-                                    z: 0.0,
-                                };
-                            });
+                ecs.add_molecule(
+                    monkey,
+                    BosonObject::new({
+                        let mut rb = RigidBody::new(10.0, ColliderBuilder::Cube);
 
-                            boson_body.vel(|velocity| {
-                                *velocity = Vector3 {
-                                    x: 0.0,
-                                    y: 5.0,
-                                    z: 0.0,
-                                };
-                            });
+                        rb.position = Vector3::new(-5.0, 0.0, -5.0);
+                        rb.velocity = Vector3::new(5.0, 10.0, 0.0);
 
-                            boson_body.angular_vel(|angular_velocity| {
-                                *angular_velocity = Vector3 {
-                                    x: 1.0,
-                                    y: 0.0,
-                                    z: 1.0,
-                                }
-                            });
-                        });
-                    });
-
-                self.ecs.for_each_duo_mut(
-                    |_entity, _cones: &mut Model, particle_system: &mut BosonObject| {
-                        particle_system.modify(|system| system.reset());
-                    },
+                        rb
+                    }),
                 );
             }
-            _ => {}
-        }
-    }
-
-    fn key_is_released(&mut self, key_code: KeyCode) {
-        match key_code {
-            KeyCode::KeyW => {
-                self.w_pressed = false;
-            }
-            KeyCode::KeyS => {
-                self.s_pressed = false;
-            }
-            KeyCode::KeyA => {
-                self.a_pressed = false;
-            }
-            KeyCode::KeyD => {
-                self.d_pressed = false;
-            }
-            KeyCode::Space => {
-                self.space_pressed = false;
-            }
-            KeyCode::ShiftLeft => {
-                self.shift_pressed = false;
-            }
-            _ => {}
-        }
-    }
-
-    fn mouse_is_moved(&mut self, delta: (f64, f64)) {
-        if self.mouse_focused {
-            self.mouse_diff = (-delta.0, -delta.1);
-        }
-    }
-
-    fn as_any(&self) -> &dyn std::any::Any {
-        self as &dyn std::any::Any
-    }
-
-    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
-        self as &mut dyn std::any::Any
-    }
-}
-
-fn init(isotope: &mut Isotope) {
-    _ = isotope.initialize_boson();
-    isotope.set_state({
-        let mut state = GameState::default();
-
-        let cone = state.ecs.create_entity();
-        let cone_rb = BosonObject::new({
-            let mut body = RigidBody::new(10.0, ColliderBuilder::Cube).unwrap();
-            body.position = Vector3 {
-                x: 0.0,
-                y: 10.0,
-                z: 0.0,
-            };
-            body.velocity = Vector3 {
-                x: 0.0,
-                y: 5.0,
-                z: 5.0,
-            };
-            body.angular_velocity = Vector3 {
-                x: 0.0,
-                y: 0.0,
-                z: 0.0,
-            };
-            body
-        });
-
-        state.ecs.add_molecule(
-            cone,
-            ConeElement {
-                model: {
-                    let mut model = Model::from_obj("test_files/cube.obj", &isotope)
-                        .expect("Failed")
-                        .with_custom_shaders(
-                            include_str!("../test_files/test_vert.wgsl"),
-                            include_str!("../test_files/test_frag.wgsl"),
-                        )
-                        .expect("Failed");
-
-                    model.link(cone_rb.clone());
-                    model
-                },
-                rigid_body: cone_rb,
-            },
-        );
-
-        let plane = state.ecs.create_entity();
-        state.ecs.add_molecule(plane, {
-            let model = Model::from_obj("test_files/plane.obj", &isotope).expect("Failed");
-
-            // model.rot(|orientation| {
-            //     *orientation = Quaternion::from_axis_angle(Vector3::unit_z(), Deg(180.0));
-            // });
-
-            model
-        });
-
-        // let cubes = state.ecs.create_entity();
-        // state.ecs.add_molecule(
-        //     cubes,
-        //     Model::from_obj("test_files/cube.obj", &isotope)
-        //         .expect("Failed")
-        //         .with_custom_time_instancer(include_str!("../test_files/test_instancer.wgsl"), 20),
-        // );
-
-        let particle_system = BosonObject::new({
-            let particle_system = ParticleSysytem::new(300, &isotope);
-
-            particle_system.set_initial_conditions(
-                (0..300)
-                    .into_iter()
-                    .map(|val| {
-                        let x = 3.0 * f32::sin(val as f32);
-                        let z = 3.0 * f32::cos(val as f32);
-
-                        InitialState {
-                            position: Vector3 {
-                                x: 0.0,
-                                y: 0.0,
-                                z: 0.0,
-                            },
-                            velocity: Vector3 { x, y: 20.0, z },
-                        }
-                    })
-                    .collect(),
-            );
-
-            particle_system
-        });
-
-        let cones = state.ecs.create_entity();
-        state.ecs.add_molecule(cones, {
-            let mut model = Model::from_obj("test_files/cone.obj", &isotope).expect("Failed");
-            model.link(particle_system.clone());
-            model
-        });
-
-        state.ecs.add_molecule(cones, particle_system);
-
-        // let other_cube = state.ecs.create_entity();
-        // state.ecs.add_molecule(
-        //     other_cube,
-        //     TestElement {
-        //         model: Model::from_obj("test_files/other_cube.obj", &isotope).expect("Failed"),
-        //     },
-        // );
-
-        // state.lights[0].color = [1.0, 0.0, 0.0];
-        state.lights[0].position = [10.0, 10.0, 10.0];
-        state.lights[0].color = [1.0, 1.0, 1.0];
-        state.lights[0].intensity = 1.0;
-        // state.lights[1].color = [0.0, 0.0, 1.0];
-        state.lights[1].color = [1.0, 1.0, 1.0];
-        state.lights[1].intensity = 1.0;
-        // state.lights[2].color = [0.0, 1.0, 0.0];
-        state.lights[2].color = [1.0, 1.0, 1.0];
-        state.lights[2].intensity = 1.0;
-        state
-    });
-
-    isotope
-        .impulse()
-        .key_is_pressed(|key_code, isotope| match key_code {
             KeyCode::Digit0 => {
-                isotope.set_debbuging(|debugging| *debugging = !*debugging);
+                ecs.for_each_molecule_mut(|_entity, debugger: &mut Debugger| {
+                    debugger.toggle_boson();
+                });
             }
-            KeyCode::Digit9 => {
-                isotope.set_model_debugging(|debugging| *debugging = !*debugging);
-            }
-            KeyCode::Digit8 => {
-                isotope.set_boson_debbuging(|debugging| *debugging = !*debugging);
-            }
+            KeyCode::KeyW => self.w_pressed = true,
+            KeyCode::KeyS => self.s_pressed = true,
+            KeyCode::KeyA => self.a_pressed = true,
+            KeyCode::KeyD => self.d_pressed = true,
             _ => {}
-        });
+        }
+    }
+
+    fn key_is_released(
+        &mut self,
+        ecs: &mut Compound,
+        asset_manager: &mut AssetManager,
+        key_code: KeyCode,
+        delta_t: f32,
+        t: f32,
+    ) {
+        match key_code {
+            KeyCode::KeyW => self.w_pressed = false,
+            KeyCode::KeyS => self.s_pressed = false,
+            KeyCode::KeyA => self.a_pressed = false,
+            KeyCode::KeyD => self.d_pressed = false,
+            _ => {}
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self as &dyn Any
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self as &mut dyn Any
+    }
 }
 
-fn update(_isotope: &mut Isotope) {}
+fn update(ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: &Instant, t: &Instant) {}
 
 fn main() {
-    let mut app = new_isotope(init, update).expect("Failed");
+    let mut app = new_isotope(
+        |isotope: &mut Isotope| {
+            let game_state = GameState {
+                a_pressed: false,
+                s_pressed: false,
+                d_pressed: false,
+                w_pressed: false,
+
+                mouse_diff: (0.0, 0.0),
+            };
+            isotope.set_state(game_state);
+        },
+        update,
+    )
+    .expect("Failed");
+
     _ = start_isotope(&mut app);
 }

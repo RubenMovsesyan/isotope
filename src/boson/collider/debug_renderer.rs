@@ -7,9 +7,7 @@ use wgpu::{
 
 use crate::{
     bind_group_builder,
-    element::{
-        buffered::Buffered, mesh::INDEX_FORMAT, model::ModelInstance, model_vertex::ModelVertex,
-    },
+    element::{buffered::Buffered, mesh::INDEX_FORMAT, model_vertex::ModelVertex},
     gpu_utils::GpuController,
     photon::render_descriptor::{
         PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO,
@@ -78,7 +76,7 @@ impl ColliderDebugRenderer {
             .with_polygon_mode(PolygonMode::Fill)
             .with_vertex_shader(include_str!("debugging_shaders/collider_vert_debug.wgsl"))
             .with_fragment_shader(include_str!("debugging_shaders/collider_frag_debug.wgsl"))
-            .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
+            .with_vertex_buffer_layouts(&[ModelVertex::desc()])
             .add_bind_group_with_layout(bind_group_builder!(
                 gpu_controller.device,
                 "Boson Debugger",

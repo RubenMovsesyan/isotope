@@ -59,7 +59,6 @@ fn quat_norm(q: vec4<f32>) -> vec4<f32> {
 @vertex
 fn main(
     model: VertexInput,
-    instance: InstanceInput,
 ) -> VertexOutput {
     var out: VertexOutput;
 
