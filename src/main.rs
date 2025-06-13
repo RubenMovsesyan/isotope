@@ -204,6 +204,23 @@ impl IsotopeState for GameState {
             KeyCode::KeyS => self.s_pressed = true,
             KeyCode::KeyA => self.a_pressed = true,
             KeyCode::KeyD => self.d_pressed = true,
+            KeyCode::Escape => {
+                ecs.for_each_molecule_mut(|_entity, window_controller: &mut WindowController| {
+                    window_controller.cursor_grab_mode(|cursor_grab_mode| match cursor_grab_mode {
+                        CursorGrabMode::None => {
+                            *cursor_grab_mode = CursorGrabMode::Locked;
+                        }
+                        CursorGrabMode::Locked => {
+                            *cursor_grab_mode = CursorGrabMode::None;
+                        }
+                        _ => {}
+                    });
+
+                    window_controller.cursor_visible(|cursor_visible| {
+                        *cursor_visible = !*cursor_visible;
+                    });
+                });
+            }
             _ => {}
         }
     }

@@ -7,14 +7,83 @@ use wgpu::{PresentMode, Surface, SurfaceConfiguration, TextureUsages};
 use winit::{
     dpi::{PhysicalSize, Size},
     event_loop::ActiveEventLoop,
-    window::Window,
+    window::{CursorGrabMode, Window},
 };
 
 use crate::GpuController;
 
+/// Default window width in pixels
 pub const DEFAULT_WIDTH: u32 = 1920;
+/// Default window height in pixels
 pub const DEFAULT_HEIGHT: u32 = 1080;
 
+/// Controller for managing window cursor behavior
+#[derive(Debug)]
+pub struct WindowController {
+    window: Arc<Window>,
+    cursor_grab_mode: CursorGrabMode,
+    size: PhysicalSize<u32>,
+    cursor_visible: bool,
+}
+
+impl WindowController {
+    pub(crate) fn new(window: Arc<Window>) -> Self {
+        Self {
+            window,
+            cursor_grab_mode: CursorGrabMode::None,
+            size: PhysicalSize {
+                width: DEFAULT_WIDTH,
+                height: DEFAULT_HEIGHT,
+            },
+            cursor_visible: true,
+        }
+    }
+
+    pub fn cursor_grab_mode<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut CursorGrabMode),
+    {
+        callback(&mut self.cursor_grab_mode);
+
+        match self.window.set_cursor_grab(self.cursor_grab_mode) {
+            Err(err) => {
+                error!(
+                    "Error {} setting cursor grab mode to: {:#?}",
+                    err, self.cursor_grab_mode
+                );
+            }
+            _ => {}
+        }
+    }
+
+    pub fn cursor_visible<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut bool),
+    {
+        callback(&mut self.cursor_visible);
+
+        debug!("Setting Cursor Visible to: {}", self.cursor_visible);
+        self.window.set_cursor_visible(self.cursor_visible);
+    }
+
+    pub fn resize<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut PhysicalSize<u32>),
+    {
+        callback(&mut self.size);
+    }
+
+    // This is the stuff that needs to be set every frame
+    pub(crate) fn run_frame_updates(&self) {
+        self.window.set_cursor_visible(self.cursor_visible);
+
+        if let Err(err) = self.window.set_cursor_grab(self.cursor_grab_mode) {
+            error!("Failed to set the cursor grab mode: {}", err);
+        }
+    }
+}
+
+/// Main window structure that manages the rendering surface and GPU resources
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct PhotonWindow {
@@ -24,6 +93,17 @@ pub struct PhotonWindow {
 }
 
 impl PhotonWindow {
+    /// Creates a new PhotonWindow with the specified dimensions and GPU controller
+    ///
+    /// # Parameters
+    /// - `event_loop`: Active event loop for window creation
+    /// - `width`: Window width in pixels
+    /// - `height`: Window height in pixels
+    /// - `gpu_controller`: Shared GPU controller for rendering operations
+    /// - `title`: Window title string
+    ///
+    /// # Returns
+    /// - `Result<Self>`: New PhotonWindow instance or error if creation failed
     pub fn new(
         event_loop: &ActiveEventLoop,
         width: u32,
@@ -76,7 +156,10 @@ impl PhotonWindow {
         })
     }
 
-    // Resizes the surface configuration of the window
+    /// Resizes the surface configuration of the window
+    ///
+    /// # Parameters
+    /// - `new_size`: New physical size dimensions for the window
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
         if let Ok(mut surface_config) = self.gpu_controller.surface_configuration.write() {
             surface_config.width = new_size.width;

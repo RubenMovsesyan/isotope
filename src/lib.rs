@@ -47,10 +47,11 @@ pub use photon::renderer::{
     camera::{Camera3D, CameraController},
     lights::light::{Color, Light},
 };
+pub use photon::window::WindowController;
 pub use state::IsotopeState;
 pub use std::any::Any;
 pub use transform::Transform;
-pub use winit::keyboard::KeyCode; // Temp
+pub use winit::{dpi::PhysicalSize, keyboard::KeyCode, window::CursorGrabMode};
 
 pub type InitCallback = fn(&mut Isotope);
 pub type UpdateCallback = fn(&mut Compound, &mut AssetManager, &Instant, &Instant);
@@ -149,7 +150,16 @@ impl Isotope {
     /// This is where starting up every part of the engine happens all tied together with the ecs
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
         // Initialize Photon rendering engine
+        let photon_manager = PhotonManager::new(event_loop, self.gpu_controller.clone())?;
+        let window_clone = photon_manager.window.window.clone();
         self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
+
+        // Add a window manager to the ecs for window controll if the user needs it
+        if let Ok(mut compund) = self.compound.write() {
+            let window_controller = compund.create_entity();
+
+            compund.add_molecule(window_controller, WindowController::new(window_clone));
+        }
 
         // Create references to all the necessary parts that boson needs
         let boson = self.boson.clone();
@@ -601,6 +611,15 @@ impl ApplicationHandler for Isotope {
                             |_entity, camera_controller: &mut CameraController| {
                                 camera_controller
                                     .set_aspect(new_size.width as f32 / new_size.height as f32);
+                            },
+                        );
+
+                        // Update the window controller with the new size
+                        compound.for_each_molecule_mut(
+                            |_entity, window_controller: &mut WindowController| {
+                                window_controller.resize(|size| {
+                                    *size = new_size;
+                                });
                             },
                         );
                     }
