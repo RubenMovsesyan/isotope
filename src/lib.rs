@@ -149,10 +149,10 @@ pub fn new_isotope(
 impl Isotope {
     /// This is where starting up every part of the engine happens all tied together with the ecs
     fn initialize(&mut self, event_loop: &ActiveEventLoop) -> Result<()> {
-        // Initialize Photon rendering engine
+        // Initialize Photon rendering engine with a window clone for the window controller
         let photon_manager = PhotonManager::new(event_loop, self.gpu_controller.clone())?;
         let window_clone = photon_manager.window.window.clone();
-        self.photon = Some(PhotonManager::new(event_loop, self.gpu_controller.clone())?);
+        self.photon = Some(photon_manager);
 
         // Add a window manager to the ecs for window controll if the user needs it
         if let Ok(mut compund) = self.compound.write() {

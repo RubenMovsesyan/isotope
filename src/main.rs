@@ -17,6 +17,8 @@ struct GameState {
     a_pressed: bool,
     d_pressed: bool,
 
+    window_focused: bool,
+
     mouse_diff: (f32, f32),
 }
 
@@ -110,16 +112,6 @@ impl IsotopeState for GameState {
         delta_t: f32,
         t: f32,
     ) {
-        ecs.for_each_duo_mut(
-            |_entity, _camera: &mut Camera3D, transform: &mut Transform| {
-                transform.position = Vector3 {
-                    x: 10.0 * f32::sin(t) + 10.0,
-                    y: 5.0,
-                    z: 10.0 * f32::cos(t) + 10.0,
-                };
-            },
-        );
-
         if self.w_pressed {
             ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
                 camera_controller.forward(CAMERA_SPEED * delta_t);
@@ -144,12 +136,14 @@ impl IsotopeState for GameState {
             });
         }
 
-        ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
-            camera_controller.look((
-                self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
-                self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
-            ));
-        });
+        if self.window_focused {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.look((
+                    self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                    self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                ));
+            });
+        }
 
         self.mouse_diff = (0.0, 0.0);
     }
@@ -220,6 +214,8 @@ impl IsotopeState for GameState {
                         *cursor_visible = !*cursor_visible;
                     });
                 });
+
+                self.window_focused = !self.window_focused;
             }
             _ => {}
         }
@@ -261,6 +257,8 @@ fn main() {
                 s_pressed: false,
                 d_pressed: false,
                 w_pressed: false,
+
+                window_focused: false,
 
                 mouse_diff: (0.0, 0.0),
             };

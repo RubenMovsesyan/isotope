@@ -72,15 +72,6 @@ impl WindowController {
     {
         callback(&mut self.size);
     }
-
-    // This is the stuff that needs to be set every frame
-    pub(crate) fn run_frame_updates(&self) {
-        self.window.set_cursor_visible(self.cursor_visible);
-
-        if let Err(err) = self.window.set_cursor_grab(self.cursor_grab_mode) {
-            error!("Failed to set the cursor grab mode: {}", err);
-        }
-    }
 }
 
 /// Main window structure that manages the rendering surface and GPU resources
