@@ -1,5 +1,4 @@
 use std::{
-    f64::consts::PI,
     fmt::Debug,
     sync::{Arc, RwLock},
     thread::{self, JoinHandle},
@@ -524,27 +523,28 @@ impl ApplicationHandler for Isotope {
                             compound.for_each_molecule(
                                 |_entity, debugger: &Debugger| match debugger {
                                     Debugger::None => {
-                                        photon.set_debugger(|debugging| {
-                                            *debugging = false;
-                                        });
+                                        photon.renderer.debugging = false;
                                     }
                                     _ => {
-                                        photon.set_debugger(|debugging| {
-                                            *debugging = true;
-                                        });
+                                        photon.renderer.debugging = true;
                                     }
                                 },
                             );
 
                             photon.renderer.update_lights(&lights);
 
-                            // Update the cameras with the transforms or the camera controllers
+                            // ================ Camera Updated ================
+
+                            // TODO: Make the camera controller update the Transform instead of the camera directly
+
+                            // Update any camera that has a transform
                             compound.for_each_duo_without_mut::<_, _, CameraController, _>(
                                 |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
                                     camera.link_transform(transform);
                                 },
                             );
 
+                            // Update any camera that has a controller
                             compound.for_each_duo_without_mut::<_, _, Transform, _>(
                                 |_entity,
                                  camera: &mut PhotonCamera,
@@ -552,6 +552,7 @@ impl ApplicationHandler for Isotope {
                                     camera.link_cam_controller(camera_controller);
                                 },
                             );
+                            // ================ Camera Updated ================
 
                             // Render all the models
                             compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {

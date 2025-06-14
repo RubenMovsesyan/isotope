@@ -29,7 +29,6 @@ pub const LIGHTS_BIND_GROUP: u32 = 1;
 #[derive(Debug)]
 pub struct PhotonRenderer {
     gpu_controller: Arc<GpuController>,
-    debug_render_pipeline: Option<RenderPipeline>,
     pub(crate) debugging: bool,
 
     // Rendering requirements
@@ -42,70 +41,15 @@ impl PhotonRenderer {
         // Create the depth texture
         let depth_texture = PhotonDepthTexture::new_depth_texture(&gpu_controller);
 
-        // Initialie the camera
-        // TODO: ADD INITIALIZATION OPTION
-        // TODO: ADD CAMERA 2D
-        // let camera = PhotonCamera::create_new_camera_3d(
-        //     gpu_controller.clone(),
-        //     &gpu_controller.layouts,
-        //     Point3 {
-        //         x: 2.0,
-        //         y: 2.0,
-        //         z: 2.0,
-        //     },
-        //     Vector3 {
-        //         x: -1.0,
-        //         y: -1.0,
-        //         z: -1.0,
-        //     },
-        //     Vector3 {
-        //         x: 0.0,
-        //         y: 1.0,
-        //         z: 0.0,
-        //     },
-        //     gpu_controller.surface_configuration().width as f32
-        //         / gpu_controller.surface_configuration().height as f32,
-        //     90.0,
-        //     0.1,
-        //     100.0,
-        // );
-
         // Initialize with no lights
         let lights = Lights::new_with_lights(&gpu_controller, &[]);
 
         Self {
             gpu_controller,
-            debug_render_pipeline: None,
             debugging: false,
             depth_texture,
             lights,
         }
-    }
-
-    pub fn add_debug_render_pipeline(&mut self) {
-        let vertex_shader = self
-            .gpu_controller
-            .device
-            .create_shader_module(include_wgsl!("shaders/debug_vert.wgsl"));
-
-        let fragment_shader = self
-            .gpu_controller
-            .device
-            .create_shader_module(include_wgsl!("shaders/debug_frag.wgsl"));
-
-        let debug_render_pipeline = construct_debug_render_pipeline!(
-            &self.gpu_controller.device,
-            self.gpu_controller.surface_configuration(),
-            vertex_shader,
-            fragment_shader,
-            String::from("Photon Debug"),
-            PolygonMode::Line,
-            &[ModelVertex::desc()],
-            &self.gpu_controller.layouts.camera_layout,
-            &self.gpu_controller.layouts.collider_layout
-        );
-
-        self.debug_render_pipeline = Some(debug_render_pipeline);
     }
 
     // Function to modify the lights in the scene
@@ -188,35 +132,33 @@ impl PhotonRenderer {
 
         // Debugging
         if self.debugging {
-            if let Some(_debug_pipeline) = self.debug_render_pipeline.as_mut() {
-                let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
-                    label: Some("Debug Render Pass"),
-                    color_attachments: &[Some(RenderPassColorAttachment {
-                        view: &view,
-                        resolve_target: None,
-                        ops: Operations {
-                            load: LoadOp::Load,
-                            store: StoreOp::Store,
-                        },
-                    })],
-                    depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
-                        view: self.depth_texture.view(),
-                        depth_ops: Some(Operations {
-                            load: LoadOp::Load,
-                            store: StoreOp::Store,
-                        }),
-                        stencil_ops: None,
+            let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
+                label: Some("Debug Render Pass"),
+                color_attachments: &[Some(RenderPassColorAttachment {
+                    view: &view,
+                    resolve_target: None,
+                    ops: Operations {
+                        load: LoadOp::Load,
+                        store: StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(RenderPassDepthStencilAttachment {
+                    view: self.depth_texture.view(),
+                    depth_ops: Some(Operations {
+                        load: LoadOp::Load,
+                        store: StoreOp::Store,
                     }),
-                    occlusion_query_set: None,
-                    timestamp_writes: None,
-                });
+                    stencil_ops: None,
+                }),
+                occlusion_query_set: None,
+                timestamp_writes: None,
+            });
 
-                // Every debug render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
-                render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
-                render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
+            // Every debug render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
+            render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
+            render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
 
-                debug_callback(&mut render_pass);
-            }
+            debug_callback(&mut render_pass);
         }
 
         // Once all the callbacks have been called submit the queue to the encoder
