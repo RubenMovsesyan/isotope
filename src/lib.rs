@@ -1,4 +1,5 @@
 use std::{
+    f64::consts::PI,
     fmt::Debug,
     sync::{Arc, RwLock},
     thread::{self, JoinHandle},
@@ -554,7 +555,14 @@ impl ApplicationHandler for Isotope {
 
                             // Render all the models
                             compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {
-                                _ = photon.render(
+                                match photon.renderer.render(
+                                    &photon.window.surface,
+                                    camera,
+                                    |encoder: &mut CommandEncoder| {
+                                        if let Ok(mut boson) = self.boson.write() {
+                                            boson.update_instances(encoder);
+                                        }
+                                    },
                                     |render_pass: &mut RenderPass| {
                                         // Update all the transform buffers of the models
                                         compound.for_each_duo(
@@ -569,25 +577,21 @@ impl ApplicationHandler for Isotope {
                                             },
                                         );
                                     },
-                                    |encoder: &mut CommandEncoder| {
-                                        if let Ok(mut boson) = self.boson.write() {
-                                            boson.update_instances(encoder);
-                                        }
-                                    },
-                                    &lights,
-                                    |render_pass: &mut RenderPass| {
+                                    |debug_render_pass: &mut RenderPass| {
                                         compound.for_each_molecule_mut(
                                             |_entity, model: &mut Model| unsafe {
-                                                model.debug_render(render_pass);
+                                                model.debug_render(debug_render_pass);
                                             },
                                         );
 
                                         if let Ok(boson) = self.boson.write() {
-                                            boson.debug_render(render_pass);
+                                            boson.debug_render(debug_render_pass);
                                         }
                                     },
-                                    camera,
-                                );
+                                ) {
+                                    Ok(_) => {}
+                                    Err(err) => error!("Rendering failed with Error: {}", err),
+                                }
                             });
                         }
                     }

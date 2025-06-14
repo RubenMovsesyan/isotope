@@ -49,30 +49,5 @@ impl PhotonManager {
         F: FnOnce(&mut bool),
     {
         callback(&mut self.renderer.debugging);
-        // debug!("Setting Photon Debugger: {}", self.renderer.debugging);
-    }
-
-    // Call on request redraw
-    pub fn render<F, U, D>(
-        &mut self,
-        callback: F,
-        update_callback: U,
-        lights: &[Light],
-        debug_callback: D,
-        camera: &mut PhotonCamera,
-    ) -> Result<()>
-    where
-        F: FnOnce(&mut RenderPass),
-        U: FnOnce(&mut CommandEncoder),
-        D: FnOnce(&mut RenderPass),
-    {
-        self.renderer.update_lights(lights);
-        self.renderer.render(
-            &self.window.surface,
-            callback,
-            update_callback,
-            debug_callback,
-            camera,
-        )
     }
 }

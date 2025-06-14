@@ -121,29 +121,29 @@ impl PhotonRenderer {
         // camera.set_aspect(new_size.width as f32 / new_size.height as f32);
     }
 
-    // Renders all elements in the engine
-    pub fn render<F, U, D>(
+    // Runs the render pass with the callbacks
+    pub fn render<U, R, D>(
         &mut self,
         surface: &Surface<'static>,
-        callback: F,
-        update_callback: U,
-        debug_callback: D,
         camera: &mut PhotonCamera,
+        update_callback: U,
+        render_callback: R,
+        debug_callback: D,
     ) -> Result<()>
     where
-        F: FnOnce(&mut RenderPass),
         U: FnOnce(&mut CommandEncoder),
+        R: FnOnce(&mut RenderPass),
         D: FnOnce(&mut RenderPass),
     {
         // Write to the camera buffer if needed
-        camera.write_buffer(); // only writing when rendering has a huge performance improvement
+        camera.write_buffer();
 
         let output = surface.get_current_texture()?;
-
         let view = output
             .texture
             .create_view(&TextureViewDescriptor::default());
 
+        // Create a command encoder for sending commands to the gpu
         let mut encoder =
             self.gpu_controller
                 .device
@@ -151,10 +151,12 @@ impl PhotonRenderer {
                     label: Some("Render Encoder"),
                 });
 
+        // Run any GPU update functions
         update_callback(&mut encoder);
 
         // Scene Render Pass
         {
+            // Create the render pass with a descriptor
             let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                 label: Some("Scene Render Pass"),
                 color_attachments: &[Some(RenderPassColorAttachment {
@@ -178,16 +180,15 @@ impl PhotonRenderer {
             });
 
             // Every render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
-            // Camera
             render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
             render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
 
-            callback(&mut render_pass);
+            render_callback(&mut render_pass);
         }
 
-        // Debug render pass
+        // Debugging
         if self.debugging {
-            if let Some(debug_pipeline) = self.debug_render_pipeline.as_mut() {
+            if let Some(_debug_pipeline) = self.debug_render_pipeline.as_mut() {
                 let mut render_pass = encoder.begin_render_pass(&RenderPassDescriptor {
                     label: Some("Debug Render Pass"),
                     color_attachments: &[Some(RenderPassColorAttachment {
@@ -210,16 +211,16 @@ impl PhotonRenderer {
                     timestamp_writes: None,
                 });
 
-                render_pass.set_pipeline(&debug_pipeline);
-
-                // Camera
+                // Every debug render pipeline is required to have CAMERA_BIND_GROUP at 0 and LIGHTS_BIND_GROUP at 1
                 render_pass.set_bind_group(CAMERA_BIND_GROUP, &camera.bind_group, &[]);
-                render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]); // Temp
+                render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights.bind_group, &[]);
 
                 debug_callback(&mut render_pass);
             }
         }
 
+        // Once all the callbacks have been called submit the queue to the encoder
+        // and present the output texture
         self.gpu_controller.queue.submit(Some(encoder.finish()));
         output.present();
 
