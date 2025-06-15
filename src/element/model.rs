@@ -216,7 +216,7 @@ impl Model {
     }
 
     ///! Always call after main render
-    pub unsafe fn debug_render(&self, render_pass: &mut RenderPass) {
+    pub unsafe fn debug_render(&self, render_pass: &mut RenderPass, camera: &PhotonCamera) {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
@@ -224,6 +224,7 @@ impl Model {
                 render_pass,
                 self.instancer.instance_count as u32,
                 &self.culling_position,
+                camera,
             );
         }
     }

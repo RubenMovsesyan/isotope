@@ -343,10 +343,7 @@ impl Mesh {
                 cullable_radius,
                 ..
             } => {
-                if camera
-                    .frustum
-                    .contains(*cullable_radius * 2.0, *culling_position)
-                {
+                if camera.frustum.contains(*cullable_radius, *culling_position) {
                     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                     render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
 
@@ -364,6 +361,7 @@ impl Mesh {
         render_pass: &mut RenderPass,
         instance_count: u32,
         culling_position: &[f32; 3],
+        camera: &PhotonCamera,
     ) {
         match self {
             Mesh::Buffered {
@@ -378,21 +376,23 @@ impl Mesh {
                 cullable_radius,
                 ..
             } => {
-                // Draw the mesh lines
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
+                if camera.frustum.contains(*cullable_radius, *culling_position) {
+                    // Draw the mesh lines
+                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
 
-                debug_render_descriptor.setup_render(render_pass);
+                    debug_render_descriptor.setup_render(render_pass);
 
-                render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
+                    render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
 
-                // Draw the normals
-                render_pass.set_vertex_buffer(0, normals_buffer.slice(..));
-                render_pass.set_index_buffer(normals_index_buffer.slice(..), INDEX_FORMAT);
+                    // Draw the normals
+                    render_pass.set_vertex_buffer(0, normals_buffer.slice(..));
+                    render_pass.set_index_buffer(normals_index_buffer.slice(..), INDEX_FORMAT);
 
-                normals_render_descriptor.setup_render(render_pass);
+                    normals_render_descriptor.setup_render(render_pass);
 
-                render_pass.draw_indexed(0..*num_normal_indices, 0, 0..instance_count);
+                    render_pass.draw_indexed(0..*num_normal_indices, 0, 0..instance_count);
+                }
             }
             _ => {}
         }

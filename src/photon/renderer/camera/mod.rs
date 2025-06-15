@@ -197,6 +197,16 @@ impl PhotonCamera {
         self.eye = Point3::from_vec(transform.position);
         self.target = transform.orientation.rotate_vector(self.target);
 
+        self.frustum.update(
+            self.eye,
+            self.target,
+            self.up,
+            self.aspect,
+            self.fovy,
+            self.znear,
+            self.zfar,
+        );
+
         let view = Matrix4::look_at_rh(self.eye, self.eye + self.target, self.up);
 
         let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
@@ -206,13 +216,6 @@ impl PhotonCamera {
             view_position: transform.position.extend(1.0).into(),
             view_projection: view_proj.into(),
         };
-
-        // // Temporary move to update the frustum
-        // let mut frustum = std::mem::take(&mut self.frustum);
-        // // Update
-        // frustum.update(self);
-        // // Put it back
-        // self.frustum = frustum;
 
         self.gpu_controller.queue.write_buffer(
             &self.buffer,

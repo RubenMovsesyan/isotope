@@ -582,7 +582,7 @@ impl ApplicationHandler for Isotope {
                                     |debug_render_pass: &mut RenderPass| {
                                         compound.for_each_molecule_mut(
                                             |_entity, model: &mut Model| unsafe {
-                                                model.debug_render(debug_render_pass);
+                                                model.debug_render(debug_render_pass, camera);
                                             },
                                         );
 
