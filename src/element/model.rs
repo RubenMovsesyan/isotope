@@ -10,7 +10,10 @@ use wgpu::{
 use crate::{
     BosonBody, BosonObject, GpuController, Transform,
     boson::Linkable,
-    photon::instancer::{Instance, InstanceBufferDescriptor, Instancer},
+    photon::{
+        instancer::{Instance, InstanceBufferDescriptor, Instancer},
+        renderer::camera::PhotonCamera,
+    },
 };
 
 use super::{
@@ -80,6 +83,9 @@ pub struct Model {
     // GPU
     transform_buffer: Arc<Buffer>,
     gpu_controller: Arc<GpuController>,
+
+    // For Culling
+    culling_position: [f32; 3],
 
     // For gpu instancing
     instancer: Arc<Instancer<ModelInstance>>,
@@ -154,17 +160,20 @@ impl Model {
             gpu_controller,
             meshes,
             materials,
+            culling_position: [0.0, 0.0, 0.0],
             transform_buffer: Arc::new(transform_buffer),
             instancer,
         }
     }
 
-    pub(crate) fn link_transform(&self, tranform: &Transform) {
+    pub(crate) fn link_transform(&mut self, tranform: &Transform) {
         let model_transform = ModelTransform {
             position: tranform.position.into(),
             orientation: tranform.orientation.into(),
             _padding: 0.0,
         };
+
+        self.culling_position = tranform.position.into();
 
         self.gpu_controller.queue.write_buffer(
             &self.transform_buffer,
@@ -193,11 +202,16 @@ impl Model {
         self.instancer.compute_instances(|_| {}, encoder);
     }
 
-    pub fn render(&mut self, render_pass: &mut RenderPass) {
+    pub fn render(&mut self, render_pass: &mut RenderPass, camera: &PhotonCamera) {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.render(render_pass, self.instancer.instance_count as u32);
+            mesh.render(
+                render_pass,
+                self.instancer.instance_count as u32,
+                &self.culling_position,
+                camera,
+            );
         }
     }
 
@@ -206,7 +220,11 @@ impl Model {
         render_pass.set_vertex_buffer(1, self.instancer.instance_buffer.slice(..));
 
         for mesh in self.meshes.iter() {
-            mesh.debug_render(render_pass, self.instancer.instance_count as u32)
+            mesh.debug_render(
+                render_pass,
+                self.instancer.instance_count as u32,
+                &self.culling_position,
+            );
         }
     }
 }

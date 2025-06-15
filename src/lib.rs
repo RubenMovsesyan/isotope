@@ -538,11 +538,11 @@ impl ApplicationHandler for Isotope {
                             // TODO: Make the camera controller update the Transform instead of the camera directly
 
                             // Update any camera that has a transform
-                            compound.for_each_duo_without_mut::<_, _, CameraController, _>(
-                                |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
-                                    camera.link_transform(transform);
-                                },
-                            );
+                            // compound.for_each_duo_without_mut::<_, _, CameraController, _>(
+                            //     |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
+                            //         camera.link_transform(transform);
+                            //     },
+                            // );
 
                             // Update any camera that has a controller
                             compound.for_each_duo_without_mut::<_, _, Transform, _>(
@@ -555,7 +555,7 @@ impl ApplicationHandler for Isotope {
                             // ================ Camera Updated ================
 
                             // Render all the models
-                            compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {
+                            compound.for_each_molecule(|_entity, camera: &PhotonCamera| {
                                 match photon.renderer.render(
                                     &photon.window.surface,
                                     camera,
@@ -566,15 +566,16 @@ impl ApplicationHandler for Isotope {
                                     },
                                     |render_pass: &mut RenderPass| {
                                         // Update all the transform buffers of the models
-                                        compound.for_each_duo(
-                                            |_entity, model: &Model, transform: &Transform| {
+                                        compound.for_each_duo_mut(
+                                            |_entity, model: &mut Model, transform: &mut Transform| {
                                                 model.link_transform(transform);
                                             },
                                         );
 
+                                        // Render all the models (with and without transform)
                                         compound.for_each_molecule_mut(
                                             |_entity, model: &mut Model| {
-                                                model.render(render_pass);
+                                                model.render(render_pass, camera);
                                             },
                                         );
                                     },

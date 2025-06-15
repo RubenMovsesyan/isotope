@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{f32, sync::Arc};
 
 use log::*;
 use wgpu::{
@@ -9,8 +9,9 @@ use wgpu::{
 use crate::{
     GpuController, bind_group_builder,
     element::{model::ModelInstance, model_vertex::ModelNormalVertex},
-    photon::render_descriptor::{
-        PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO,
+    photon::{
+        render_descriptor::{PhotonRenderDescriptor, PhotonRenderDescriptorBuilder, STORAGE_RO},
+        renderer::camera::PhotonCamera,
     },
 };
 
@@ -22,6 +23,17 @@ use super::{
 };
 
 pub(crate) const INDEX_FORMAT: IndexFormat = IndexFormat::Uint32;
+
+// logic used in this crate
+trait Distance {
+    fn dist(&self) -> f32;
+}
+
+impl Distance for [f32; 3] {
+    fn dist(&self) -> f32 {
+        f32::sqrt(self.iter().map(|vertex_pos| vertex_pos.powi(2)).sum())
+    }
+}
 
 #[allow(dead_code)]
 #[derive(Debug)]
@@ -77,7 +89,7 @@ impl From<&obj_loader::mesh::Mesh> for Mesh {
 
         let cullable_radius = vertices
             .iter()
-            .map(|model_vertex| model_vertex.dist())
+            .map(|model_vertex| model_vertex.position.dist())
             .fold(f32::MAX, |a, b| a.max(b));
 
         debug!("Model Cullable Radius: {}", cullable_radius);
@@ -291,8 +303,8 @@ impl Mesh {
         // Need to recalculate the cullable radius after shifting the vertices
         let new_cullable_radius = vertices
             .iter()
-            .map(|model_vertex| model_vertex.dist())
-            .fold(f32::MAX, |a, b| a.max(b));
+            .map(|model_vertex| model_vertex.position.dist())
+            .fold(f32::NEG_INFINITY, |a, b| a.max(b));
 
         // After modifying the vertices write it to the gpu
         match self {
@@ -315,27 +327,44 @@ impl Mesh {
         }
     }
 
-    pub(crate) fn render(&self, render_pass: &mut RenderPass, instance_count: u32) {
+    pub(crate) fn render(
+        &self,
+        render_pass: &mut RenderPass,
+        instance_count: u32,
+        culling_position: &[f32; 3],
+        camera: &PhotonCamera,
+    ) {
         match self {
             Mesh::Buffered {
                 vertex_buffer,
                 index_buffer,
                 render_descriptor,
                 num_indices,
+                cullable_radius,
                 ..
             } => {
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
+                if camera
+                    .frustum
+                    .contains(*cullable_radius * 2.0, *culling_position)
+                {
+                    render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
 
-                render_descriptor.setup_render(render_pass);
+                    render_descriptor.setup_render(render_pass);
 
-                render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
+                    render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
+                }
             }
             _ => {}
         }
     }
 
-    pub(crate) fn debug_render(&self, render_pass: &mut RenderPass, instance_count: u32) {
+    pub(crate) fn debug_render(
+        &self,
+        render_pass: &mut RenderPass,
+        instance_count: u32,
+        culling_position: &[f32; 3],
+    ) {
         match self {
             Mesh::Buffered {
                 vertex_buffer,
@@ -346,6 +375,7 @@ impl Mesh {
                 normals_index_buffer,
                 normals_render_descriptor,
                 num_normal_indices,
+                cullable_radius,
                 ..
             } => {
                 // Draw the mesh lines
@@ -367,37 +397,4 @@ impl Mesh {
             _ => {}
         }
     }
-
-    // pub(crate) fn set_shaders(&mut self, vertex_shader: &str, fragment_shader: &str) {
-    //     self.render_descriptor = PhotonRenderDescriptorBuilder::default()
-    //         .add_render_chain(self.material.render_descriptor.clone())
-    //         .with_vertex_shader(vertex_shader)
-    //         .with_fragment_shader(fragment_shader)
-    //         .with_polygon_mode(PolygonMode::Fill)
-    //         .with_label("Mesh")
-    //         .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
-    //         .add_bind_group_with_layout(bind_group_builder!(
-    //             self.gpu_controller.device,
-    //             "Mesh",
-    //             (0, VERTEX, self.transform.as_entire_binding(), STORAGE_RO)
-    //         ))
-    //         .build(self.gpu_controller.clone())
-    // }
-
-    // #[allow(dead_code)]
-    // pub(crate) fn set_debug_shaders(&mut self, vertex_shader: &str, fragment_shader: &str) {
-    //     self.debug_render_descriptor = PhotonRenderDescriptorBuilder::default()
-    //         .add_render_chain(self.material.render_descriptor.clone())
-    //         .with_vertex_shader(vertex_shader)
-    //         .with_fragment_shader(fragment_shader)
-    //         .with_polygon_mode(PolygonMode::Line)
-    //         .with_label("Mesh Debug")
-    //         .with_vertex_buffer_layouts(&[ModelVertex::desc(), ModelInstance::desc()])
-    //         .add_bind_group_with_layout(bind_group_builder!(
-    //             self.gpu_controller.device,
-    //             "Mesh",
-    //             (0, VERTEX, self.transform.as_entire_binding(), STORAGE_RO)
-    //         ))
-    //         .build(self.gpu_controller.clone())
-    // }
 }

@@ -69,7 +69,7 @@ impl PhotonRenderer {
     pub fn render<U, R, D>(
         &mut self,
         surface: &Surface<'static>,
-        camera: &mut PhotonCamera,
+        camera: &PhotonCamera,
         update_callback: U,
         render_callback: R,
         debug_callback: D,
@@ -80,7 +80,7 @@ impl PhotonRenderer {
         D: FnOnce(&mut RenderPass),
     {
         // Write to the camera buffer if needed
-        camera.write_buffer();
+        // camera.write_buffer();
 
         let output = surface.get_current_texture()?;
         let view = output
