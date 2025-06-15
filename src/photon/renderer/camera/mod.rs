@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rotation, SquareMatrix, Vector3,
-    perspective,
+    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation, Rotation3,
+    SquareMatrix, Vector3, perspective,
 };
 use frustum::Frustum;
-use log::{debug, warn};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
     util::{BufferInitDescriptor, DeviceExt},
@@ -24,6 +23,8 @@ pub const OPENGL_TO_WGPU_MATIX: Matrix4<f32> = Matrix4::new(
 
 // Clamping constants
 const FOVY_CLAMP: (f32, f32) = (0.1, 179.9);
+
+const MAX_UP_DOT: f32 = 0.99;
 
 #[derive(Debug)]
 pub struct CameraController {
@@ -93,24 +94,19 @@ impl CameraController {
         let forward_norm = self.target.normalize();
         let right = forward_norm.cross(self.up);
 
-        // Change Pitch
-        let rotation = Quaternion {
-            v: right * f32::sin(delta.1),
-            s: f32::cos(delta.1),
+        let pitch_rotation = Quaternion::from_axis_angle(right, Rad(delta.1)).normalize();
+        let yaw_rotation = Quaternion::from_axis_angle(self.up, Rad(delta.0)).normalize();
+
+        // Change Pitch and Yaw
+        self.target = yaw_rotation.rotate_vector(self.target);
+
+        // Make sure to clamp the pitch rotation so it doesn't go over
+        let new_target = pitch_rotation.rotate_vector(self.target);
+        if new_target.normalize().dot(self.up).abs() < MAX_UP_DOT {
+            self.target = new_target;
         }
-        .normalize();
 
-        self.target = rotation.rotate_vector(self.target);
-
-        let up_norm = self.up.normalize();
-        // Change Yaw
-        let rotation = Quaternion {
-            v: up_norm * f32::sin(delta.0),
-            s: f32::cos(delta.0),
-        }
-        .normalize();
-
-        self.target = rotation.rotate_vector(self.target);
+        self.target = self.target.normalize();
     }
 }
 
