@@ -8,7 +8,7 @@ use isotope::*;
 use log::*;
 
 const CAMERA_SPEED: f32 = 10.0;
-const CAMERA_LOOK_SPEED: f32 = 75.0;
+const CAMERA_LOOK_SPEED: f32 = 150.0;
 
 #[derive(Debug)]
 struct GameState {

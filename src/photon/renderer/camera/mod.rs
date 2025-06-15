@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation, Rotation3,
+    Deg, EuclideanSpace, InnerSpace, Matrix4, One, Point3, Quaternion, Rad, Rotation, Rotation3,
     SquareMatrix, Vector3, perspective,
 };
 use frustum::Frustum;
@@ -94,8 +94,27 @@ impl CameraController {
         let forward_norm = self.target.normalize();
         let right = forward_norm.cross(self.up);
 
-        let pitch_rotation = Quaternion::from_axis_angle(right, Rad(delta.1)).normalize();
-        let yaw_rotation = Quaternion::from_axis_angle(self.up, Rad(delta.0)).normalize();
+        const T: f32 = 0.5;
+
+        // Pitch slerp
+        let pitch_rotation = {
+            let pitch_rotation_delta = Quaternion::from_axis_angle(right, Rad(delta.1)).normalize();
+
+            let omega = Quaternion::one().dot(pitch_rotation_delta);
+
+            (f32::sin((1.0 - T) * omega) / f32::sin(omega)) * Quaternion::one()
+                + (f32::sin(T * omega) / f32::sin(omega)) * pitch_rotation_delta
+        };
+
+        // Yaw slerp
+        let yaw_rotation = {
+            let yaw_rotation_delta = Quaternion::from_axis_angle(self.up, Rad(delta.0)).normalize();
+
+            let omega = Quaternion::one().dot(yaw_rotation_delta);
+
+            (f32::sin((1.0 - T) * omega) / f32::sin(omega)) * Quaternion::one()
+                + (f32::sin(T * omega) / f32::sin(omega)) * yaw_rotation_delta
+        };
 
         // Change Pitch and Yaw
         self.target = yaw_rotation.rotate_vector(self.target);
