@@ -42,6 +42,15 @@ impl ModelVertex {
             normal_vec,
         }
     }
+
+    pub(crate) fn dist(&self) -> f32 {
+        f32::sqrt(
+            self.position
+                .iter()
+                .map(|vertex_pos| vertex_pos.powi(2))
+                .sum(),
+        )
+    }
 }
 
 impl From<(f32, f32, f32)> for ModelVertex {

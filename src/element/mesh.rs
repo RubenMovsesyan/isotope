@@ -31,6 +31,7 @@ pub(crate) enum Mesh {
         indices: Vec<u32>,
         material: String,
         label: String,
+        cullable_radius: f32,
     },
     Buffered {
         label: String,
@@ -46,6 +47,7 @@ pub(crate) enum Mesh {
         // Cpu side processing
         vertices: Vec<ModelVertex>,
         indices: Vec<u32>,
+        cullable_radius: f32,
 
         // Delegated Rendering
         render_descriptor: PhotonRenderDescriptor,
@@ -73,9 +75,17 @@ impl From<&obj_loader::mesh::Mesh> for Mesh {
 
         let indices = (0..vertices.len() as u32).into_iter().collect::<Vec<u32>>();
 
+        let cullable_radius = vertices
+            .iter()
+            .map(|model_vertex| model_vertex.dist())
+            .fold(f32::MAX, |a, b| a.max(b));
+
+        debug!("Model Cullable Radius: {}", cullable_radius);
+
         Self::Unbuffered {
             vertices,
             indices,
+            cullable_radius,
             material: value.material.clone(),
             label: value.label.clone(),
         }
@@ -89,6 +99,7 @@ impl Default for Mesh {
             indices: Vec::new(),
             material: "".to_owned(),
             label: "".to_owned(),
+            cullable_radius: 0.0,
         }
     }
 }
@@ -107,6 +118,7 @@ impl Mesh {
             indices,
             material,
             label,
+            cullable_radius,
         } = self
         {
             let gpu_controller = asset_manager.gpu_controller.clone();
@@ -255,6 +267,7 @@ impl Mesh {
                 render_descriptor,
                 debug_render_descriptor,
                 normals_render_descriptor,
+                cullable_radius,
             }
         } else {
             self
@@ -275,14 +288,23 @@ impl Mesh {
             callback(vertex);
         });
 
+        // Need to recalculate the cullable radius after shifting the vertices
+        let new_cullable_radius = vertices
+            .iter()
+            .map(|model_vertex| model_vertex.dist())
+            .fold(f32::MAX, |a, b| a.max(b));
+
         // After modifying the vertices write it to the gpu
         match self {
             Mesh::Buffered {
                 gpu_controller,
                 vertex_buffer,
                 vertices,
+                cullable_radius,
                 ..
             } => {
+                *cullable_radius = new_cullable_radius;
+
                 gpu_controller.queue.write_buffer(
                     &vertex_buffer,
                     0,
