@@ -90,7 +90,7 @@ impl From<&obj_loader::mesh::Mesh> for Mesh {
         let cullable_radius = vertices
             .iter()
             .map(|model_vertex| model_vertex.position.dist())
-            .fold(f32::MAX, |a, b| a.max(b));
+            .fold(f32::NEG_INFINITY, |a, b| a.max(b));
 
         debug!("Model Cullable Radius: {}", cullable_radius);
 
@@ -306,6 +306,8 @@ impl Mesh {
             .map(|model_vertex| model_vertex.position.dist())
             .fold(f32::NEG_INFINITY, |a, b| a.max(b));
 
+        warn!("New Cullable Radius: {}", new_cullable_radius);
+
         // After modifying the vertices write it to the gpu
         match self {
             Mesh::Buffered {
@@ -343,13 +345,17 @@ impl Mesh {
                 cullable_radius,
                 ..
             } => {
+                // debug!("Frustum: {:#?}", camera.frustum);
                 if camera.frustum.contains(*cullable_radius, *culling_position) {
+                    // debug!("In Frustum: {:#?}", culling_position);
                     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                     render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
 
                     render_descriptor.setup_render(render_pass);
 
                     render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
+                } else {
+                    // debug!("Not In frustum: {:#?}", culling_position);
                 }
             }
             _ => {}

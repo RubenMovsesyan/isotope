@@ -97,6 +97,8 @@ pub struct Isotope {
 
     // Delta for updating
     pub delta: Instant,
+    pub mouse_delta_t: Instant,
+    pub window_delta_t: Instant,
     pub t: Arc<Instant>,
 
     // For physics
@@ -136,6 +138,8 @@ pub fn new_isotope(
         init_callback,
         update_callback,
         delta: Instant::now(),
+        mouse_delta_t: Instant::now(),
+        window_delta_t: Instant::now(),
         t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
         state_thread_running: Arc::new(RwLock::new(false)),
@@ -597,6 +601,8 @@ impl ApplicationHandler for Isotope {
                             });
                         }
                     }
+
+                    self.mouse_delta_t = Instant::now();
                 }
                 WindowEvent::Resized(new_size) => {
                     if let Some(photon) = &mut self.photon {
@@ -652,7 +658,9 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
-                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.window_delta_t
+                                                                .elapsed()
+                                                                .as_secs_f32(),
                                                             self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
@@ -687,7 +695,9 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
-                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.window_delta_t
+                                                                .elapsed()
+                                                                .as_secs_f32(),
                                                             self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
@@ -721,7 +731,7 @@ impl ApplicationHandler for Isotope {
                                         &mut compound,
                                         &mut asset_manager,
                                         position,
-                                        self.delta.elapsed().as_secs_f32(),
+                                        self.window_delta_t.elapsed().as_secs_f32(),
                                         self.t.elapsed().as_secs_f32(),
                                     );
                                 }
@@ -739,7 +749,7 @@ impl ApplicationHandler for Isotope {
         }
 
         // Update delta for the next go-around
-        self.delta = Instant::now();
+        self.window_delta_t = Instant::now();
     }
 
     fn device_event(
@@ -767,10 +777,31 @@ impl ApplicationHandler for Isotope {
                                     &mut compound,
                                     &mut asset_manager,
                                     delta,
-                                    self.delta.elapsed().as_secs_f32(),
+                                    self.mouse_delta_t.elapsed().as_secs_f32(),
                                     self.t.elapsed().as_secs_f32(),
                                 );
                             }
+
+                            // // ================ Camera Updated ================
+
+                            // // TODO: Make the camera controller update the Transform instead of the camera directly
+
+                            // // Update any camera that has a transform
+                            // compound.for_each_duo_without_mut::<_, _, CameraController, _>(
+                            //     |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
+                            //         camera.link_transform(transform);
+                            //     },
+                            // );
+
+                            // // Update any camera that has a controller
+                            // compound.for_each_duo_without_mut::<_, _, Transform, _>(
+                            //     |_entity,
+                            //      camera: &mut PhotonCamera,
+                            //      camera_controller: &mut CameraController| {
+                            //         camera.link_cam_controller(camera_controller);
+                            //     },
+                            // );
+                            // // ================ Camera Updated ================
                         }
                     }
                 }
@@ -782,9 +813,6 @@ impl ApplicationHandler for Isotope {
             }
             _ => {}
         }
-
-        // Update delta for the next go-around
-        self.delta = Instant::now();
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
