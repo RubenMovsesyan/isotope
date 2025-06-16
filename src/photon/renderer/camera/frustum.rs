@@ -64,7 +64,7 @@ impl Frustum {
         let right = front.cross(up_norm).normalize();
 
         let half_fov_rad = fovy.to_radians() * 0.5;
-        let half_fov_h_rad = (half_fov_rad.tan() * aspect).atan() * 1.5; // Temp solution for now because there is something wrong with horizontal frustum math
+        let half_fov_h_rad = (half_fov_rad.tan() * aspect).atan() * 1.5; // HACK: Temp solution for now because there is something wrong with horizontal frustum math
 
         let top_normal = {
             let top_edge_direction = {

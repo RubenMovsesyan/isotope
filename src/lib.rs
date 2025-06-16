@@ -563,11 +563,13 @@ impl ApplicationHandler for Isotope {
                                 match photon.renderer.render(
                                     &photon.window.surface,
                                     camera,
+                                    // Pre compute passes
                                     |encoder: &mut CommandEncoder| {
                                         if let Ok(mut boson) = self.boson.write() {
                                             boson.update_instances(encoder);
                                         }
                                     },
+                                    // Main Render Pass
                                     |render_pass: &mut RenderPass| {
                                         // Update all the transform buffers of the models
                                         compound.for_each_duo_mut(
@@ -583,6 +585,7 @@ impl ApplicationHandler for Isotope {
                                             },
                                         );
                                     },
+                                    // Debugging Render pass
                                     |debug_render_pass: &mut RenderPass| {
                                         compound.for_each_molecule_mut(
                                             |_entity, model: &mut Model| unsafe {
@@ -781,27 +784,6 @@ impl ApplicationHandler for Isotope {
                                     self.t.elapsed().as_secs_f32(),
                                 );
                             }
-
-                            // // ================ Camera Updated ================
-
-                            // // TODO: Make the camera controller update the Transform instead of the camera directly
-
-                            // // Update any camera that has a transform
-                            // compound.for_each_duo_without_mut::<_, _, CameraController, _>(
-                            //     |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
-                            //         camera.link_transform(transform);
-                            //     },
-                            // );
-
-                            // // Update any camera that has a controller
-                            // compound.for_each_duo_without_mut::<_, _, Transform, _>(
-                            //     |_entity,
-                            //      camera: &mut PhotonCamera,
-                            //      camera_controller: &mut CameraController| {
-                            //         camera.link_cam_controller(camera_controller);
-                            //     },
-                            // );
-                            // // ================ Camera Updated ================
                         }
                     }
                 }
