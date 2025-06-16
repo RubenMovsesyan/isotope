@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, One, Point3, Quaternion, Rad, Rotation, Rotation3,
+    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation, Rotation3,
     SquareMatrix, Vector3, perspective,
 };
 use frustum::Frustum;
-use log::warn;
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
     util::{BufferInitDescriptor, DeviceExt},

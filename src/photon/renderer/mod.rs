@@ -5,16 +5,13 @@ use camera::PhotonCamera;
 use lights::{Lights, light::Light};
 use texture::{PhotonDepthTexture, View};
 use wgpu::{
-    Color, CommandEncoder, LoadOp, Operations, PolygonMode, RenderPass, RenderPassColorAttachment,
-    RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline, StoreOp, Surface,
-    TextureViewDescriptor, include_wgsl, wgt::CommandEncoderDescriptor,
+    Color, CommandEncoder, LoadOp, Operations, RenderPass, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, StoreOp, Surface,
+    TextureViewDescriptor, wgt::CommandEncoderDescriptor,
 };
 use winit::dpi::PhysicalSize;
 
-use crate::{
-    GpuController, construct_debug_render_pipeline,
-    element::{buffered::Buffered, model_vertex::ModelVertex},
-};
+use crate::GpuController;
 
 pub mod camera;
 pub mod lights;

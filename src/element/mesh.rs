@@ -345,17 +345,13 @@ impl Mesh {
                 cullable_radius,
                 ..
             } => {
-                // debug!("Frustum: {:#?}", camera.frustum);
                 if camera.frustum.contains(*cullable_radius, *culling_position) {
-                    // debug!("In Frustum: {:#?}", culling_position);
                     render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                     render_pass.set_index_buffer(index_buffer.slice(..), INDEX_FORMAT);
 
                     render_descriptor.setup_render(render_pass);
 
                     render_pass.draw_indexed(0..*num_indices, 0, 0..instance_count);
-                } else {
-                    // debug!("Not In frustum: {:#?}", culling_position);
                 }
             }
             _ => {}
