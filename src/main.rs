@@ -8,7 +8,7 @@ use isotope::*;
 use log::*;
 
 const CAMERA_SPEED: f32 = 10.0;
-const CAMERA_LOOK_SPEED: f32 = 50.0;
+const CAMERA_LOOK_SPEED: f32 = 75.0;
 
 #[derive(Debug)]
 struct GameState {
@@ -16,6 +16,9 @@ struct GameState {
     s_pressed: bool,
     a_pressed: bool,
     d_pressed: bool,
+
+    q_pressed: bool,
+    e_pressed: bool,
 
     window_focused: bool,
 
@@ -112,40 +115,31 @@ impl IsotopeState for GameState {
         delta_t: f32,
         t: f32,
     ) {
-        if self.w_pressed {
-            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+        ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            if self.w_pressed {
                 camera_controller.forward(CAMERA_SPEED * delta_t);
-            });
-        }
+            }
 
-        if self.s_pressed {
-            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            if self.s_pressed {
                 camera_controller.backward(CAMERA_SPEED * delta_t);
-            });
-        }
+            }
 
-        if self.a_pressed {
-            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            if self.a_pressed {
                 camera_controller.strafe_left(CAMERA_SPEED * delta_t);
-            });
-        }
+            }
 
-        if self.d_pressed {
-            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+            if self.d_pressed {
                 camera_controller.strafe_right(CAMERA_SPEED * delta_t);
-            });
-        }
+            }
 
-        if self.window_focused {
-            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
-                camera_controller.look((
-                    self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
-                    self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
-                ));
-            });
-        }
+            if self.e_pressed {
+                camera_controller.zoom_in(CAMERA_SPEED * delta_t);
+            }
 
-        self.mouse_diff = (0.0, 0.0);
+            if self.q_pressed {
+                camera_controller.zoom_out(CAMERA_SPEED * delta_t);
+            }
+        });
     }
 
     fn mouse_is_moved(
@@ -157,6 +151,17 @@ impl IsotopeState for GameState {
         t: f32,
     ) {
         self.mouse_diff = (-delta.0 as f32, -delta.1 as f32);
+
+        if self.window_focused {
+            ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
+                camera_controller.look((
+                    self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                    self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                ));
+            });
+        }
+
+        self.mouse_diff = (0.0, 0.0);
     }
 
     fn key_is_pressed(
@@ -198,6 +203,8 @@ impl IsotopeState for GameState {
             KeyCode::KeyS => self.s_pressed = true,
             KeyCode::KeyA => self.a_pressed = true,
             KeyCode::KeyD => self.d_pressed = true,
+            KeyCode::KeyQ => self.q_pressed = true,
+            KeyCode::KeyE => self.e_pressed = true,
             KeyCode::Escape => {
                 ecs.for_each_molecule_mut(|_entity, window_controller: &mut WindowController| {
                     window_controller.cursor_grab_mode(|cursor_grab_mode| match cursor_grab_mode {
@@ -234,6 +241,8 @@ impl IsotopeState for GameState {
             KeyCode::KeyS => self.s_pressed = false,
             KeyCode::KeyA => self.a_pressed = false,
             KeyCode::KeyD => self.d_pressed = false,
+            KeyCode::KeyQ => self.q_pressed = false,
+            KeyCode::KeyE => self.e_pressed = false,
             _ => {}
         }
     }
@@ -257,6 +266,9 @@ fn main() {
                 s_pressed: false,
                 d_pressed: false,
                 w_pressed: false,
+
+                q_pressed: false,
+                e_pressed: false,
 
                 window_focused: false,
 

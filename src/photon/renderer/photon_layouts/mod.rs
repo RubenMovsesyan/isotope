@@ -8,6 +8,7 @@ pub mod model;
 pub mod texture;
 pub mod transform;
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct PhotonLayoutsManager {
     pub texture_layout: BindGroupLayout,

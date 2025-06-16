@@ -97,6 +97,8 @@ pub struct Isotope {
 
     // Delta for updating
     pub delta: Instant,
+    pub mouse_delta_t: Instant,
+    pub window_delta_t: Instant,
     pub t: Arc<Instant>,
 
     // For physics
@@ -136,6 +138,8 @@ pub fn new_isotope(
         init_callback,
         update_callback,
         delta: Instant::now(),
+        mouse_delta_t: Instant::now(),
+        window_delta_t: Instant::now(),
         t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
         state_thread_running: Arc::new(RwLock::new(false)),
@@ -523,27 +527,28 @@ impl ApplicationHandler for Isotope {
                             compound.for_each_molecule(
                                 |_entity, debugger: &Debugger| match debugger {
                                     Debugger::None => {
-                                        photon.set_debugger(|debugging| {
-                                            *debugging = false;
-                                        });
+                                        photon.renderer.debugging = false;
                                     }
                                     _ => {
-                                        photon.set_debugger(|debugging| {
-                                            *debugging = true;
-                                        });
+                                        photon.renderer.debugging = true;
                                     }
                                 },
                             );
 
                             photon.renderer.update_lights(&lights);
 
-                            // Update the cameras with the transforms or the camera controllers
+                            // ================ Camera Updated ================
+
+                            // TODO: Make the camera controller update the Transform instead of the camera directly
+
+                            // Update any camera that has a transform
                             compound.for_each_duo_without_mut::<_, _, CameraController, _>(
                                 |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
                                     camera.link_transform(transform);
                                 },
                             );
 
+                            // Update any camera that has a controller
                             compound.for_each_duo_without_mut::<_, _, Transform, _>(
                                 |_entity,
                                  camera: &mut PhotonCamera,
@@ -551,46 +556,53 @@ impl ApplicationHandler for Isotope {
                                     camera.link_cam_controller(camera_controller);
                                 },
                             );
+                            // ================ Camera Updated ================
 
                             // Render all the models
-                            compound.for_each_molecule_mut(|_entity, camera: &mut PhotonCamera| {
-                                _ = photon.render(
-                                    |render_pass: &mut RenderPass| {
-                                        // Update all the transform buffers of the models
-                                        compound.for_each_duo(
-                                            |_entity, model: &Model, transform: &Transform| {
-                                                model.link_transform(transform);
-                                            },
-                                        );
-
-                                        compound.for_each_molecule_mut(
-                                            |_entity, model: &mut Model| {
-                                                model.render(render_pass);
-                                            },
-                                        );
-                                    },
+                            compound.for_each_molecule(|_entity, camera: &PhotonCamera| {
+                                match photon.renderer.render(
+                                    &photon.window.surface,
+                                    camera,
                                     |encoder: &mut CommandEncoder| {
                                         if let Ok(mut boson) = self.boson.write() {
                                             boson.update_instances(encoder);
                                         }
                                     },
-                                    &lights,
                                     |render_pass: &mut RenderPass| {
+                                        // Update all the transform buffers of the models
+                                        compound.for_each_duo_mut(
+                                            |_entity, model: &mut Model, transform: &mut Transform| {
+                                                model.link_transform(transform);
+                                            },
+                                        );
+
+                                        // Render all the models (with and without transform)
+                                        compound.for_each_molecule_mut(
+                                            |_entity, model: &mut Model| {
+                                                model.render(render_pass, camera);
+                                            },
+                                        );
+                                    },
+                                    |debug_render_pass: &mut RenderPass| {
                                         compound.for_each_molecule_mut(
                                             |_entity, model: &mut Model| unsafe {
-                                                model.debug_render(render_pass);
+                                                model.debug_render(debug_render_pass, camera);
                                             },
                                         );
 
                                         if let Ok(boson) = self.boson.write() {
-                                            boson.debug_render(render_pass);
+                                            boson.debug_render(debug_render_pass);
                                         }
                                     },
-                                    camera,
-                                );
+                                ) {
+                                    Ok(_) => {}
+                                    Err(err) => error!("Rendering failed with Error: {}", err),
+                                }
                             });
                         }
                     }
+
+                    self.mouse_delta_t = Instant::now();
                 }
                 WindowEvent::Resized(new_size) => {
                     if let Some(photon) = &mut self.photon {
@@ -646,7 +658,9 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
-                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.window_delta_t
+                                                                .elapsed()
+                                                                .as_secs_f32(),
                                                             self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
@@ -681,7 +695,9 @@ impl ApplicationHandler for Isotope {
                                                             &mut compound,
                                                             &mut asset_manager,
                                                             code,
-                                                            self.delta.elapsed().as_secs_f32(),
+                                                            self.window_delta_t
+                                                                .elapsed()
+                                                                .as_secs_f32(),
                                                             self.t.elapsed().as_secs_f32(),
                                                         );
                                                     }
@@ -715,7 +731,7 @@ impl ApplicationHandler for Isotope {
                                         &mut compound,
                                         &mut asset_manager,
                                         position,
-                                        self.delta.elapsed().as_secs_f32(),
+                                        self.window_delta_t.elapsed().as_secs_f32(),
                                         self.t.elapsed().as_secs_f32(),
                                     );
                                 }
@@ -733,7 +749,7 @@ impl ApplicationHandler for Isotope {
         }
 
         // Update delta for the next go-around
-        self.delta = Instant::now();
+        self.window_delta_t = Instant::now();
     }
 
     fn device_event(
@@ -761,10 +777,31 @@ impl ApplicationHandler for Isotope {
                                     &mut compound,
                                     &mut asset_manager,
                                     delta,
-                                    self.delta.elapsed().as_secs_f32(),
+                                    self.mouse_delta_t.elapsed().as_secs_f32(),
                                     self.t.elapsed().as_secs_f32(),
                                 );
                             }
+
+                            // // ================ Camera Updated ================
+
+                            // // TODO: Make the camera controller update the Transform instead of the camera directly
+
+                            // // Update any camera that has a transform
+                            // compound.for_each_duo_without_mut::<_, _, CameraController, _>(
+                            //     |_entity, camera: &mut PhotonCamera, transform: &mut Transform| {
+                            //         camera.link_transform(transform);
+                            //     },
+                            // );
+
+                            // // Update any camera that has a controller
+                            // compound.for_each_duo_without_mut::<_, _, Transform, _>(
+                            //     |_entity,
+                            //      camera: &mut PhotonCamera,
+                            //      camera_controller: &mut CameraController| {
+                            //         camera.link_cam_controller(camera_controller);
+                            //     },
+                            // );
+                            // // ================ Camera Updated ================
                         }
                     }
                 }
@@ -776,9 +813,6 @@ impl ApplicationHandler for Isotope {
             }
             _ => {}
         }
-
-        // Update delta for the next go-around
-        self.delta = Instant::now();
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
