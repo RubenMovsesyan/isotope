@@ -97,7 +97,7 @@ pub struct Isotope {
 
     // Delta for updating
     pub delta: Instant,
-    pub mouse_delta_t: Instant,
+    pub device_delta_t: Instant,
     pub window_delta_t: Instant,
     pub t: Arc<Instant>,
 
@@ -138,7 +138,7 @@ pub fn new_isotope(
         init_callback,
         update_callback,
         delta: Instant::now(),
-        mouse_delta_t: Instant::now(),
+        device_delta_t: Instant::now(),
         window_delta_t: Instant::now(),
         t: Arc::new(Instant::now()),
         running: Arc::new(RwLock::new(false)),
@@ -604,8 +604,6 @@ impl ApplicationHandler for Isotope {
                             });
                         }
                     }
-
-                    self.mouse_delta_t = Instant::now();
                 }
                 WindowEvent::Resized(new_size) => {
                     if let Some(photon) = &mut self.photon {
@@ -780,7 +778,7 @@ impl ApplicationHandler for Isotope {
                                     &mut compound,
                                     &mut asset_manager,
                                     delta,
-                                    self.mouse_delta_t.elapsed().as_secs_f32(),
+                                    self.device_delta_t.elapsed().as_secs_f32(),
                                     self.t.elapsed().as_secs_f32(),
                                 );
                             }
@@ -795,6 +793,8 @@ impl ApplicationHandler for Isotope {
             }
             _ => {}
         }
+
+        self.device_delta_t = Instant::now();
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {

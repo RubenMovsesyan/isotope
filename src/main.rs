@@ -8,7 +8,7 @@ use isotope::*;
 use log::*;
 
 const CAMERA_SPEED: f32 = 10.0;
-const CAMERA_LOOK_SPEED: f32 = 75.0;
+const CAMERA_LOOK_SPEED: f32 = 0.01;
 
 #[derive(Debug)]
 struct GameState {
@@ -21,8 +21,6 @@ struct GameState {
     e_pressed: bool,
 
     window_focused: bool,
-
-    mouse_diff: (f32, f32),
 }
 
 impl IsotopeState for GameState {
@@ -150,18 +148,16 @@ impl IsotopeState for GameState {
         delta_t: f32,
         t: f32,
     ) {
-        self.mouse_diff = (-delta.0 as f32, -delta.1 as f32);
-
         if self.window_focused {
             ecs.for_each_molecule_mut(|_entity, camera_controller: &mut CameraController| {
                 camera_controller.look((
-                    self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
-                    self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                    // self.mouse_diff.0 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                    // self.mouse_diff.1 as f32 * CAMERA_LOOK_SPEED * delta_t,
+                    -delta.0 as f32 * CAMERA_LOOK_SPEED,
+                    -delta.1 as f32 * CAMERA_LOOK_SPEED,
                 ));
             });
         }
-
-        self.mouse_diff = (0.0, 0.0);
     }
 
     fn key_is_pressed(
@@ -271,8 +267,6 @@ fn main() {
                 e_pressed: false,
 
                 window_focused: false,
-
-                mouse_diff: (0.0, 0.0),
             };
             isotope.set_state(game_state);
         },
