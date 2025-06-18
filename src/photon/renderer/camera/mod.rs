@@ -123,7 +123,7 @@ pub struct Camera3D;
 #[derive(Debug)]
 pub struct PhotonCamera {
     // Position and direction
-    eye: Point3<f32>,
+    pub(crate) eye: Point3<f32>,
     target: Vector3<f32>,
     up: Vector3<f32>,
 

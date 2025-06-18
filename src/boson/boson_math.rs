@@ -89,9 +89,9 @@ pub fn calculate_center_of_mass(model: &Model) -> Vector3<f32> {
 
     let mut absolute_center = Vector3::zero();
     model
-        .meshes
+        .boson_meshes()
         .iter()
         .for_each(|mesh| absolute_center += calculate_mesh_com(mesh));
 
-    absolute_center / model.meshes.len() as f32
+    absolute_center / model.boson_meshes().len() as f32
 }

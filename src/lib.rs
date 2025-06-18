@@ -257,7 +257,7 @@ impl Isotope {
                                     center_of_mass
                                 );
 
-                                model.meshes.iter_mut().for_each(|mesh| {
+                                model.boson_meshes_mut().iter_mut().for_each(|mesh| {
                                     mesh.shift_vertices(|model_vertex| {
                                         model_vertex.position =
                                             (Vector3::from(model_vertex.position) - center_of_mass)
