@@ -26,7 +26,17 @@ struct GameState {
 impl IsotopeState for GameState {
     fn init(&mut self, ecs: &mut Compound, asset_manager: &mut AssetManager, delta_t: f32, t: f32) {
         let cube = ecs.create_entity();
-        ecs.add_molecule(cube, Model::from_obj("test_files/cube.obj", asset_manager));
+        // ecs.add_molecule(cube, Model::from_obj("test_files/cube.obj", asset_manager));
+        ecs.add_molecule(
+            cube,
+            Model::from_objs(
+                &["test_files/monkey.obj", "test_files/cube.obj"],
+                asset_manager,
+                |distance| {
+                    if distance > 10.0 { 1 } else { 0 }
+                },
+            ),
+        );
 
         ecs.add_molecule(cube, String::from("Cube"));
         ecs.add_molecule(cube, Transform::default());
