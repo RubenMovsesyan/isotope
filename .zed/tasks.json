@@ -1,0 +1,17 @@
+[
+    {
+        "label": "Run",
+        "command": "cargo run"
+    },
+    {
+        "label": "Debug LLDB",
+        "command": "cargo build && lldb target/debug/isotope"
+    },
+    {
+        "label": "Run Backtrace",
+        "env": {
+            "RUST_BACKTRACE": "1"
+        },
+        "command": "cargo run"
+    }
+]
