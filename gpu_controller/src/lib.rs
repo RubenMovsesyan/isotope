@@ -1,5 +1,7 @@
 use wgpu::{Adapter, Device, Instance, Queue};
 
+mod layouts;
+
 #[derive(Debug)]
 pub struct GpuController {
     pub instance: Instance,
