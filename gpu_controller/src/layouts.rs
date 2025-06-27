@@ -1,9 +1,43 @@
+//! # Bind Group Layout Management Module
+//!
+//! This module provides efficient caching and management of WGPU bind group layouts.
+//! Bind group layouts define the structure of resources (textures, samplers, buffers)
+//! that shaders can access, and creating them can be expensive. This module implements
+//! a caching system to avoid redundant layout creation.
+//!
+//! ## Key Features
+//!
+//! - **Automatic Caching**: Layouts are cached by their label to prevent duplicate creation
+//! - **Label-Based Retrieval**: Fast HashMap-based lookup for previously created layouts
+//! - **Memory Efficient**: Reuses existing layouts instead of creating duplicates
+//! - **Error Handling**: Comprehensive error reporting for missing labels and layouts
+//!
+//! ## Performance Benefits
+//!
+//! Creating bind group layouts involves GPU driver communication and validation,
+//! which can be costly when done repeatedly. By caching layouts based on their
+//! descriptors' labels, this module provides significant performance improvements
+//! for applications that use the same layout configurations multiple times.
+//!
+//! ## Usage Pattern
+//!
+//! The typical usage pattern involves:
+//! 1. Creating a layout descriptor with a unique label
+//! 2. Calling `get_layout_from_desc` to get or create the layout
+//! 3. Using `get_layout_from_label` for subsequent retrievals
+//!
+//! ## Thread Safety
+//!
+//! This module is designed to be used within the `GpuController` which handles
+//! thread safety at a higher level. The `LayoutsManager` itself is not thread-safe
+//! and should be protected by the controller's synchronization mechanisms.
+
 use std::collections::HashMap;
 
 use anyhow::{Result, anyhow};
 use wgpu::{BindGroupLayout, BindGroupLayoutDescriptor, Device};
 
-// Helper functions
+// ============== Helper Functions ==============
 /// Extracts the label from a BindGroupLayoutDescriptor.
 ///
 /// # Arguments

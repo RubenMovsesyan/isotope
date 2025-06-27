@@ -6,3 +6,10 @@ edition = "2024"
 [dependencies]
 bytemuck = "1.23.1"
 wgpu = "25.0.2"
+gpu_controller = { path = "../gpu_controller" }
+anyhow = "1.0.98"
+log = "0.4.27"
+
+
+[dev-dependencies]
+smol = "2.0.2"
