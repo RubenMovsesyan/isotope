@@ -30,17 +30,23 @@
 //! # }
 //! ```
 
-use std::sync::{Arc, RwLock};
+use std::{
+    borrow::Cow,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{Result, anyhow};
 use defaults::DEFAULT_SURFACE_CONFIGURATION;
 use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
-    Adapter, Backends, CommandEncoder, CommandEncoderDescriptor, Device, DeviceDescriptor,
-    Features, Instance, InstanceDescriptor, Limits, MemoryHints, PowerPreference, Queue,
-    RequestAdapterOptionsBase, Sampler, SamplerDescriptor, SurfaceConfiguration, Texture,
-    TextureDescriptor, Trace,
+    Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor,
+    Buffer, BufferDescriptor, CommandEncoder, CommandEncoderDescriptor, Device, DeviceDescriptor,
+    Features, Instance, InstanceDescriptor, Limits, MemoryHints, PipelineLayout,
+    PipelineLayoutDescriptor, PowerPreference, Queue, RenderPipeline, RenderPipelineDescriptor,
+    RequestAdapterOptionsBase, Sampler, SamplerDescriptor, ShaderModule, ShaderModuleDescriptor,
+    ShaderSource, SurfaceConfiguration, Texture, TextureDescriptor, Trace,
+    util::{BufferInitDescriptor, DeviceExt},
 };
 
 mod defaults;
@@ -368,6 +374,49 @@ impl GpuController {
     /// ```
     pub fn create_sampler(&self, sampler_descriptor: &SamplerDescriptor) -> Sampler {
         self.device.create_sampler(sampler_descriptor)
+    }
+
+    pub fn create_bind_group_layout(
+        &self,
+        bind_group_layout_descriptor: &BindGroupLayoutDescriptor,
+    ) -> BindGroupLayout {
+        self.device
+            .create_bind_group_layout(bind_group_layout_descriptor)
+    }
+
+    pub fn create_bind_group(&self, bind_group_descriptor: &BindGroupDescriptor) -> BindGroup {
+        self.device.create_bind_group(bind_group_descriptor)
+    }
+
+    pub fn create_buffer(&self, buffer_descriptor: &BufferDescriptor) -> Buffer {
+        self.device.create_buffer(buffer_descriptor)
+    }
+
+    pub fn create_buffer_init(&self, buffer_init_descriptor: &BufferInitDescriptor) -> Buffer {
+        self.device.create_buffer_init(buffer_init_descriptor)
+    }
+
+    pub fn create_pipeline_layout(
+        &self,
+        pipeline_layout_descriptor: &PipelineLayoutDescriptor,
+    ) -> PipelineLayout {
+        self.device
+            .create_pipeline_layout(pipeline_layout_descriptor)
+    }
+
+    pub fn create_render_pipeline(
+        &self,
+        render_pipeline_descriptor: &RenderPipelineDescriptor,
+    ) -> RenderPipeline {
+        self.device
+            .create_render_pipeline(render_pipeline_descriptor)
+    }
+
+    pub fn create_shader(&self, shader: &str) -> ShaderModule {
+        self.device.create_shader_module(ShaderModuleDescriptor {
+            label: None,
+            source: ShaderSource::Wgsl(Cow::Borrowed(shader)),
+        })
     }
 }
 
