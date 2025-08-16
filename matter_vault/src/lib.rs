@@ -17,7 +17,7 @@ impl<T> SharedMatter<T> {
         Self(Arc::new(RwLock::new(t)))
     }
 
-    pub fn with_read<F, R>(&self, callback: F) -> R
+    pub fn read<F, R>(&self, callback: F) -> R
     where
         F: FnOnce(&T) -> R,
     {
@@ -32,7 +32,7 @@ impl<T> SharedMatter<T> {
         callback(&matter)
     }
 
-    pub fn with_write<F, R>(&self, callback: F) -> R
+    pub fn write<F, R>(&self, callback: F) -> R
     where
         F: FnOnce(&mut T) -> R,
     {
@@ -55,13 +55,13 @@ impl<T> Clone for SharedMatter<T> {
 }
 
 pub struct MatterVault {
-    matter: Arc<RwLock<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>>,
+    matter: RwLock<HashMap<TypeId, HashMap<String, Box<dyn Any>>>>,
 }
 
 impl MatterVault {
     pub fn new() -> Self {
         Self {
-            matter: Arc::new(RwLock::new(HashMap::new())),
+            matter: RwLock::new(HashMap::new()),
         }
     }
 
@@ -85,7 +85,7 @@ impl MatterVault {
             .ok_or(anyhow!("Specifier Does Not Exist"))?
             .downcast_ref::<SharedMatter<T>>()
             .ok_or(anyhow!("Failed to downcast to type"))?
-            .with_read(callback))
+            .read(callback))
     }
 
     pub fn write<T: 'static, S, F, R>(&self, specifier: S, callback: F) -> Result<R>
@@ -108,7 +108,29 @@ impl MatterVault {
             .ok_or(anyhow!("Specifier Does Not Exist"))?
             .downcast_ref::<SharedMatter<T>>()
             .ok_or(anyhow!("Failed to downcast to type"))?
-            .with_write(callback))
+            .write(callback))
+    }
+
+    pub fn share<T: 'static, S>(&self, specifier: S) -> Result<SharedMatter<T>>
+    where
+        S: AsRef<str>,
+    {
+        let map = match self.matter.read() {
+            Ok(map) => map,
+            Err(poisoned) => {
+                warn!("Matter Manager has been poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        Ok(map
+            .get(&TypeId::of::<T>())
+            .ok_or(anyhow!("Data Label Does Not Exist"))?
+            .get(specifier.as_ref())
+            .ok_or(anyhow!("Specifier Does Not Exist"))?
+            .downcast_ref::<SharedMatter<T>>()
+            .ok_or(anyhow!("Failed to downcast to type"))?
+            .clone())
     }
 
     pub fn add<T: 'static, S>(&self, specifier: S, value: T)
@@ -130,5 +152,70 @@ impl MatterVault {
         map.entry(type_id)
             .or_insert_with(HashMap::new)
             .insert(specifier_str, shared_matter);
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_basic_matter_vault() {
+        let matter_vault = MatterVault::new();
+
+        matter_vault.add("first_number", 10u32);
+        matter_vault.add("second_number", 11u32);
+
+        assert!(
+            matter_vault
+                .read("first_number", |number: &u32| {
+                    println!("First Number is: {}", number);
+
+                    assert!(*number == 10u32);
+                })
+                .is_ok()
+        );
+
+        assert!(
+            matter_vault
+                .read("second_number", |number: &u32| {
+                    println!("Second Number is: {}", number);
+
+                    assert!(*number == 11u32);
+                })
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn test_matter_vault_share() {
+        let matter_vault = MatterVault::new();
+
+        matter_vault.add("first_number", 10u32);
+        matter_vault.add("second_number", 11u32);
+
+        let first_number: SharedMatter<u32> =
+            if let Ok(first_number) = matter_vault.share("first_number") {
+                first_number
+            } else {
+                assert!(false, "Failed to share first_number");
+                panic!();
+            };
+
+        first_number.read(|number| {
+            println!("Shared First Number: {}", number);
+        });
+
+        let second_number: SharedMatter<u32> =
+            if let Ok(second_number) = matter_vault.share("second_number") {
+                second_number
+            } else {
+                assert!(false, "Failed to share second_number");
+                panic!();
+            };
+
+        second_number.read(|number| {
+            println!("Shared Second Number: {}", number);
+        });
     }
 }

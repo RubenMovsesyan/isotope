@@ -1,0 +1,13 @@
+[package]
+name = "isotope_app"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+photon = { path = "../photon" }
+gpu_controller = { path = "../gpu_controller" }
+matter_vault = { path = "../matter_vault" }
+winit = "0.30.11"
+log = "0.4.27"
+wgpu = "26.0.1"
+anyhow = "1.0.98"
