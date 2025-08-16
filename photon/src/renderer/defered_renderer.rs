@@ -1,21 +1,19 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use gpu_controller::GpuController;
+use gpu_controller::{Buffered, GpuController, Instance, Vertex};
 use wgpu::{
-    BlendComponent, BlendFactor, BlendOperation, BlendState, Color, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, Extent3d, Face, FragmentState, FrontFace,
-    LoadOp, MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
-    PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass, RenderPassColorAttachment,
-    RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline,
-    RenderPipelineDescriptor, StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension,
-    TextureFormat, TextureUsages, VertexState, wgt::TextureViewDescriptor,
+    BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferUsages, Color,
+    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Extent3d,
+    Face, FragmentState, FrontFace, LoadOp, MultisampleState, Operations,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPass, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StencilState, StoreOp, Texture,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, VertexState,
+    util::BufferInitDescriptor, wgt::TextureViewDescriptor,
 };
 
-use crate::{
-    camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera},
-    render_descriptor::{Buffered, vertex::Vertex},
-};
+use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
 
 use super::CAMERA_BIND_GROUP;
 
@@ -30,6 +28,9 @@ pub struct DeferedRenderer3D {
     material_texture: Texture,
     // G-buffer bind group for lighting pass
     // gbuffer_bind_group: BindGroup,
+
+    // TEMP
+    instance_buffer: Buffer,
 }
 
 impl DeferedRenderer3D {
@@ -106,7 +107,7 @@ impl DeferedRenderer3D {
                 vertex: VertexState {
                     module: &shader_module,
                     entry_point: Some("vs_main"),
-                    buffers: &[Vertex::desc()],
+                    buffers: &[Vertex::desc(), Instance::desc()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
                 fragment: Some(FragmentState {
@@ -178,6 +179,13 @@ impl DeferedRenderer3D {
                 },
             });
 
+        // TEMP
+        let instance_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Temp Instance Buffer"),
+            usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
+            contents: bytemuck::cast_slice(&[Instance::new([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0])]),
+        });
+
         Ok(Self {
             albedo_texture,
             normal_texture,
@@ -185,6 +193,7 @@ impl DeferedRenderer3D {
             depth_texture,
             geometry_render_pipeline,
             gpu_controller,
+            instance_buffer,
         })
     }
 
@@ -265,6 +274,9 @@ impl DeferedRenderer3D {
 
             // Set bind groups here
             render_pass.set_bind_group(CAMERA_BIND_GROUP, camera.bind_group(), &[]);
+
+            // temp
+            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
             // Run render callback
             geometry_callback(&mut render_pass);

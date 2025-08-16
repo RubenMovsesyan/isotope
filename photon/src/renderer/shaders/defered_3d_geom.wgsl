@@ -22,6 +22,32 @@ struct InstanceInput {
     @location(4) rotation: vec4<f32>,
 }
 
+struct CameraUniform {
+    view_position: vec4<f32>,
+    view_proj: mat4x4<f32>,
+}
+
+// Bind Groups
+@group(0) @binding(0)
+var<uniform> camera: CameraUniform;
+
+fn hamilton_prod(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    );
+}
+
+fn quat_conj(q: vec4<f32>) -> vec4<f32> {
+    return q * vec4<f32>(-1.0, -1.0, -1.0, 1.0);
+}
+
+fn quat_norm(q: vec4<f32>) -> vec4<f32> {
+    return q / length(q);
+}
+
 @vertex
 fn vs_main(
     model: VertexInput,
@@ -30,14 +56,16 @@ fn vs_main(
 var out: VertexOutput;
     out.uv_coords = model.uv_coords;
 
-    let combined_rotation = quat_norm(hamilton_prod(global_transform.rotation, instance.rotation));
+    // let combined_rotation = quat_norm(hamilton_prod(global_transform.rotation, instance.rotation));
 
     // Rotate the point first
-    let conj = quat_conj(combined_rotation);
+    // let conj = quat_conj(combined_rotation);
+    let conj = quat_conj(instance.rotation);
 
     let rot_normal: vec4<f32> = hamilton_prod(
         hamilton_prod(
-            combined_rotation,
+            // combined_rotation,
+            instance.rotation,
             vec4<f32>(model.normal, 0.0),
         ),
         conj
@@ -46,14 +74,16 @@ var out: VertexOutput;
 
     let rot: vec4<f32> = hamilton_prod(
         hamilton_prod(
-            combined_rotation,
+            // combined_rotation,
+            instance.rotation,
             vec4<f32>(model.position, 0.0),
         ),
         conj
     );
 
     // Offset the point
-    let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position + global_transform.position, 1.0);
+    // let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position + global_transform.position, 1.0);
+    let world_position: vec4<f32> = vec4<f32>(rot.xyz + instance.position, 1.0);
 
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
@@ -65,7 +95,7 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     var output: FragmentOutput;
 
     output.albedo = vec4<f32>(1.0, 0.5, 0.3, 1.0);
-    output.normal = vec4<f32>(normalize(in.normal) * 0.5 + 0.5, 1.0);
+    output.normal = vec4<f32>(normalize(in.world_normal) * 0.5 + 0.5, 1.0);
     output.material = vec4<f32>(0.5, 0.3, 1.0, 1.0);
 
     return output;

@@ -2,11 +2,9 @@ use std::mem;
 
 use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode};
 
-use super::Buffered;
+use crate::Buffered;
 
-pub type Position = [f32; 3];
-pub type UvCoord = [f32; 2];
-pub type NormalVec = [f32; 3];
+use super::{NormalVec, Position, UvCoord};
 
 #[repr(C)]
 #[derive(Default, Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]

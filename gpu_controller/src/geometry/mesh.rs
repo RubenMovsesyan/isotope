@@ -1,10 +1,11 @@
 use std::{mem, sync::Arc};
 
-use gpu_controller::GpuController;
 use wgpu::{
     BindGroupLayoutDescriptor, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    util::BufferInitDescriptor,
+    IndexFormat, RenderPass, util::BufferInitDescriptor,
 };
+
+use crate::GpuController;
 
 use super::vertex::Vertex;
 
@@ -53,5 +54,11 @@ impl Mesh {
             vertices,
             indices,
         }
+    }
+
+    pub fn render(&self, render_pass: &mut RenderPass) {
+        render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
+        render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
     }
 }

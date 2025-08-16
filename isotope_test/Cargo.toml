@@ -1,0 +1,8 @@
+[package]
+name = "isotope_test"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+isotope_app = { path = "../isotope_app" }
+winit = "0.30.12"

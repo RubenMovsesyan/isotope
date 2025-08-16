@@ -1,16 +1,17 @@
-use std::sync::Arc;
+use gpu_controller::Mesh;
+use matter_vault::SharedMatter;
+use wgpu::RenderPass;
 
-use gpu_controller::GpuController;
-use vertex::Vertex;
-use wgpu::{BindGroup, Buffer, VertexBufferLayout};
-
-mod mesh;
-pub mod vertex;
-
-pub trait Buffered {
-    fn desc() -> VertexBufferLayout<'static>;
+pub struct GeometryDescriptor {
+    pub meshes: Vec<SharedMatter<Mesh>>,
 }
 
-pub struct RenderDescriptor {}
-
-pub struct Material;
+impl GeometryDescriptor {
+    pub(crate) fn geomtry_pass(&self, render_pass: &mut RenderPass) {
+        for mesh in &self.meshes {
+            mesh.read(|mesh| {
+                mesh.render(render_pass);
+            });
+        }
+    }
+}

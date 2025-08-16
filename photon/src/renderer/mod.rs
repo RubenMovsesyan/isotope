@@ -3,8 +3,11 @@ use std::sync::Arc;
 use anyhow::Result;
 use defered_renderer::DeferedRenderer3D;
 use gpu_controller::GpuController;
+use wgpu::{RenderPass, Texture};
 
-mod defered_renderer;
+use crate::camera::Camera;
+
+pub mod defered_renderer;
 
 const CAMERA_BIND_GROUP: u32 = 0;
 
@@ -17,5 +20,12 @@ impl Renderer {
         Ok(Self::Defered3D(DeferedRenderer3D::new(gpu_controller)?))
     }
 
-    pub fn render(&self) {}
+    pub fn render<G>(&self, camera: &Camera, output: &Texture, geometry_callback: G)
+    where
+        G: FnOnce(&mut RenderPass),
+    {
+        match self {
+            Self::Defered3D(renderer) => _ = renderer.render(camera, output, geometry_callback),
+        }
+    }
 }

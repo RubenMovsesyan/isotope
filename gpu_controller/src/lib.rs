@@ -30,6 +30,8 @@
 //! # }
 //! ```
 
+const DESIRED_MAX_FRAME_LATENCY: u32 = 2;
+
 use std::{
     borrow::Cow,
     sync::{Arc, RwLock},
@@ -42,14 +44,20 @@ use log::info;
 use wgpu::{
     Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor,
     Buffer, BufferDescriptor, CommandEncoder, CommandEncoderDescriptor, Device, DeviceDescriptor,
-    Features, Instance, InstanceDescriptor, Limits, MemoryHints, PipelineLayout,
-    PipelineLayoutDescriptor, PowerPreference, Queue, RenderPipeline, RenderPipelineDescriptor,
+    Features, InstanceDescriptor, Limits, MemoryHints, PipelineLayout, PipelineLayoutDescriptor,
+    PowerPreference, PresentMode, Queue, RenderPipeline, RenderPipelineDescriptor,
     RequestAdapterOptionsBase, Sampler, SamplerDescriptor, ShaderModule, ShaderModuleDescriptor,
-    ShaderSource, SurfaceConfiguration, Texture, TextureDescriptor, Trace,
+    ShaderSource, Surface, SurfaceConfiguration, Texture, TextureDescriptor, TextureUsages, Trace,
+    VertexBufferLayout,
     util::{BufferInitDescriptor, DeviceExt},
 };
 
+// public re-exports
+pub use geometry::{instance::Instance, mesh::Mesh, vertex::Vertex};
+use winit::window::Window;
+
 mod defaults;
+mod geometry;
 mod layouts;
 
 /// The main GPU controller that manages all WGPU resources and provides a simplified interface
@@ -74,7 +82,7 @@ mod layouts;
 /// - **SurfaceConfiguration**: Thread-safe configuration for rendering surfaces
 #[derive(Debug)]
 pub struct GpuController {
-    instance: Instance,
+    instance: wgpu::Instance,
     adapter: Adapter,
     device: Device,
     queue: Queue,
@@ -139,7 +147,7 @@ impl GpuController {
         info!("Initializing WGPU");
 
         // Initialize WGPU
-        let instance = Instance::new(&InstanceDescriptor {
+        let instance = wgpu::Instance::new(&InstanceDescriptor {
             backends: Backends::all(),
             ..Default::default()
         });
@@ -418,6 +426,45 @@ impl GpuController {
             source: ShaderSource::Wgsl(Cow::Borrowed(shader)),
         })
     }
+
+    pub fn create_surface(&self, window: Arc<Window>) -> Result<Surface<'static>> {
+        let surface = self
+            .instance
+            .create_surface(window.clone())
+            .map_err(|e| anyhow!("Failed to create surface: {}", e))?;
+
+        let surface_capabilities = surface.get_capabilities(&self.adapter);
+        let size = window.inner_size();
+
+        let surface_format = surface_capabilities
+            .formats
+            .iter()
+            .find(|texture_format| texture_format.is_srgb())
+            .copied()
+            .unwrap_or(surface_capabilities.formats[0]);
+
+        // Overwrite the surface configuration with the new settings.
+        if let Ok(mut sc) = self.surface_configuration.write() {
+            *sc = SurfaceConfiguration {
+                usage: TextureUsages::RENDER_ATTACHMENT,
+                format: surface_format,
+                width: size.width,
+                height: size.height,
+                present_mode: PresentMode::AutoNoVsync,
+                alpha_mode: surface_capabilities.alpha_modes[0],
+                view_formats: vec![],
+                desired_maximum_frame_latency: DESIRED_MAX_FRAME_LATENCY,
+            };
+
+            surface.configure(&self.device, &sc);
+        }
+
+        Ok(surface)
+    }
+}
+
+pub trait Buffered {
+    fn desc() -> VertexBufferLayout<'static>;
 }
 
 /// # Tests
