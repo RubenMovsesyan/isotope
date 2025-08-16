@@ -44,7 +44,8 @@ impl PerspectiveCamera3D {
         znear: f32,
         zfar: f32,
     ) -> Self {
-        let view = Matrix4::look_at_rh(eye, eye + target, up);
+        // let view = Matrix4::look_at_rh(eye, eye + target, up);
+        let view = Matrix4::look_to_rh(eye, target, up);
         let proj = perspective(Deg(fovy), aspect, znear, zfar);
 
         let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;

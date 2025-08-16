@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use gpu_controller::{GpuController, Mesh, Vertex};
-use log::info;
+use log::{error, info};
 use matter_vault::MatterVault;
 use photon::{
     camera::Camera,
@@ -42,53 +42,53 @@ impl Isotope {
             "Cube".to_string(),
             &[
                 Vertex {
-                    position: [0.0, 0.0, 0.0],
-                    normal_vec: [0.0, 0.0, 0.0],
-                    uv_coord: [0.0, 0.0],
-                },
-                Vertex {
-                    position: [1.0, 0.0, 0.0],
-                    normal_vec: [0.0, 0.0, 0.0],
-                    uv_coord: [1.0, 0.0],
-                },
-                Vertex {
-                    position: [1.0, 1.0, 0.0],
-                    normal_vec: [0.0, 0.0, 0.0],
+                    position: [1.0, 1.0, -1.0],
+                    normal_vec: [0.57735027, 0.57735027, -0.57735027],
                     uv_coord: [1.0, 1.0],
                 },
                 Vertex {
-                    position: [0.0, 1.0, 0.0],
-                    normal_vec: [0.0, 0.0, 0.0],
-                    uv_coord: [0.0, 1.0],
-                },
-                Vertex {
-                    position: [0.0, 0.0, 1.0],
-                    normal_vec: [0.0, 0.0, 0.0],
-                    uv_coord: [0.0, 0.0],
-                },
-                Vertex {
-                    position: [1.0, 0.0, 1.0],
-                    normal_vec: [0.0, 0.0, 0.0],
+                    position: [1.0, -1.0, -1.0],
+                    normal_vec: [0.57735027, -0.57735027, -0.57735027],
                     uv_coord: [1.0, 0.0],
                 },
                 Vertex {
                     position: [1.0, 1.0, 1.0],
-                    normal_vec: [0.0, 0.0, 0.0],
+                    normal_vec: [0.57735027, 0.57735027, 0.57735027],
                     uv_coord: [1.0, 1.0],
                 },
                 Vertex {
-                    position: [0.0, 1.0, 1.0],
-                    normal_vec: [0.0, 0.0, 0.0],
+                    position: [1.0, -1.0, 1.0],
+                    normal_vec: [0.57735027, -0.57735027, 0.57735027],
+                    uv_coord: [1.0, 0.0],
+                },
+                Vertex {
+                    position: [-1.0, 1.0, -1.0],
+                    normal_vec: [-0.57735027, 0.57735027, -0.57735027],
                     uv_coord: [0.0, 1.0],
+                },
+                Vertex {
+                    position: [-1.0, -1.0, -1.0],
+                    normal_vec: [-0.57735027, -0.57735027, -0.57735027],
+                    uv_coord: [0.0, 0.0],
+                },
+                Vertex {
+                    position: [-1.0, 1.0, 1.0],
+                    normal_vec: [-0.57735027, 0.57735027, 0.57735027],
+                    uv_coord: [0.0, 1.0],
+                },
+                Vertex {
+                    position: [-1.0, -1.0, 1.0],
+                    normal_vec: [-0.57735027, -0.57735027, 0.57735027],
+                    uv_coord: [0.0, 0.0],
                 },
             ],
             &[
-                0, 1, 2, 2, 3, 0, // Front face
-                4, 5, 6, 6, 7, 4, // Back face
-                0, 4, 7, 7, 3, 0, // Left face
-                1, 5, 6, 6, 2, 1, // Right face
-                3, 7, 6, 6, 2, 3, // Top face
-                0, 1, 5, 5, 4, 0, // Bottom face
+                5, 3, 1, 3, 8, 4, //
+                7, 6, 8, 2, 8, 6, //
+                1, 4, 2, 5, 2, 6, //
+                5, 7, 3, 3, 7, 8, //
+                7, 5, 6, 2, 4, 8, //
+                1, 3, 4, 5, 1, 2, //
             ],
         );
 
@@ -98,13 +98,13 @@ impl Isotope {
             // Temp camera setup
             camera: Camera::new_perspective_3d(
                 gpu_controller.clone(),
-                [10.0, 10.0, 10.0],
-                [-5.0, -5.0, -5.0],
-                [0.0, 1.0, 0.0],
+                [5.0, 5.0, 5.0],                         // eye position
+                [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
+                [0.0, 1.0, 0.0],                         // up vector
                 gpu_controller.with_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
-                90.0,
-                0.1,
-                100.0,
+                45.0,  // FOV
+                1.0,   // near plane - try 1.0 instead
+                100.0, // far plane
             ),
             gpu_controller,
             temp_cube,
@@ -156,6 +156,14 @@ impl ApplicationHandler for IsotopeApplication {
             },
         ) {
             self.window = Some(rendering_window);
+            self.isotope.photon =
+                match Renderer::new_defered_3d(self.isotope.gpu_controller.clone()) {
+                    Ok(photon) => photon,
+                    Err(err) => {
+                        error!("Failed to create photon renderer: {}", err);
+                        panic!();
+                    }
+                };
         }
     }
 
@@ -188,6 +196,9 @@ impl ApplicationHandler for IsotopeApplication {
                                     self.isotope.temp_cube.render(render_pass);
                                 },
                             );
+
+                            // Display on the surface
+                            surface_texture.present();
                         }
                     }
                     _ => {}

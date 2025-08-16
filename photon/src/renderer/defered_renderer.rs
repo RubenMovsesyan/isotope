@@ -1,15 +1,18 @@
-use std::sync::Arc;
+use std::{ops::Mul, sync::Arc};
 
 use anyhow::Result;
 use gpu_controller::{Buffered, GpuController, Instance, Vertex};
 use wgpu::{
-    BlendComponent, BlendFactor, BlendOperation, BlendState, Buffer, BufferUsages, Color,
-    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Extent3d,
-    Face, FragmentState, FrontFace, LoadOp, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPass, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, StencilState, StoreOp, Texture,
-    TextureDescriptor, TextureDimension, TextureFormat, TextureUsages, VertexState,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendFactor,
+    BlendOperation, BlendState, Buffer, BufferUsages, Color, ColorTargetState, ColorWrites,
+    CompareFunction, DepthBiasState, DepthStencilState, Extent3d, Face, FragmentState, FrontFace,
+    IndexFormat, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, SamplerBindingType, SamplerDescriptor, ShaderStages,
+    StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension, TextureFormat,
+    TextureSampleType, TextureUsages, TextureViewDimension, VertexState,
     util::BufferInitDescriptor, wgt::TextureViewDescriptor,
 };
 
@@ -17,9 +20,12 @@ use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
 
 use super::CAMERA_BIND_GROUP;
 
+const G_BUFFER_BIND_GROUP: u32 = 1; // TODO: Lights are 1
+
 pub struct DeferedRenderer3D {
     gpu_controller: Arc<GpuController>,
     geometry_render_pipeline: RenderPipeline,
+    lighting_render_pipeline: RenderPipeline,
     depth_texture: Texture,
 
     // G-buffer textures
@@ -27,10 +33,11 @@ pub struct DeferedRenderer3D {
     normal_texture: Texture,
     material_texture: Texture,
     // G-buffer bind group for lighting pass
-    // gbuffer_bind_group: BindGroup,
+    g_buffer_bind_group: BindGroup,
 
     // TEMP
     instance_buffer: Buffer,
+    index_buffer: Buffer,
 }
 
 impl DeferedRenderer3D {
@@ -74,6 +81,11 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
+        let g_buffer_sampler = gpu_controller.create_sampler(&SamplerDescriptor {
+            label: Some("G-Buffer Sampler"),
+            ..Default::default()
+        });
+
         let depth_texture = gpu_controller.create_texture(&TextureDescriptor {
             label: Some("G-Buffer Depth"),
             size: texture_size,
@@ -83,6 +95,78 @@ impl DeferedRenderer3D {
             format: TextureFormat::Depth32Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
+        });
+
+        let g_buffer_bind_group_layout =
+            gpu_controller.create_bind_group_layout(&BindGroupLayoutDescriptor {
+                label: Some("G-Buffer Bind Group Layout"),
+                entries: &[
+                    BindGroupLayoutEntry {
+                        binding: 0,
+                        count: None,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                        },
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 1,
+                        count: None,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                        },
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 2,
+                        count: None,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                        },
+                    },
+                    BindGroupLayoutEntry {
+                        binding: 3,
+                        count: None,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                    },
+                ],
+            });
+
+        let g_buffer_bind_group = gpu_controller.create_bind_group(&BindGroupDescriptor {
+            label: Some("G-Buffer Bind Group"),
+            layout: &g_buffer_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(
+                        &albedo_texture.create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(
+                        &normal_texture.create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::TextureView(
+                        &material_texture.create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::Sampler(&g_buffer_sampler),
+                },
+            ],
         });
 
         let camera_bind_group_layout =
@@ -95,23 +179,33 @@ impl DeferedRenderer3D {
                 push_constant_ranges: &[],
             });
 
-        let shader_module =
+        let lighting_pipeline_layout =
+            gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
+                label: Some("Lighting Pipeline Layout"),
+                bind_group_layouts: &[&camera_bind_group_layout, &g_buffer_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+
+        let geometry_shader_module =
             gpu_controller.create_shader(include_str!("shaders/defered_3d_geom.wgsl"));
+
+        let lighting_shader_module =
+            gpu_controller.create_shader(include_str!("shaders/defered_3d_light.wgsl"));
 
         let geometry_render_pipeline =
             gpu_controller.create_render_pipeline(&RenderPipelineDescriptor {
-                label: Some("Defered Renderer Render Pipeline"),
+                label: Some("Defered Renderer Geometry Pipeline"),
                 cache: None,
                 multiview: None,
                 layout: Some(&geometry_pipeline_layout),
                 vertex: VertexState {
-                    module: &shader_module,
+                    module: &geometry_shader_module,
                     entry_point: Some("vs_main"),
                     buffers: &[Vertex::desc(), Instance::desc()],
                     compilation_options: PipelineCompilationOptions::default(),
                 },
                 fragment: Some(FragmentState {
-                    module: &shader_module,
+                    module: &geometry_shader_module,
                     entry_point: Some("fs_main"),
                     targets: &[
                         // Albedo
@@ -160,7 +254,8 @@ impl DeferedRenderer3D {
                     topology: PrimitiveTopology::TriangleList,
                     strip_index_format: None,
                     front_face: FrontFace::Ccw,
-                    cull_mode: Some(Face::Back),
+                    // cull_mode: Some(Face::Back),
+                    cull_mode: None,
                     polygon_mode: PolygonMode::Fill,
                     unclipped_depth: false,
                     conservative: false,
@@ -179,11 +274,73 @@ impl DeferedRenderer3D {
                 },
             });
 
+        let lighting_render_pipeline =
+            gpu_controller.create_render_pipeline(&RenderPipelineDescriptor {
+                label: Some("Defered Renderer Lighting Pipeline"),
+                cache: None,
+                multiview: None,
+                layout: Some(&lighting_pipeline_layout),
+                vertex: VertexState {
+                    module: &lighting_shader_module,
+                    entry_point: Some("vs_main"),
+                    buffers: &[],
+                    compilation_options: PipelineCompilationOptions::default(),
+                },
+                fragment: Some(FragmentState {
+                    module: &lighting_shader_module,
+                    entry_point: Some("fs_main"),
+                    targets: &[
+                        // Surface Texture output
+                        Some(ColorTargetState {
+                            format: TextureFormat::Bgra8UnormSrgb,
+                            blend: Some(BlendState {
+                                color: BlendComponent {
+                                    src_factor: BlendFactor::SrcAlpha,
+                                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                                    operation: BlendOperation::Add,
+                                },
+                                alpha: BlendComponent::OVER,
+                            }),
+                            write_mask: ColorWrites::ALL,
+                        }),
+                    ],
+                    compilation_options: PipelineCompilationOptions::default(),
+                }),
+                primitive: PrimitiveState {
+                    topology: PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: FrontFace::Ccw,
+                    cull_mode: Some(Face::Back),
+                    polygon_mode: PolygonMode::Fill,
+                    unclipped_depth: false,
+                    conservative: false,
+                },
+                // depth_stencil: Some(DepthStencilState {
+                //     format: TextureFormat::Depth32Float,
+                //     depth_write_enabled: true,
+                //     depth_compare: CompareFunction::Less,
+                //     stencil: StencilState::default(),
+                //     bias: DepthBiasState::default(),
+                // }),
+                depth_stencil: None,
+                multisample: MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+            });
+
         // TEMP
         let instance_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
             label: Some("Temp Instance Buffer"),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             contents: bytemuck::cast_slice(&[Instance::new([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0])]),
+        });
+
+        let index_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
+            label: Some("Temp Index Buffer"),
+            usage: BufferUsages::INDEX | BufferUsages::COPY_DST,
+            contents: bytemuck::cast_slice(&[0, 1, 2]),
         });
 
         Ok(Self {
@@ -192,8 +349,11 @@ impl DeferedRenderer3D {
             material_texture,
             depth_texture,
             geometry_render_pipeline,
+            lighting_render_pipeline,
+            g_buffer_bind_group,
             gpu_controller,
             instance_buffer,
+            index_buffer,
         })
     }
 
@@ -235,7 +395,7 @@ impl DeferedRenderer3D {
                         view: &albedo_view,
                         resolve_target: None,
                         ops: Operations {
-                            load: LoadOp::Clear(Color::BLACK),
+                            load: LoadOp::Clear(Color::TRANSPARENT),
                             store: StoreOp::Store,
                         },
                     }),
@@ -300,6 +460,14 @@ impl DeferedRenderer3D {
             });
 
             // Set the lighing bind group here
+            render_pass.set_pipeline(&self.lighting_render_pipeline);
+
+            render_pass.set_bind_group(CAMERA_BIND_GROUP, camera.bind_group(), &[]);
+            render_pass.set_bind_group(G_BUFFER_BIND_GROUP, &self.g_buffer_bind_group, &[]);
+
+            render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
+
+            render_pass.draw_indexed(0..3, 0, 0..1);
         }
 
         self.gpu_controller.submit(encoder);
