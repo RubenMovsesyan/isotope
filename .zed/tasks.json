@@ -1,7 +1,10 @@
 [
     {
         "label": "Run",
-        "command": "cargo run"
+        "env": {
+            "RUST_LOG": "debug"
+        },
+        "command": "cargo run --bin isotope_test"
     },
     {
         "label": "Debug LLDB",

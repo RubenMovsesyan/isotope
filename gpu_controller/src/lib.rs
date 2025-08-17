@@ -297,7 +297,7 @@ impl GpuController {
     /// # Ok(())
     /// # }
     /// ```
-    pub fn with_surface_config<F, R>(&self, callback: F) -> Result<R>
+    pub fn read_surface_config<F, R>(&self, callback: F) -> Result<R>
     where
         F: FnOnce(&SurfaceConfiguration) -> R,
     {
@@ -305,6 +305,17 @@ impl GpuController {
             Ok(callback(&surface_config))
         } else {
             Err(anyhow!("Failed to read surface configuration"))
+        }
+    }
+
+    pub fn write_surface_config<F, R>(&self, callback: F) -> Result<R>
+    where
+        F: FnOnce(&mut SurfaceConfiguration) -> R,
+    {
+        if let Ok(mut surface_config) = self.surface_configuration.write() {
+            Ok(callback(&mut surface_config))
+        } else {
+            Err(anyhow!("Failed to write surface configuration"))
         }
     }
 
@@ -460,6 +471,12 @@ impl GpuController {
         }
 
         Ok(surface)
+    }
+
+    pub fn configure_surface(&self, surface: &Surface<'static>) {
+        if let Ok(sc) = self.surface_configuration.read() {
+            surface.configure(&self.device, &sc);
+        }
     }
 }
 

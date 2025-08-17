@@ -2,6 +2,7 @@ use isotope_app::IsotopeApplication;
 use winit::event_loop::{self, ControlFlow, EventLoop};
 
 fn main() {
+    pretty_env_logger::init();
     let mut isotope = IsotopeApplication::new().unwrap();
 
     let event_loop = EventLoop::new().unwrap();

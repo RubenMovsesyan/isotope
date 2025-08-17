@@ -28,4 +28,10 @@ impl Renderer {
             Self::Defered3D(renderer) => _ = renderer.render(camera, output, geometry_callback),
         }
     }
+
+    pub fn resize(&mut self, new_size: (u32, u32)) {
+        match self {
+            Self::Defered3D(renderer) => renderer.resize(new_size),
+        }
+    }
 }

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use gpu_controller::{GpuController, Mesh, Vertex};
-use log::{error, info};
+use log::{debug, error, info};
 use matter_vault::MatterVault;
 use photon::{
     camera::Camera,
@@ -101,7 +101,7 @@ impl Isotope {
                 [5.0, 5.0, 5.0],                         // eye position
                 [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
                 [0.0, 1.0, 0.0],                         // up vector
-                gpu_controller.with_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
+                gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
                 45.0,  // FOV
                 1.0,   // near plane - try 1.0 instead
                 100.0, // far plane
@@ -150,8 +150,8 @@ impl ApplicationHandler for IsotopeApplication {
             event_loop,
             self.isotope.gpu_controller.clone(),
             WindowInitializer {
-                width: 640,
-                height: 480,
+                width: 1920,
+                height: 1080,
                 title: "Isotope".to_string(),
             },
         ) {
@@ -200,6 +200,43 @@ impl ApplicationHandler for IsotopeApplication {
                             // Display on the surface
                             surface_texture.present();
                         }
+                    }
+                    WindowEvent::Resized(new_size) => {
+                        if self
+                            .isotope
+                            .gpu_controller
+                            .write_surface_config(|sc| {
+                                sc.width = new_size.width;
+                                sc.height = new_size.height;
+                            })
+                            .is_ok()
+                        {
+                            self.isotope
+                                .gpu_controller
+                                .configure_surface(&window.surface);
+                            debug!("Surface resized to {}x{}", new_size.width, new_size.height);
+                        } else {
+                            error!("Failed to resize surface");
+                        }
+
+                        self.isotope
+                            .photon
+                            .resize((new_size.width, new_size.height));
+
+                        // TEMP
+                        self.isotope.camera = Camera::new_perspective_3d(
+                            self.isotope.gpu_controller.clone(),
+                            [5.0, 5.0, 5.0],                         // eye position
+                            [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
+                            [0.0, 1.0, 0.0],                         // up vector
+                            self.isotope
+                                .gpu_controller
+                                .read_surface_config(|sc| sc.width as f32 / sc.height as f32)
+                                .unwrap_or_else(|_| 640.0 / 480.0),
+                            45.0,  // FOV
+                            1.0,   // near plane - try 1.0 instead
+                            100.0, // far plane
+                        );
                     }
                     _ => {}
                 }

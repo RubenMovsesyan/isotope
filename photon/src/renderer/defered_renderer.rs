@@ -2,17 +2,18 @@ use std::{ops::Mul, sync::Arc};
 
 use anyhow::Result;
 use gpu_controller::{Buffered, GpuController, Instance, Vertex};
+use log::error;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendFactor,
     BlendOperation, BlendState, Buffer, BufferUsages, Color, ColorTargetState, ColorWrites,
     CompareFunction, DepthBiasState, DepthStencilState, Extent3d, Face, FragmentState, FrontFace,
     IndexFormat, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
     PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass,
     RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, SamplerBindingType, SamplerDescriptor, ShaderStages,
-    StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension, TextureFormat,
-    TextureSampleType, TextureUsages, TextureViewDimension, VertexState,
+    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderStages, StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension,
+    TextureFormat, TextureSampleType, TextureUsages, TextureViewDimension, VertexState,
     util::BufferInitDescriptor, wgt::TextureViewDescriptor,
 };
 
@@ -33,7 +34,9 @@ pub struct DeferedRenderer3D {
     normal_texture: Texture,
     material_texture: Texture,
     // G-buffer bind group for lighting pass
+    g_buffer_bind_group_layout: BindGroupLayout,
     g_buffer_bind_group: BindGroup,
+    g_buffer_sampler: Sampler,
 
     // TEMP
     instance_buffer: Buffer,
@@ -42,7 +45,7 @@ pub struct DeferedRenderer3D {
 
 impl DeferedRenderer3D {
     pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
-        let texture_size = gpu_controller.with_surface_config(|config| Extent3d {
+        let texture_size = gpu_controller.read_surface_config(|config| Extent3d {
             width: config.width,
             height: config.height,
             depth_or_array_layers: 1,
@@ -350,7 +353,9 @@ impl DeferedRenderer3D {
             depth_texture,
             geometry_render_pipeline,
             lighting_render_pipeline,
+            g_buffer_bind_group_layout,
             g_buffer_bind_group,
+            g_buffer_sampler,
             gpu_controller,
             instance_buffer,
             index_buffer,
@@ -473,5 +478,102 @@ impl DeferedRenderer3D {
         self.gpu_controller.submit(encoder);
 
         Ok(())
+    }
+
+    pub fn resize(&mut self, new_size: (u32, u32)) {
+        let texture_size = self
+            .gpu_controller
+            .read_surface_config(|config| Extent3d {
+                width: config.width,
+                height: config.height,
+                depth_or_array_layers: 1,
+            })
+            .unwrap_or_else(|err| {
+                error!("Failed to read surface config: {}", err);
+                Extent3d {
+                    width: new_size.0,
+                    height: new_size.1,
+                    depth_or_array_layers: 1,
+                }
+            });
+
+        self.albedo_texture = self.gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Albedo"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        self.normal_texture = self.gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Normal"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        self.material_texture = self.gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Materials"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba8Unorm,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        self.depth_texture = self.gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Depth"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Depth32Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        self.g_buffer_bind_group = self.gpu_controller.create_bind_group(&BindGroupDescriptor {
+            label: Some("G-Buffer Bind Group"),
+            layout: &self.g_buffer_bind_group_layout,
+            entries: &[
+                BindGroupEntry {
+                    binding: 0,
+                    resource: BindingResource::TextureView(
+                        &self
+                            .albedo_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 1,
+                    resource: BindingResource::TextureView(
+                        &self
+                            .normal_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 2,
+                    resource: BindingResource::TextureView(
+                        &self
+                            .material_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: 3,
+                    resource: BindingResource::Sampler(&self.g_buffer_sampler),
+                },
+            ],
+        });
     }
 }
