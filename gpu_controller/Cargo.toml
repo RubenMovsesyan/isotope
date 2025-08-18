@@ -9,6 +9,7 @@ bytemuck = "1.23.2"
 log = "0.4.27"
 wgpu = "25.0.2"
 winit = "0.30.12"
+obj-loader = { path = "../../obj-loader" }
 
 [dev-dependencies]
 smol = "2.0.2"
