@@ -150,18 +150,495 @@ impl Compound {
 
         entity
     }
+
+    // Singular Molecule accessors ====================================
+    pub fn iter_mol<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = match storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, cell) in &storage_guard.compounds {
+            let data = cell.read();
+            f(*entity, &*data);
+        }
+    }
+
+    pub fn iter_without_mol<W, T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let t_storage_guard = match t_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                let t_data = t_cell.read();
+                f(*entity, &*t_data);
+            }
+        }
+    }
+
+    pub fn iter_mut_mol<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = match storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, cell) in &storage_guard.compounds {
+            let mut data = cell.write();
+            f(*entity, &mut *data);
+        }
+    }
+
+    pub fn iter_mut_without_mol<W, T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let t_storage_guard = match t_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                let mut t_data = t_cell.write();
+                f(*entity, &mut *t_data);
+            }
+        }
+    }
+
+    // Dual Molecule accessors ==============================
+    pub fn iter_duo<T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                let t1_data = t1_cell.read();
+                let t2_data = t2_cell.read();
+                f(*entity, &*t1_data, &*t2_data);
+            }
+        }
+    }
+
+    pub fn iter_without_duo<W, T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    let t1_data = t1_cell.read();
+                    let t2_data = t2_cell.read();
+
+                    f(*entity, &*t1_data, &*t2_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_mut_duo<T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                let mut t1_data = t1_cell.write();
+                let mut t2_data = t2_cell.write();
+                f(*entity, &mut *t1_data, &mut *t2_data);
+            }
+        }
+    }
+
+    pub fn iter_mut_without_duo<W, T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    let mut t1_data = t1_cell.write();
+                    let mut t2_data = t2_cell.write();
+
+                    f(*entity, &mut *t1_data, &mut *t2_data);
+                }
+            }
+        }
+    }
+
+    // Trio Molecule accessors ================================
+    pub fn iter_trio<T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2, &T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    let t1_data = t1_cell.read();
+                    let t2_data = t2_cell.read();
+                    let t3_data = t3_cell.read();
+
+                    f(*entity, &*t1_data, &*t2_data, &*t3_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_without_trio<W, T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2, &T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(_) = w_storage_guard.compounds.get(entity) {
+                    } else {
+                        let t1_data = t1_cell.read();
+                        let t2_data = t2_cell.read();
+                        let t3_data = t3_cell.read();
+
+                        f(*entity, &*t1_data, &*t2_data, &*t3_data);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn iter_mut_trio<T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    let mut t1_data = t1_cell.write();
+                    let mut t2_data = t2_cell.write();
+                    let mut t3_data = t3_cell.write();
+
+                    f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_mut_without_trio<W, T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(_) = w_storage_guard.compounds.get(entity) {
+                    } else {
+                        let mut t1_data = t1_cell.write();
+                        let mut t2_data = t2_cell.write();
+                        let mut t3_data = t3_cell.write();
+
+                        f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                    }
+                }
+            }
+        }
+    }
 }
 
 // For adding multiple molecules to the same entity
 pub trait MoleculeBundle {
     fn add_to_entity(self, compound: &Compound, entity: Entity);
 }
-
-// impl<T: Send + Sync + 'static> MoleculeBundle for T {
-//     fn add_to_entity(self, compound: &Compound, entity: Entity) {
-//         compound.add_molecule(entity, self);
-//     }
-// }
 
 // Macro to implement for multiple sizes of tuples (add more if needed)
 macro_rules! impl_molecule_bundle_for_tuple {
