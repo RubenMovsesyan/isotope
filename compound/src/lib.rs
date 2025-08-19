@@ -667,3 +667,185 @@ impl_molecule_bundle_for_tuple!(A, B, C, D, E, F, G, H, I);
 impl_molecule_bundle_for_tuple!(A, B, C, D, E, F, G, H, I, J);
 impl_molecule_bundle_for_tuple!(A, B, C, D, E, F, G, H, I, J, K);
 impl_molecule_bundle_for_tuple!(A, B, C, D, E, F, G, H, I, J, K, L);
+
+#[cfg(test)]
+mod ecs_test {
+    use std::thread;
+
+    use super::*;
+
+    #[test]
+    fn test_ecs_basics() {
+        struct Label {
+            name: String,
+            id: u32,
+        }
+
+        struct Collar {
+            name: String,
+            address: String,
+        }
+
+        struct Whiskers {
+            color: String,
+            number: u32,
+        }
+
+        let compound = Compound::new();
+
+        _ = compound.spawn((
+            Label {
+                name: "John".to_string(),
+                id: 0,
+            },
+            Whiskers {
+                color: "Black".to_string(),
+                number: 8,
+            },
+        ));
+
+        _ = compound.spawn((
+            Label {
+                name: "Sparky".to_string(),
+                id: 1,
+            },
+            Collar {
+                name: "Sparky".to_string(),
+                address: "1 main St.".to_string(),
+            },
+        ));
+
+        _ = compound.spawn((
+            Label {
+                name: "Snivvy".to_string(),
+                id: 2,
+            },
+            Collar {
+                name: "Snivvy".to_string(),
+                address: "2 main St.".to_string(),
+            },
+        ));
+
+        compound.iter_mol(|_entity, label: &Label| {
+            println!("Name: {}", label.name);
+            println!("Id: {}", label.id);
+        });
+
+        compound.iter_duo(|_entity, label: &Label, collar: &Collar| {
+            println!(
+                "Name: {} Id: {} other name: {} address: {}",
+                label.name, label.id, collar.name, collar.address
+            );
+        });
+    }
+
+    #[test]
+    fn test_ecs_async() {
+        struct Label {
+            name: String,
+            id: u32,
+        }
+
+        struct Collar {
+            name: String,
+            address: String,
+        }
+
+        struct Whiskers {
+            color: String,
+            number: u32,
+        }
+
+        let compound = Arc::new(RwLock::new(Compound::new()));
+        let running = Arc::new(RwLock::new(false));
+
+        let cat = compound.write().unwrap().create_entity();
+        let dog = compound.write().unwrap().create_entity();
+
+        compound.read().unwrap().add_molecule(
+            cat,
+            Label {
+                name: "John".to_string(),
+                id: 0,
+            },
+        );
+
+        compound.read().unwrap().add_molecule(
+            cat,
+            Whiskers {
+                color: "Black".to_string(),
+                number: 8,
+            },
+        );
+
+        compound.read().unwrap().add_molecule(
+            dog,
+            Label {
+                name: "Sparky".to_string(),
+                id: 1,
+            },
+        );
+
+        compound.read().unwrap().add_molecule(
+            dog,
+            Collar {
+                name: "Sparky".to_string(),
+                address: "1 main St.".to_string(),
+            },
+        );
+
+        let compound_other_thread = compound.clone();
+        let running_clone = running.clone();
+
+        let other_thread = thread::spawn(move || {
+            let snake = compound_other_thread.write().unwrap().create_entity();
+
+            compound_other_thread.read().unwrap().add_molecule(
+                snake,
+                Label {
+                    name: "Snivvy".to_string(),
+                    id: 2,
+                },
+            );
+
+            compound_other_thread.read().unwrap().add_molecule(
+                snake,
+                Collar {
+                    name: "Snivvy".to_string(),
+                    address: "2 main St.".to_string(),
+                },
+            );
+
+            *running_clone.write().unwrap() = true;
+
+            for _ in 0..1000 {
+                compound_other_thread
+                    .read()
+                    .unwrap()
+                    .iter_mut_mol(|_entity, label: &mut Label| {
+                        label.id += 1;
+                        println!("Label From other thread: {} {}", label.name, label.id);
+                    });
+            }
+        });
+
+        while !*running.read().unwrap() {}
+
+        for _ in 0..1000 {
+            compound.read().unwrap().iter_mut_duo(
+                |_entity, label: &mut Label, collar: &mut Collar| {
+                    if label.id > 101 {
+                        label.id = 101;
+                    }
+
+                    println!(
+                        "Collar: {} {}, Id: {}",
+                        collar.name, collar.address, label.id
+                    );
+                },
+            );
+        }
+
+        _ = other_thread.join();
+    }
+}
