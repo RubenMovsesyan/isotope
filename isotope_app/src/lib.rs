@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use compound::Compound;
 use gpu_controller::{GpuController, Mesh, Vertex};
 use log::{debug, error, info};
 use matter_vault::MatterVault;
@@ -18,6 +19,8 @@ use winit::{
     window::Window,
 };
 
+mod asset_server;
+mod model;
 mod rendering_window;
 
 pub struct Isotope {
@@ -30,71 +33,19 @@ pub struct Isotope {
     // Rendering
     photon: Renderer,
 
+    // Entity component system
+    compound: Arc<Compound>,
+
     // Temp
     camera: Camera,
-    temp_cube: Mesh,
 }
 
 impl Isotope {
     pub fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
-        let temp_cube = Mesh::new(
-            gpu_controller.clone(),
-            "Cube".to_string(),
-            &[
-                Vertex {
-                    position: [1.0, 1.0, -1.0],
-                    normal_vec: [0.57735027, 0.57735027, -0.57735027],
-                    uv_coord: [1.0, 1.0],
-                },
-                Vertex {
-                    position: [1.0, -1.0, -1.0],
-                    normal_vec: [0.57735027, -0.57735027, -0.57735027],
-                    uv_coord: [1.0, 0.0],
-                },
-                Vertex {
-                    position: [1.0, 1.0, 1.0],
-                    normal_vec: [0.57735027, 0.57735027, 0.57735027],
-                    uv_coord: [1.0, 1.0],
-                },
-                Vertex {
-                    position: [1.0, -1.0, 1.0],
-                    normal_vec: [0.57735027, -0.57735027, 0.57735027],
-                    uv_coord: [1.0, 0.0],
-                },
-                Vertex {
-                    position: [-1.0, 1.0, -1.0],
-                    normal_vec: [-0.57735027, 0.57735027, -0.57735027],
-                    uv_coord: [0.0, 1.0],
-                },
-                Vertex {
-                    position: [-1.0, -1.0, -1.0],
-                    normal_vec: [-0.57735027, -0.57735027, -0.57735027],
-                    uv_coord: [0.0, 0.0],
-                },
-                Vertex {
-                    position: [-1.0, 1.0, 1.0],
-                    normal_vec: [-0.57735027, 0.57735027, 0.57735027],
-                    uv_coord: [0.0, 1.0],
-                },
-                Vertex {
-                    position: [-1.0, -1.0, 1.0],
-                    normal_vec: [-0.57735027, -0.57735027, 0.57735027],
-                    uv_coord: [0.0, 0.0],
-                },
-            ],
-            &[
-                5, 3, 1, 3, 8, 4, //
-                7, 6, 8, 2, 8, 6, //
-                1, 4, 2, 5, 2, 6, //
-                5, 7, 3, 3, 7, 8, //
-                7, 5, 6, 2, 4, 8, //
-                1, 3, 4, 5, 1, 2, //
-            ],
-        );
-
         Ok(Self {
             photon: Renderer::new_defered_3d(gpu_controller.clone())?,
             matter_vault: Arc::new(MatterVault::new()),
+            compound: Arc::new(Compound::new()),
             // Temp camera setup
             camera: Camera::new_perspective_3d(
                 gpu_controller.clone(),
@@ -107,7 +58,6 @@ impl Isotope {
                 100.0, // far plane
             ),
             gpu_controller,
-            temp_cube,
         })
     }
 }
@@ -140,6 +90,8 @@ impl IsotopeApplication {
             isotope: Isotope::new(gpu_controller)?,
         })
     }
+
+    fn init(&mut self) {}
 }
 
 impl ApplicationHandler for IsotopeApplication {
@@ -193,7 +145,10 @@ impl ApplicationHandler for IsotopeApplication {
                                 &self.isotope.camera,
                                 &surface_texture.texture,
                                 |render_pass| {
-                                    self.isotope.temp_cube.render(render_pass);
+                                    // Temp
+                                    self.isotope.compound.iter_mol(|_entity, mesh: &Mesh| {
+                                        mesh.render(render_pass);
+                                    });
                                 },
                             );
 

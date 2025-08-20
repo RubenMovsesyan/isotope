@@ -7,9 +7,10 @@ edition = "2024"
 photon = { path = "../photon" }
 gpu_controller = { path = "../gpu_controller" }
 matter_vault = { path = "../matter_vault" }
+compound = { path = "../compound" }
+obj-loader = { path = "../../obj-loader" }
 winit = "0.30.11"
 log = "0.4.27"
 wgpu = "25.0.2"
 anyhow = "1.0.98"
-obj_2_rust = "0.1.5"
 smol = "2.0.2"

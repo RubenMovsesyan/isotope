@@ -840,10 +840,11 @@ name = "isotope_app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "compound",
  "gpu_controller",
  "log",
  "matter_vault",
- "obj_2_rust",
+ "obj-loader",
  "photon",
  "smol",
  "wgpu",
@@ -1134,17 +1135,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "log",
-]
-
-[[package]]
-name = "obj_2_rust"
-version = "0.1.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0311c630018e695c1b5b669f9e1c0904a8940f5a7ab018ff6fe83294c1692c12"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
