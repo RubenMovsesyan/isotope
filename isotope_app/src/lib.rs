@@ -1,10 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use asset_server::AssetServer;
 use compound::Compound;
 use gpu_controller::{GpuController, Mesh, Vertex};
 use log::{debug, error, info};
 use matter_vault::MatterVault;
+use model::Model;
 use photon::{
     camera::Camera,
     renderer::{Renderer, defered_renderer::DeferedRenderer3D},
@@ -30,6 +32,9 @@ pub struct Isotope {
     // Asset Manager
     matter_vault: Arc<MatterVault>,
 
+    // Asset Server
+    asset_server: Arc<AssetServer>,
+
     // Rendering
     photon: Renderer,
 
@@ -42,9 +47,14 @@ pub struct Isotope {
 
 impl Isotope {
     pub fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
+        let matter_vault = Arc::new(MatterVault::new());
+
         Ok(Self {
             photon: Renderer::new_defered_3d(gpu_controller.clone())?,
-            matter_vault: Arc::new(MatterVault::new()),
+            asset_server: Arc::new(AssetServer {
+                gpu_controller: gpu_controller.clone(),
+                asset_manager: matter_vault.clone(),
+            }),
             compound: Arc::new(Compound::new()),
             // Temp camera setup
             camera: Camera::new_perspective_3d(
@@ -57,6 +67,7 @@ impl Isotope {
                 1.0,   // near plane - try 1.0 instead
                 100.0, // far plane
             ),
+            matter_vault,
             gpu_controller,
         })
     }
@@ -97,6 +108,17 @@ impl IsotopeApplication {
 impl ApplicationHandler for IsotopeApplication {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         info!("Isotope Resumed");
+
+        // TEMP ======
+        match Model::from_obj("test_files/cube.obj", &self.isotope.asset_server) {
+            Ok(model) => {
+                self.isotope.compound.spawn((model,));
+            }
+            Err(err) => {
+                error!("Failed to load model: {}", err);
+            }
+        }
+        // TEMP ======
 
         if let Ok(rendering_window) = RenderingWindow::new(
             event_loop,
@@ -146,7 +168,7 @@ impl ApplicationHandler for IsotopeApplication {
                                 &surface_texture.texture,
                                 |render_pass| {
                                     // Temp
-                                    self.isotope.compound.iter_mol(|_entity, mesh: &Mesh| {
+                                    self.isotope.compound.iter_mol(|_entity, mesh: &Model| {
                                         mesh.render(render_pass);
                                     });
                                 },

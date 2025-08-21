@@ -133,7 +133,7 @@ impl MatterVault {
             .clone())
     }
 
-    pub fn add<T: 'static, S>(&self, specifier: S, value: T)
+    pub fn add<T: 'static, S>(&self, specifier: S, value: T) -> Result<SharedMatter<T>>
     where
         S: AsRef<str>,
     {
@@ -147,11 +147,14 @@ impl MatterVault {
 
         let type_id = TypeId::of::<T>();
         let specifier_str = specifier.as_ref().to_string();
-        let shared_matter = Box::new(SharedMatter::new(value));
+        let shared_matter = SharedMatter::new(value);
+        let shared_matter_box = Box::new(shared_matter.clone());
 
         map.entry(type_id)
             .or_insert_with(HashMap::new)
-            .insert(specifier_str, shared_matter);
+            .insert(specifier_str, shared_matter_box);
+
+        Ok(shared_matter)
     }
 }
 
@@ -163,8 +166,8 @@ mod test {
     fn test_basic_matter_vault() {
         let matter_vault = MatterVault::new();
 
-        matter_vault.add("first_number", 10u32);
-        matter_vault.add("second_number", 11u32);
+        _ = matter_vault.add("first_number", 10u32);
+        _ = matter_vault.add("second_number", 11u32);
 
         assert!(
             matter_vault
@@ -191,8 +194,8 @@ mod test {
     fn test_matter_vault_share() {
         let matter_vault = MatterVault::new();
 
-        matter_vault.add("first_number", 10u32);
-        matter_vault.add("second_number", 11u32);
+        _ = matter_vault.add("first_number", 10u32);
+        _ = matter_vault.add("second_number", 11u32);
 
         let first_number: SharedMatter<u32> =
             if let Ok(first_number) = matter_vault.share("first_number") {

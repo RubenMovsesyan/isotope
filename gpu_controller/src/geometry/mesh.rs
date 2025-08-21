@@ -1,5 +1,6 @@
 use std::{f32, sync::Arc};
 
+use anyhow::{Result, anyhow};
 use log::{debug, info, warn};
 use wgpu::{Buffer, BufferUsages, IndexFormat, RenderPass, util::BufferInitDescriptor};
 
@@ -9,6 +10,8 @@ use super::vertex::Vertex;
 
 pub enum Mesh {
     Cpu {
+        label: String,
+
         vertices: Vec<Vertex>,
         indices: Vec<u32>,
     },
@@ -30,40 +33,6 @@ trait Distance {
 impl Distance for [f32; 3] {
     fn dist(&self) -> f32 {
         f32::sqrt(self.iter().map(|vertex_pos| vertex_pos.powi(2)).sum())
-    }
-}
-
-// For loading in custom obj files
-impl From<&obj_loader::mesh::Mesh> for Mesh {
-    fn from(value: &obj_loader::mesh::Mesh) -> Self {
-        let vertices = value
-            .faces
-            .iter()
-            .flat_map(|face| {
-                face.points
-                    .iter()
-                    .map(|point| {
-                        Vertex::new(
-                            value.positions[point.position_index],
-                            value.uvs[point.uv_index],
-                            value.normals[point.normal_index],
-                        )
-                    })
-                    .collect::<Vec<Vertex>>()
-            })
-            .collect::<Vec<Vertex>>();
-
-        let indices = (0..vertices.len() as u32).into_iter().collect::<Vec<u32>>();
-
-        // TODO impelment in the future
-        let _cullable_radius = vertices
-            .iter()
-            .map(|vertex| vertex.position.dist())
-            .fold(f32::NEG_INFINITY, |a, b| a.max(b));
-
-        debug!("Model Cullable radius: {}", _cullable_radius);
-
-        Self::Cpu { vertices, indices }
     }
 }
 
@@ -98,9 +67,20 @@ impl Mesh {
         }
     }
 
-    pub fn buffer(&mut self, label: String, gpu_controller: Arc<GpuController>) {
+    pub fn label(&self) -> &String {
         match self {
-            Self::Cpu { vertices, indices } => {
+            Mesh::Cpu { label, .. } => &label,
+            Mesh::Gpu { label, .. } => &label,
+        }
+    }
+
+    pub fn buffer(&mut self, gpu_controller: Arc<GpuController>) {
+        match self {
+            Self::Cpu {
+                label,
+                vertices,
+                indices,
+            } => {
                 let vertex_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
                     label: Some(&format!("{} Vertex Buffer", label)),
                     contents: bytemuck::cast_slice(&vertices),
@@ -115,7 +95,7 @@ impl Mesh {
 
                 *self = Self::Gpu {
                     gpu_controller,
-                    label,
+                    label: label.clone(), // TODO: find a better way to do this
                     vertex_buffer,
                     index_buffer,
                     num_indices: indices.len() as u32,
@@ -125,6 +105,40 @@ impl Mesh {
         }
 
         info!("New mesh has been buffered");
+    }
+
+    pub fn vertices<F, R>(&mut self, vertices_callback: F) -> Result<R>
+    where
+        F: FnOnce(&mut Vec<Vertex>) -> R,
+    {
+        match self {
+            Self::Cpu { vertices, .. } => Ok(vertices_callback(vertices)),
+            Self::Gpu { .. } => Err(anyhow!("Mesh is in GPU state, cannot access vertices")),
+        }
+    }
+
+    pub fn indices<F, R>(&mut self, indices_callback: F) -> Result<R>
+    where
+        F: FnOnce(&mut Vec<u32>) -> R,
+    {
+        match self {
+            Self::Cpu { indices, .. } => Ok(indices_callback(indices)),
+            Self::Gpu { .. } => Err(anyhow!("Mesh is in GPU state, cannot access indices")),
+        }
+    }
+
+    pub fn vertices_indices<F, R>(&mut self, vertices_indices_callback: F) -> Result<R>
+    where
+        F: FnOnce(&mut Vec<Vertex>, &mut Vec<u32>) -> R,
+    {
+        match self {
+            Self::Cpu {
+                vertices, indices, ..
+            } => Ok(vertices_indices_callback(vertices, indices)),
+            Self::Gpu { .. } => Err(anyhow!(
+                "Mesh is in GPU state, cannot access vertices and indices"
+            )),
+        }
     }
 
     pub fn render(&self, render_pass: &mut RenderPass) {
