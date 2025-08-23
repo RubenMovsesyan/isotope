@@ -843,7 +843,6 @@ dependencies = [
  "gpu_controller",
  "log",
  "matter_vault",
- "obj-loader",
  "photon",
  "smol",
  "wgpu",
