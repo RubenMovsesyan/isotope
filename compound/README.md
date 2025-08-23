@@ -13,6 +13,7 @@ Compound is a modern ECS implementation that provides safe concurrent access to 
 - 🧪 **Chemistry-Inspired API** - Intuitive naming with molecules (components) and compounds (worlds)
 - 🔄 **Flexible Iteration** - Multiple query patterns for iterating over entities with specific component combinations
 - 📦 **Bundle Support** - Group related components together for easy entity spawning
+- 🔍 **Change Detection** - Built-in modified flag system for efficient change tracking and reactive systems
 - 🛡️ **Poison Recovery** - Automatic recovery from poisoned locks with logging
 
 ## Installation
@@ -111,6 +112,32 @@ let entity = world.spawn((
 ));
 ```
 
+### Change Detection
+Compound includes a built-in change detection system that automatically tracks when entities are modified. This enables efficient reactive systems that only process entities when they've actually changed.
+
+The system works through:
+- **Modified Flag**: Each entity has an internal `Modified` component that tracks whether it has been changed
+- **Modified Iterators**: Special `*_mod` iterator variants that only process entities marked as modified
+- **Automatic Management**: The system automatically sets/clears modified flags during iterations
+
+```rust
+// Only process entities that have been modified since last frame
+world.iter_mol_mod(|entity, pos: &Position| {
+    println!("Entity {} moved to ({}, {})", entity, pos.x, pos.y);
+    // This only prints for entities that were actually modified
+});
+
+// Modify some entities
+world.iter_mut_mol(|entity, pos: &mut Position| {
+    pos.x += 1.0; // This sets the modified flag
+});
+
+// Now the modified iterator will process these entities
+world.iter_mol_mod(|entity, pos: &Position| {
+    println!("Modified entity {} at ({}, {})", entity, pos.x, pos.y);
+});
+```
+
 ## API Reference
 
 ### Entity Management
@@ -140,9 +167,15 @@ world.add_molecule(entity, Velocity { dx: 1.0, dy: 0.0 });
 
 #### Single Component Queries
 
+**Standard Iterators:**
 - `iter_mol(f)` - Iterate over all entities with a specific component
 - `iter_mut_mol(f)` - Iterate with mutable access to the component
-- `iter_without_mol::<T>(f)` - Iterate over entities WITHOUT a specific component
+- `iter_without_mol::<W, T>(f)` - Iterate over entities with T but WITHOUT W
+
+**Modified-Only Iterators:**
+- `iter_mol_mod(f)` - Iterate over only modified entities with a specific component
+- `iter_mut_mol_mod(f)` - Mutable iteration over only modified entities
+- `iter_without_mol_mod::<W, T>(f)` - Modified entities with T but without W
 
 ```rust
 // Read-only iteration
@@ -150,22 +183,34 @@ world.iter_mol(|entity, pos: &Position| {
     println!("Entity {} at ({}, {})", entity, pos.x, pos.y);
 });
 
-// Mutable iteration
+// Only process entities that changed since last check
+world.iter_mol_mod(|entity, pos: &Position| {
+    println!("Entity {} moved to ({}, {})", entity, pos.x, pos.y);
+});
+
+// Mutable iteration (sets modified flag)
 world.iter_mut_mol(|entity, vel: &mut Velocity| {
     vel.dx *= 0.99; // Apply friction
 });
 
-// Iterate entities without a component
-world.iter_without_mol::<Health>(|entity| {
-    println!("Entity {} is invincible!", entity);
+// Mutable iteration over only already-modified entities
+world.iter_mut_mol_mod(|entity, vel: &mut Velocity| {
+    // Only process velocities that were already modified
+    vel.dx = vel.dx.clamp(-10.0, 10.0);
 });
 ```
 
 #### Two Component Queries
 
+**Standard Iterators:**
 - `iter_duo(f)` - Iterate over entities with two specific components
 - `iter_mut_duo(f)` - Iterate with mutable access to both components
-- `iter_without_duo::<T1, T2>(f)` - Iterate over entities WITHOUT both components
+- `iter_without_duo::<W, T1, T2>(f)` - Iterate over entities with T1, T2 but without W
+
+**Modified-Only Iterators:**
+- `iter_duo_mod(f)` - Iterate over only modified entities with two components
+- `iter_mut_duo_mod(f)` - Mutable iteration over modified entities with two components
+- `iter_without_duo_mod::<W, T1, T2>(f)` - Modified entities with T1, T2 but without W
 
 ```rust
 // Update physics for entities with position and velocity
@@ -173,17 +218,33 @@ world.iter_mut_duo(|entity, pos: &mut Position, vel: &Velocity| {
     pos.x += vel.dx;
     pos.y += vel.dy;
 });
+
+// Only update physics for entities that have changed
+world.iter_duo_mod(|entity, pos: &Position, vel: &Velocity| {
+    println!("Entity {} moved to ({}, {})", entity, pos.x, pos.y);
+});
 ```
 
 #### Three Component Queries
 
+**Standard Iterators:**
 - `iter_trio(f)` - Iterate over entities with three specific components
 - `iter_mut_trio(f)` - Iterate with mutable access to all three components
-- `iter_without_trio::<T1, T2, T3>(f)` - Iterate over entities WITHOUT all three components
+- `iter_without_trio::<W, T1, T2, T3>(f)` - Iterate over entities with T1, T2, T3 but without W
+
+**Modified-Only Iterators:**
+- `iter_trio_mod(f)` - Iterate over only modified entities with three components
+- `iter_mut_trio_mod(f)` - Mutable iteration over modified entities with three components
+- `iter_without_trio_mod::<W, T1, T2, T3>(f)` - Modified entities with T1, T2, T3 but without W
 
 ```rust
 world.iter_trio(|entity, pos: &Position, vel: &Velocity, health: &Health| {
     println!("Entity {} is a full game object", entity);
+});
+
+// Only process complex entities that have been modified
+world.iter_trio_mod(|entity, pos: &Position, vel: &Velocity, acc: &Acceleration| {
+    println!("Modified physics entity {} needs recalculation", entity);
 });
 ```
 
@@ -279,14 +340,14 @@ Compound uses a `HashMap<TypeId, Box<dyn Any>>` internally for type-erased compo
 
 ```rust
 fn game_loop(world: &Compound) {
-    // Physics update
+    // Physics update - sets modified flag for moving entities
     world.iter_mut_duo(|_entity, pos: &mut Position, vel: &Velocity| {
         pos.x += vel.dx;
         pos.y += vel.dy;
     });
 
-    // Collision detection
-    world.iter_duo(|e1, p1: &Position, h1: &Health| {
+    // Collision detection - only check entities that moved
+    world.iter_duo_mod(|e1, p1: &Position, h1: &Health| {
         world.iter_duo(|e2, p2: &Position, h2: &Health| {
             if e1 != e2 && distance(p1, p2) < COLLISION_RADIUS {
                 // Handle collision
@@ -294,9 +355,35 @@ fn game_loop(world: &Compound) {
         });
     });
 
-    // Render
-    world.iter_duo(|_entity, pos: &Position, sprite: &Sprite| {
+    // Render only entities that changed position
+    world.iter_duo_mod(|_entity, pos: &Position, sprite: &Sprite| {
         render_sprite(sprite, pos);
+    });
+}
+```
+
+### Change Detection Example
+
+```rust
+struct Transform { x: f32, y: f32, dirty_matrix: bool }
+struct WorldMatrix([[f32; 4]; 4]);
+
+fn update_transforms(world: &Compound) {
+    // Only recalculate world matrices for entities that moved
+    world.iter_mut_duo_mod(|_entity, transform: &mut Transform, matrix: &mut WorldMatrix| {
+        if transform.dirty_matrix {
+            // Expensive matrix calculation only happens for modified entities
+            *matrix = calculate_world_matrix(transform);
+            transform.dirty_matrix = false;
+        }
+    });
+}
+
+fn movement_system(world: &Compound) {
+    // Moving entities will be automatically marked as modified
+    world.iter_mut_mol(|_entity, transform: &mut Transform| {
+        transform.x += 1.0;
+        transform.dirty_matrix = true;
     });
 }
 ```
@@ -326,6 +413,29 @@ impl System for HealthSystem {
                 println!("Entity {} has died", entity);
                 // Mark for removal
             }
+        });
+    }
+}
+
+struct RenderSystem;
+impl System for RenderSystem {
+    fn update(&self, world: &Compound) {
+        // Only render entities that have moved since last frame
+        world.iter_duo_mod(|_entity, pos: &Position, sprite: &Sprite| {
+            render_sprite_at_position(sprite, pos);
+        });
+    }
+}
+
+struct PhysicsSystem;
+impl System for PhysicsSystem {
+    fn update(&self, world: &Compound) {
+        // Only recalculate physics for entities that changed
+        world.iter_mut_trio_mod(|_entity, pos: &mut Position, vel: &mut Velocity, acc: &Acceleration| {
+            vel.dx += acc.dx;
+            vel.dy += acc.dy;
+            pos.x += vel.dx;
+            pos.y += vel.dy;
         });
     }
 }

@@ -26,6 +26,15 @@ use std::{
 
 use log::warn;
 
+/// Internal component that tracks whether an entity has been modified.
+///
+/// The `Modified` component is automatically added to entities when they are spawned
+/// and is used by the `*_mod` iterator variants to track which entities have been
+/// changed since the last iteration. This enables efficient change detection systems.
+///
+/// # Internal Implementation
+/// This is a simple wrapper around a boolean flag that defaults to `true` for
+/// newly spawned entities, ensuring they are processed in the first modified iteration.
 struct Modified(bool);
 
 impl Default for Modified {
@@ -35,14 +44,27 @@ impl Default for Modified {
 }
 
 impl Modified {
+    /// Returns whether this entity has been modified since the last check.
+    ///
+    /// # Returns
+    /// `true` if the entity has been modified, `false` otherwise
     fn is_modified(&self) -> bool {
         self.0
     }
 
+    /// Marks this entity as modified.
+    ///
+    /// This is automatically called by mutable iterator methods to indicate
+    /// that the entity's components have been changed.
     fn set_modified(&mut self) {
         self.0 = true;
     }
 
+    /// Clears the modified flag for this entity.
+    ///
+    /// This is automatically called by `*_mod` iterator methods after processing
+    /// a modified entity, preventing it from being processed again until it's
+    /// modified by another system.
     fn clear_modified(&mut self) {
         self.0 = false;
     }
@@ -445,6 +467,43 @@ impl Compound {
         }
     }
 
+    /// Iterates over entities with a specific component type that have been modified.
+    ///
+    /// This method only processes entities that have been marked as modified since the last
+    /// call to a `*_mod` iterator method. After processing each entity, its modified flag
+    /// is cleared, preventing it from being processed again until it's modified by another system.
+    /// This is useful for change detection systems that only need to process entities when
+    /// their components have actually changed.
+    ///
+    /// # Type Parameters
+    /// - `T`: The component type to iterate over
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a reference to the component
+    ///
+    /// # Modified Flag Behavior
+    /// - Entities are only processed if their Modified flag is `true`
+    /// - After processing, the Modified flag is set to `false`
+    /// - Newly spawned entities start with Modified = `true`
+    /// - Entities modified by mutable iterators have their Modified flag set to `true`
+    ///
+    /// # Thread Safety
+    /// Multiple threads can call this method simultaneously for different component types.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Only process positions that have changed since last frame
+    /// compound.iter_mol_mod::<Position, _>(|entity, pos| {
+    ///     println!("Entity {} moved to ({}, {})", entity, pos.x, pos.y);
+    ///     // This will only print for entities that were modified
+    /// });
+    ///
+    /// // Second call won't process any entities unless they were modified again
+    /// compound.iter_mol_mod::<Position, _>(|entity, pos| {
+    ///     println!("This won't print unless positions were modified again");
+    /// });
+    /// ```
     pub fn iter_mol_mod<T, F>(&self, mut f: F)
     where
         T: Send + Sync + 'static,
@@ -534,6 +593,35 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with component T but without component W.
+    ///
+    /// This method combines the filtering behavior of `iter_without_mol` with the change
+    /// detection of modified iterators. It only processes entities that:
+    /// 1. Have component T but not component W
+    /// 2. Have been marked as modified since the last `*_mod` iteration
+    ///
+    /// After processing each entity, its modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T`: The component type to iterate over
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a reference to component T
+    ///
+    /// # Modified Flag Behavior
+    /// Same as `iter_mol_mod` - only modified entities are processed and their flag is cleared afterward.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Process only modified entities with Health but without Invulnerable
+    /// compound.iter_without_mol_mod::<Invulnerable, Health, _>(|entity, health| {
+    ///     if health.current <= 0 {
+    ///         println!("Entity {} died", entity);
+    ///     }
+    /// });
+    /// ```
     pub fn iter_without_mol_mod<W, T, F>(&self, mut f: F)
     where
         W: Send + Sync + 'static,
@@ -636,6 +724,39 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with mutable access to a specific component.
+    ///
+    /// This method provides mutable access to components of entities that have been marked
+    /// as modified. Unlike `iter_mut_mol` which sets the modified flag for all processed
+    /// entities, this method only processes entities that were already marked as modified
+    /// and clears their flag after processing.
+    ///
+    /// This is useful for systems that should only run when entities have actually changed,
+    /// such as systems that update derived values or perform expensive calculations.
+    ///
+    /// # Type Parameters
+    /// - `T`: The component type to iterate over
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a mutable reference to the component
+    ///
+    /// # Modified Flag Behavior
+    /// - Only processes entities with Modified = `true`
+    /// - Clears the Modified flag after processing (sets it to `false`)
+    /// - Does NOT set the Modified flag (unlike `iter_mut_mol`)
+    ///
+    /// # Thread Safety
+    /// Multiple threads can call this method simultaneously for different component types.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Update derived values only for entities that have changed
+    /// compound.iter_mut_mol_mod::<Transform, _>(|entity, transform| {
+    ///     // Recalculate world matrix only for modified transforms
+    ///     transform.world_matrix = calculate_world_matrix(&transform);
+    /// });
+    /// ```
     pub fn iter_mut_mol_mod<T, F>(&self, mut f: F)
     where
         T: Send + Sync + 'static,
@@ -738,6 +859,32 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with T but without W, providing mutable access.
+    ///
+    /// This method combines filtering (entities with T but not W) with change detection
+    /// (only modified entities) and provides mutable access to component T. After processing
+    /// each entity, its modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T`: The component type to iterate over with mutable access
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a mutable reference to component T
+    ///
+    /// # Modified Flag Behavior
+    /// - Only processes entities with Modified = `true`
+    /// - Clears the Modified flag after processing
+    /// - Does NOT set the Modified flag (unlike `iter_mut_without_mol`)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Update health regeneration only for modified, non-poisoned entities
+    /// compound.iter_mut_without_mol_mod::<Poisoned, Health, _>(|entity, health| {
+    ///     health.current = (health.current + 5).min(health.max);
+    /// });
+    /// ```
     pub fn iter_mut_without_mol_mod<W, T, F>(&self, mut f: F)
     where
         T: Send + Sync + 'static,
@@ -843,6 +990,31 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities that have both of two component types.
+    ///
+    /// This method combines the dual-component filtering of `iter_duo` with change detection,
+    /// only processing entities that have both components AND have been marked as modified.
+    /// After processing each entity, its modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and references to both components
+    ///
+    /// # Modified Flag Behavior
+    /// Same as other `*_mod` methods - only processes modified entities and clears their flag.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Only process entities with both Position and Velocity that have changed
+    /// compound.iter_duo_mod::<Position, Velocity, _>(|entity, pos, vel| {
+    ///     println!("Modified entity {} at ({}, {}) moving ({}, {})",
+    ///              entity, pos.x, pos.y, vel.x, vel.y);
+    /// });
+    /// ```
     pub fn iter_duo_mod<T1, T2, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -964,6 +1136,33 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with T1 and T2 but without W.
+    ///
+    /// This method combines triple filtering (has T1 and T2, doesn't have W) with change
+    /// detection, only processing entities that meet the component requirements AND have
+    /// been marked as modified. After processing, the modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T1`: The first required component type
+    /// - `T2`: The second required component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and references to T1 and T2
+    ///
+    /// # Modified Flag Behavior
+    /// Same as other `*_mod` methods - only processes modified entities and clears their flag.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Process modified entities with position and velocity but without frozen flag
+    /// compound.iter_without_duo_mod::<Frozen, Position, Velocity, _>(
+    ///     |entity, pos, vel| {
+    ///         println!("Modified moving entity {} at ({}, {})", entity, pos.x, pos.y);
+    ///     }
+    /// );
+    /// ```
     pub fn iter_without_duo_mod<W, T1, T2, F>(&self, mut f: F)
     where
         W: Send + Sync + 'static,
@@ -1095,6 +1294,34 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with mutable access to two components.
+    ///
+    /// This method provides mutable access to both components for entities that have
+    /// both component types AND have been marked as modified. Unlike `iter_mut_duo`
+    /// which sets the modified flag for all processed entities, this method only
+    /// processes already-modified entities and clears their flag after processing.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to both components
+    ///
+    /// # Modified Flag Behavior
+    /// - Only processes entities with Modified = `true`
+    /// - Clears the Modified flag after processing
+    /// - Does NOT set the Modified flag (unlike `iter_mut_duo`)
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Update derived properties only for modified entities
+    /// compound.iter_mut_duo_mod::<Position, Transform, _>(|entity, pos, transform| {
+    ///     // Only recalculate transform matrix for entities that moved
+    ///     transform.matrix = Matrix::from_position(pos.x, pos.y);
+    /// });
+    /// ```
     pub fn iter_mut_duo_mod<T1, T2, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -1310,6 +1537,36 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities that have all three specified component types.
+    ///
+    /// This method combines the triple-component filtering of `iter_trio` with change detection,
+    /// only processing entities that have all three components AND have been marked as modified.
+    /// After processing each entity, its modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `T3`: The third component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and references to all three components
+    ///
+    /// # Modified Flag Behavior
+    /// Same as other `*_mod` methods - only processes modified entities and clears their flag.
+    ///
+    /// # Thread Safety
+    /// Multiple threads can call this method simultaneously for different component types.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Process only modified entities with position, velocity, and acceleration
+    /// compound.iter_trio_mod::<Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         println!("Modified physics entity {} at ({}, {})", entity, pos.x, pos.y);
+    ///     }
+    /// );
+    /// ```
     pub fn iter_trio_mod<T1, T2, T3, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -1464,6 +1721,37 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with T1, T2, and T3 but without W.
+    ///
+    /// This method combines quadruple filtering (has T1, T2, and T3, doesn't have W) with
+    /// change detection, only processing entities that meet all component requirements AND
+    /// have been marked as modified. After processing, the modified flag is cleared.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T1`: The first required component type
+    /// - `T2`: The second required component type
+    /// - `T3`: The third required component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and references to T1, T2, and T3
+    ///
+    /// # Modified Flag Behavior
+    /// Same as other `*_mod` methods - only processes modified entities and clears their flag.
+    ///
+    /// # Thread Safety
+    /// Multiple threads can call this method simultaneously for different component types.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Process modified physics entities that aren't static
+    /// compound.iter_without_trio_mod::<Static, Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         println!("Modified dynamic entity {} with complex physics", entity);
+    ///     }
+    /// );
+    /// ```
     pub fn iter_without_trio_mod<W, T1, T2, T3, F>(&self, mut f: F)
     where
         W: Send + Sync + 'static,
@@ -1643,6 +1931,44 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with mutable access to three components.
+    ///
+    /// This method provides mutable access to all three components for entities that have
+    /// all three component types AND have been marked as modified. Unlike `iter_mut_trio`
+    /// which sets the modified flag for all processed entities, this method only processes
+    /// already-modified entities and clears their flag after processing.
+    ///
+    /// This is particularly useful for expensive systems that should only run when entities
+    /// have actually changed, such as physics systems that update complex calculations.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `T3`: The third component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to all three components
+    ///
+    /// # Modified Flag Behavior
+    /// - Only processes entities with Modified = `true`
+    /// - Clears the Modified flag after processing
+    /// - Does NOT set the Modified flag (unlike `iter_mut_trio`)
+    ///
+    /// # Thread Safety
+    /// While this method is thread-safe, it acquires write locks on individual components
+    /// as it iterates.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Update complex physics calculations only for modified entities
+    /// compound.iter_mut_trio_mod::<Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         // Only recalculate expensive physics for entities that changed
+    ///         update_complex_physics_simulation(pos, vel, acc);
+    ///     }
+    /// );
+    /// ```
     pub fn iter_mut_trio_mod<T1, T2, T3, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -1821,6 +2147,46 @@ impl Compound {
         }
     }
 
+    /// Iterates over modified entities with mutable access to T1, T2, T3 but without W.
+    ///
+    /// This method combines quadruple filtering (has T1, T2, T3, doesn't have W) with
+    /// change detection and provides mutable access to the three required components.
+    /// Only processes entities that meet all component requirements AND have been marked
+    /// as modified. After processing, the modified flag is cleared.
+    ///
+    /// This is the most complex iterator method, useful for sophisticated systems that
+    /// need to process entities with multiple components while excluding certain types
+    /// and only running when entities have actually changed.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T1`: The first component type (mutable access)
+    /// - `T2`: The second component type (mutable access)
+    /// - `T3`: The third component type (mutable access)
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to T1, T2, and T3
+    ///
+    /// # Modified Flag Behavior
+    /// - Only processes entities with Modified = `true`
+    /// - Clears the Modified flag after processing
+    /// - Does NOT set the Modified flag (unlike `iter_mut_without_trio`)
+    ///
+    /// # Thread Safety
+    /// While this method is thread-safe, it acquires write locks on individual components
+    /// as it iterates.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Update advanced physics only for modified non-frozen entities
+    /// compound.iter_mut_without_trio_mod::<Frozen, Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         // Only run expensive physics simulation on modified dynamic entities
+    ///         run_advanced_physics_step(entity, pos, vel, acc);
+    ///     }
+    /// );
+    /// ```
     pub fn iter_mut_without_trio_mod<W, T1, T2, T3, F>(&self, mut f: F)
     where
         W: Send + Sync + 'static,
@@ -1966,6 +2332,19 @@ impl Compound {
 /// }
 /// ```
 pub trait MoleculeBundle {
+    /// Adds all components in this bundle to the specified entity.
+    ///
+    /// This method is called internally by `spawn` and `build_compound` to add
+    /// multiple components to an entity in a single operation. It should add each
+    /// component in the bundle to the entity using `compound.add_molecule`.
+    ///
+    /// # Arguments
+    /// - `compound`: The ECS world to add components to
+    /// - `entity`: The entity ID to add components to
+    ///
+    /// # Implementation Note
+    /// This method takes `self` by value, transferring ownership of all components
+    /// to the ECS system. Each component is moved into the entity's storage.
     fn add_to_entity(self, compound: &Compound, entity: Entity);
 }
 
