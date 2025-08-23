@@ -764,7 +764,6 @@ dependencies = [
  "anyhow",
  "bytemuck",
  "log",
- "obj-loader",
  "smol",
  "wgpu",
  "winit",
