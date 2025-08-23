@@ -1128,14 +1128,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "obj-loader"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
-]
-
-[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1431,7 +1423,6 @@ dependencies = [
  "gpu_controller",
  "log",
  "matter_vault",
- "obj-loader",
  "wgpu",
 ]
 

@@ -10,5 +10,4 @@ wgpu = "25.0.2"
 gpu_controller = { path = "../gpu_controller" }
 matter_vault = { path = "../matter_vault" }
 anyhow = "1.0.98"
-obj-loader = { path = "../../obj-loader" }
 cgmath = "0.18.0"
