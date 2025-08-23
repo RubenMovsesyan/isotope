@@ -68,8 +68,12 @@ var out: VertexOutput;
 fn fs_main(in: VertexOutput) -> FragmentOutput {
     var output: FragmentOutput;
 
+    // Color of the object
     output.albedo = vec4<f32>(1.0, 0.0, 1.0, 1.0);
-    output.normal = vec4<f32>(0.5, 0.5, 1.0, 1.0);
+
+    // Normals of the object
+    output.normal = vec4<f32>(in.world_normal, 1.0);
+
     output.material = vec4<f32>(0.5, 0.3, 1.0, 1.0);
 
     return output;

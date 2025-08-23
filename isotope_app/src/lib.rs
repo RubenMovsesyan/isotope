@@ -8,6 +8,7 @@ use log::{debug, error, info};
 use matter_vault::MatterVault;
 use model::Model;
 use photon::{
+    Light,
     camera::Camera,
     renderer::{Renderer, defered_renderer::DeferedRenderer3D},
 };
@@ -101,8 +102,6 @@ impl IsotopeApplication {
             isotope: Isotope::new(gpu_controller)?,
         })
     }
-
-    fn init(&mut self) {}
 }
 
 impl ApplicationHandler for IsotopeApplication {
@@ -118,6 +117,13 @@ impl ApplicationHandler for IsotopeApplication {
                 error!("Failed to load model: {}", err);
             }
         }
+
+        self.isotope.compound.spawn((Light::new(
+            [10.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0],
+            [1.0, 1.0, 1.0],
+            10.0,
+        ),));
         // TEMP ======
 
         if let Ok(rendering_window) = RenderingWindow::new(
@@ -168,8 +174,8 @@ impl ApplicationHandler for IsotopeApplication {
                                 &surface_texture.texture,
                                 |render_pass| {
                                     // Temp
-                                    self.isotope.compound.iter_mol(|_entity, mesh: &Model| {
-                                        mesh.render(render_pass);
+                                    self.isotope.compound.iter_mol(|_entity, model: &Model| {
+                                        model.render(render_pass);
                                     });
                                 },
                             );

@@ -10,6 +10,7 @@ use crate::camera::Camera;
 pub mod defered_renderer;
 
 const CAMERA_BIND_GROUP: u32 = 0;
+const LIGHTS_BIND_GROUP: u32 = 1;
 
 pub enum Renderer {
     Defered3D(DeferedRenderer3D),

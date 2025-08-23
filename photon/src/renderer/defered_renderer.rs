@@ -20,8 +20,9 @@ use wgpu::{
 use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
 
 use super::CAMERA_BIND_GROUP;
+use super::LIGHTS_BIND_GROUP;
 
-const G_BUFFER_BIND_GROUP: u32 = 1; // TODO: Lights are 1
+const G_BUFFER_BIND_GROUP: u32 = 2; // TODO: Lights are 1
 
 pub struct DeferedRenderer3D {
     gpu_controller: Arc<GpuController>,

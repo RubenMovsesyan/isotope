@@ -19,12 +19,34 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
-        Arc, RwLock,
+        Arc, RwLock, RwLockReadGuard,
         atomic::{AtomicU64, Ordering},
     },
 };
 
 use log::warn;
+
+struct Modified(bool);
+
+impl Default for Modified {
+    fn default() -> Self {
+        Modified(true)
+    }
+}
+
+impl Modified {
+    fn is_modified(&self) -> bool {
+        self.0
+    }
+
+    fn set_modified(&mut self) {
+        self.0 = true;
+    }
+
+    fn clear_modified(&mut self) {
+        self.0 = false;
+    }
+}
 
 /// Internal type alias for the atomic counter used to generate entity IDs.
 /// This ensures thread-safe entity ID generation without locks.
@@ -347,7 +369,7 @@ impl Compound {
     ///     Health { current: 100, max: 100 }
     /// ));
     /// ```
-    pub fn build_compound(&self, entity: Entity, bundle: impl MoleculeBundle) {
+    fn build_compound(&self, entity: Entity, bundle: impl MoleculeBundle) {
         bundle.add_to_entity(self, entity);
     }
 
@@ -374,6 +396,7 @@ impl Compound {
         let entity = self.create_entity();
 
         self.build_compound(entity, bundle);
+        self.add_molecule(entity, Modified::default());
 
         entity
     }
@@ -422,6 +445,42 @@ impl Compound {
         }
     }
 
+    pub fn iter_mol_mod<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = match storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, cell) in &storage_guard.compounds {
+            if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                let mut modified_flag = modified_flag.write();
+
+                if modified_flag.is_modified() {
+                    let data = cell.read();
+                    f(*entity, &*data);
+                    modified_flag.clear_modified();
+                }
+            }
+        }
+    }
+
     /// Iterates over entities with component T but without component W.
     ///
     /// This is useful for filtering entities based on the absence of a component.
@@ -444,8 +503,8 @@ impl Compound {
     /// ```
     pub fn iter_without_mol<W, T, F>(&self, mut f: F)
     where
-        T: Send + Sync + 'static,
         W: Send + Sync + 'static,
+        T: Send + Sync + 'static,
         F: FnMut(Entity, &T) + Send + Sync,
     {
         let t_storage = self.get_or_create_storage::<T>();
@@ -471,6 +530,55 @@ impl Compound {
             } else {
                 let t_data = t_cell.read();
                 f(*entity, &*t_data);
+            }
+        }
+    }
+
+    pub fn iter_without_mol_mod<W, T, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let t_storage_guard = match t_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    let mut modified_flag = modified_flag.write();
+
+                    if modified_flag.is_modified() {
+                        let t_data = t_cell.read();
+                        f(*entity, &*t_data);
+                        modified_flag.clear_modified();
+                    }
+                }
             }
         }
     }
@@ -508,9 +616,59 @@ impl Compound {
             }
         };
 
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
         for (entity, cell) in &storage_guard.compounds {
+            // Set the modified flag for the entity
+            if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                modified_flag.write().set_modified();
+            }
+
             let mut data = cell.write();
             f(*entity, &mut *data);
+        }
+    }
+
+    pub fn iter_mut_mol_mod<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = match storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, cell) in &storage_guard.compounds {
+            if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                let mut modified_flag = modified_flag.write();
+
+                if modified_flag.is_modified() {
+                    let mut data = cell.write();
+                    f(*entity, &mut *data);
+                    modified_flag.clear_modified();
+                }
+            }
         }
     }
 
@@ -557,11 +715,74 @@ impl Compound {
             }
         };
 
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
         for (entity, t_cell) in &t_storage_guard.compounds {
             if let Some(_) = w_storage_guard.compounds.get(entity) {
             } else {
+                // Set the modified flag for the entity
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    modified_flag.write().set_modified();
+                }
+
                 let mut t_data = t_cell.write();
                 f(*entity, &mut *t_data);
+            }
+        }
+    }
+
+    pub fn iter_mut_without_mol_mod<W, T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let t_storage_guard = match t_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    let mut modified_flag = modified_flag.write();
+
+                    if modified_flag.is_modified() {
+                        let mut t_data = t_cell.write();
+                        f(*entity, &mut *t_data);
+                        modified_flag.clear_modified();
+                    }
+                }
             }
         }
     }
@@ -622,6 +843,56 @@ impl Compound {
         }
     }
 
+    pub fn iter_duo_mod<T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    let mut modified_flag = modified_flag.write();
+
+                    if modified_flag.is_modified() {
+                        let t1_data = t1_cell.read();
+                        let t2_data = t2_cell.read();
+                        f(*entity, &*t1_data, &*t2_data);
+                        modified_flag.clear_modified();
+                    }
+                }
+            }
+        }
+    }
+
     /// Iterates over entities with components T1 and T2 but without component W.
     ///
     /// Useful for filtering entity iterations based on the absence of a component.
@@ -647,9 +918,9 @@ impl Compound {
     /// ```
     pub fn iter_without_duo<W, T1, T2, F>(&self, mut f: F)
     where
+        W: Send + Sync + 'static,
         T1: Send + Sync + 'static,
         T2: Send + Sync + 'static,
-        W: Send + Sync + 'static,
         F: FnMut(Entity, &T1, &T2),
     {
         let t1_storage = self.get_or_create_storage::<T1>();
@@ -688,6 +959,69 @@ impl Compound {
                     let t2_data = t2_cell.read();
 
                     f(*entity, &*t1_data, &*t2_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_without_duo_mod<W, T1, T2, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                        let mut modified_flag = modified_flag.write();
+
+                        if modified_flag.is_modified() {
+                            let t1_data = t1_cell.read();
+                            let t2_data = t2_cell.read();
+                            f(*entity, &*t1_data, &*t2_data);
+                            modified_flag.clear_modified();
+                        }
+                    }
                 }
             }
         }
@@ -738,11 +1072,76 @@ impl Compound {
             }
         };
 
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                // Set the modified flag for the entity
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    modified_flag.write().set_modified();
+                }
+
                 let mut t1_data = t1_cell.write();
                 let mut t2_data = t2_cell.write();
                 f(*entity, &mut *t1_data, &mut *t2_data);
+            }
+        }
+    }
+
+    pub fn iter_mut_duo_mod<T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                // Set the modified flag for the entity
+                if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                    let mut modified_flag = modified_flag.write();
+
+                    if modified_flag.is_modified() {
+                        let mut t1_data = t1_cell.write();
+                        let mut t2_data = t2_cell.write();
+                        f(*entity, &mut *t1_data, &mut *t2_data);
+                        modified_flag.clear_modified();
+                    }
+                }
             }
         }
     }
@@ -773,9 +1172,9 @@ impl Compound {
     /// ```
     pub fn iter_mut_without_duo<W, T1, T2, F>(&self, mut f: F)
     where
+        W: Send + Sync + 'static,
         T1: Send + Sync + 'static,
         T2: Send + Sync + 'static,
-        W: Send + Sync + 'static,
         F: FnMut(Entity, &mut T1, &mut T2),
     {
         let t1_storage = self.get_or_create_storage::<T1>();
@@ -806,10 +1205,24 @@ impl Compound {
             }
         };
 
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
                 if let Some(_) = w_storage_guard.compounds.get(entity) {
                 } else {
+                    // Set the modified flag for the entity
+                    if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                        modified_flag.write().set_modified();
+                    }
+
                     let mut t1_data = t1_cell.write();
                     let mut t2_data = t2_cell.write();
 
@@ -867,6 +1280,7 @@ impl Compound {
                 poisoned.into_inner()
             }
         };
+
         let t2_storage_guard = match t2_storage.read() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -874,6 +1288,7 @@ impl Compound {
                 poisoned.into_inner()
             }
         };
+
         let t3_storage_guard = match t3_storage.read() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -890,6 +1305,70 @@ impl Compound {
                     let t3_data = t3_cell.read();
 
                     f(*entity, &*t1_data, &*t2_data, &*t3_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_trio_mod<T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2, &T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                        let mut modified_flag = modified_flag.write();
+
+                        if modified_flag.is_modified() {
+                            let t1_data = t1_cell.read();
+                            let t2_data = t2_cell.read();
+                            let t3_data = t3_cell.read();
+
+                            f(*entity, &*t1_data, &*t2_data, &*t3_data);
+                            modified_flag.clear_modified();
+                        }
+                    }
                 }
             }
         }
@@ -985,6 +1464,83 @@ impl Compound {
         }
     }
 
+    pub fn iter_without_trio_mod<W, T1, T2, T3, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &T1, &T2, &T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(_) = w_storage_guard.compounds.get(entity) {
+                    } else {
+                        if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                            let mut modified_flag = modified_flag.write();
+
+                            if modified_flag.is_modified() {
+                                let t1_data = t1_cell.read();
+                                let t2_data = t2_cell.read();
+                                let t3_data = t3_cell.read();
+
+                                f(*entity, &*t1_data, &*t2_data, &*t3_data);
+                                modified_flag.clear_modified();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Iterates over entities with three components, providing mutable access to all three.
     ///
     /// This method provides exclusive write access to all three components simultaneously.
@@ -1014,17 +1570,17 @@ impl Compound {
     ///         // Update velocity based on acceleration
     ///         vel.x += acc.x * delta_time;
     ///         vel.y += acc.y * delta_time;
-    ///         
+    ///
     ///         // Update position based on velocity
     ///         pos.x += vel.x * delta_time;
     ///         pos.y += vel.y * delta_time;
-    ///         
+    ///
     ///         // Apply damping to acceleration
     ///         acc.x *= 0.99;
     ///         acc.y *= 0.99;
     ///     }
     /// );
-    /// ``` 
+    /// ```
     pub fn iter_mut_trio<T1, T2, T3, F>(&self, mut f: F)
     where
         T1: Send + Sync + 'static,
@@ -1043,6 +1599,7 @@ impl Compound {
                 poisoned.into_inner()
             }
         };
+
         let t2_storage_guard = match t2_storage.read() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -1050,7 +1607,17 @@ impl Compound {
                 poisoned.into_inner()
             }
         };
+
         let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
             Ok(guard) => guard,
             Err(poisoned) => {
                 warn!("Storage poisoned, recovering...");
@@ -1061,11 +1628,80 @@ impl Compound {
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
                 if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    // Set the modified flag for the entity
+                    if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                        modified_flag.write().set_modified();
+                    }
+
                     let mut t1_data = t1_cell.write();
                     let mut t2_data = t2_cell.write();
                     let mut t3_data = t3_cell.write();
 
                     f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                }
+            }
+        }
+    }
+
+    pub fn iter_mut_trio_mod<T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                        let mut modified_flag = modified_flag.write();
+
+                        if modified_flag.is_modified() {
+                            let mut t1_data = t1_cell.write();
+                            let mut t2_data = t2_cell.write();
+                            let mut t3_data = t3_cell.write();
+
+                            f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                            modified_flag.clear_modified();
+                        }
+                    }
                 }
             }
         }
@@ -1102,22 +1738,22 @@ impl Compound {
     ///         // Update velocity based on acceleration
     ///         vel.x += acc.x * delta_time;
     ///         vel.y += acc.y * delta_time;
-    ///         
+    ///
     ///         // Update position based on velocity
     ///         pos.x += vel.x * delta_time;
     ///         pos.y += vel.y * delta_time;
-    ///         
+    ///
     ///         // Apply gravity
     ///         acc.y -= 9.81;
     ///     }
     /// );
-    /// ``` 
+    /// ```
     pub fn iter_mut_without_trio<W, T1, T2, T3, F>(&self, mut f: F)
     where
+        W: Send + Sync + 'static,
         T1: Send + Sync + 'static,
         T2: Send + Sync + 'static,
         T3: Send + Sync + 'static,
-        W: Send + Sync + 'static,
         F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
     {
         let t1_storage = self.get_or_create_storage::<T1>();
@@ -1155,16 +1791,105 @@ impl Compound {
             }
         };
 
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
                 if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
                     if let Some(_) = w_storage_guard.compounds.get(entity) {
                     } else {
+                        // Set the modified flag for the entity
+                        if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                            modified_flag.write().set_modified();
+                        }
+
                         let mut t1_data = t1_cell.write();
                         let mut t2_data = t2_cell.write();
                         let mut t3_data = t3_cell.write();
 
                         f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn iter_mut_without_trio_mod<W, T1, T2, T3, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = match t1_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t2_storage_guard = match t2_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+        let t3_storage_guard = match t3_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = match w_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        let modified_storage = self.get_or_create_storage::<Modified>();
+        let modified_storage_guard = match modified_storage.read() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("Storage poisoned, recovering...");
+                poisoned.into_inner()
+            }
+        };
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(_) = w_storage_guard.compounds.get(entity) {
+                    } else {
+                        if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
+                            let mut modified_flag = modified_flag.write();
+
+                            if modified_flag.is_modified() {
+                                let mut t1_data = t1_cell.write();
+                                let mut t2_data = t2_cell.write();
+                                let mut t3_data = t3_cell.write();
+
+                                f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                                modified_flag.clear_modified();
+                            }
+                        }
                     }
                 }
             }
@@ -1180,18 +1905,18 @@ impl Compound {
 /// making it easy to spawn entities with multiple components in a single operation.
 ///
 /// # Purpose
-/// 
+///
 /// Instead of calling `add_molecule` multiple times for each component, you can pass a tuple
 /// of components to methods like `spawn` or `build_compound`, which will automatically add
 /// all components to the entity.
 ///
 /// # Implementation
-/// 
+///
 /// This trait is implemented for tuples of varying sizes (1 to 12 components) through a macro.
 /// Each component in the tuple must be `Send + Sync + 'static` to ensure thread safety.
 ///
 /// # Thread Safety
-/// 
+///
 /// All components in a bundle must be thread-safe (`Send + Sync`) as they may be accessed
 /// from multiple threads concurrently through the ECS's internal locking mechanisms.
 ///
@@ -1211,7 +1936,7 @@ impl Compound {
 /// ## Adding a bundle to an existing entity
 /// ```ignore
 /// let entity = compound.create_entity();
-/// 
+///
 /// // Add multiple components as a bundle
 /// compound.build_compound(entity, (
 ///     Position { x: 10.0, y: 20.0 },
@@ -1262,7 +1987,7 @@ pub trait MoleculeBundle {
 ///
 /// For a tuple `(A, B, C)`, the macro generates:
 /// ```ignore
-/// impl<A: Send + Sync + 'static, B: Send + Sync + 'static, C: Send + Sync + 'static> 
+/// impl<A: Send + Sync + 'static, B: Send + Sync + 'static, C: Send + Sync + 'static>
 ///     MoleculeBundle for (A, B, C) {
 ///     fn add_to_entity(self, compound: &Compound, entity: Entity) {
 ///         let (A, B, C) = self;
@@ -1348,6 +2073,7 @@ mod ecs_test {
 
         let compound = Compound::new();
 
+        println!("Spawning new entity");
         _ = compound.spawn((
             Label {
                 name: "John".to_string(),
@@ -1359,6 +2085,7 @@ mod ecs_test {
             },
         ));
 
+        println!("Spawning new entity");
         _ = compound.spawn((
             Label {
                 name: "Sparky".to_string(),
@@ -1370,6 +2097,7 @@ mod ecs_test {
             },
         ));
 
+        println!("Spawning new entity");
         _ = compound.spawn((
             Label {
                 name: "Snivvy".to_string(),
@@ -1381,11 +2109,13 @@ mod ecs_test {
             },
         ));
 
+        println!("Iterating over mol entities");
         compound.iter_mol(|_entity, label: &Label| {
             println!("Name: {}", label.name);
             println!("Id: {}", label.id);
         });
 
+        println!("Iterating over duo entities");
         compound.iter_duo(|_entity, label: &Label, collar: &Collar| {
             println!(
                 "Name: {} Id: {} other name: {} address: {}",
@@ -1502,5 +2232,86 @@ mod ecs_test {
         }
 
         _ = other_thread.join();
+    }
+
+    #[test]
+    fn test_ecs_modified() {
+        struct Label {
+            name: String,
+            id: u32,
+        }
+
+        struct Collar {
+            name: String,
+            address: String,
+        }
+
+        struct Whiskers {
+            color: String,
+            number: u32,
+        }
+
+        let mut compound = Compound::new();
+
+        println!("Spawning new entity");
+        _ = compound.spawn((
+            Label {
+                name: "John".to_string(),
+                id: 0,
+            },
+            Whiskers {
+                color: "Black".to_string(),
+                number: 8,
+            },
+        ));
+
+        println!("Spawning new entity");
+        _ = compound.spawn((
+            Label {
+                name: "Sparky".to_string(),
+                id: 1,
+            },
+            Collar {
+                name: "Sparky".to_string(),
+                address: "1 main St.".to_string(),
+            },
+        ));
+
+        println!("Spawning new entity");
+        _ = compound.spawn((
+            Label {
+                name: "Snivvy".to_string(),
+                id: 2,
+            },
+            Collar {
+                name: "Snivvy".to_string(),
+                address: "2 main St.".to_string(),
+            },
+        ));
+
+        println!("First modified iter");
+        compound.iter_mol_mod(|entity, label: &Label| {
+            println!("Entity: {}", entity);
+            println!("Label: {}", label.name);
+        });
+
+        println!("Second modified iter");
+        compound.iter_mol_mod(|entity, label: &Label| {
+            println!("Entity: {}", entity);
+            println!("Label: {}", label.name);
+        });
+
+        println!("Modifying some");
+        compound.iter_mut_duo(|_enity, label: &mut Label, _collar: &mut Collar| {
+            label.id = 117;
+            label.name = "New Name".to_string();
+        });
+
+        println!("Third modified iter");
+        compound.iter_mol_mod(|entity, label: &Label| {
+            println!("Entity: {}", entity);
+            println!("Label: {}", label.name);
+            println!("Label id: {}", label.id);
+        });
     }
 }
