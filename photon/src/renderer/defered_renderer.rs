@@ -18,9 +18,16 @@ use wgpu::{
 };
 
 use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
+use crate::photon_lighting::LightsManager;
 
 use super::CAMERA_BIND_GROUP;
 use super::LIGHTS_BIND_GROUP;
+
+const ALBEDO_BIND_GROUP: u32 = 0;
+const POSITION_BIND_GROUP: u32 = 1;
+const NORMAL_BIND_GROUP: u32 = 2;
+const MATERIAL_BIND_GROUP: u32 = 3;
+const SAMPLER_BIND_GROUP: u32 = 4;
 
 const G_BUFFER_BIND_GROUP: u32 = 2; // TODO: Lights are 1
 
@@ -30,8 +37,11 @@ pub struct DeferedRenderer3D {
     lighting_render_pipeline: RenderPipeline,
     depth_texture: Texture,
 
+    pub(crate) lights_manager: LightsManager,
+
     // G-buffer textures
     albedo_texture: Texture,
+    position_texture: Texture,
     normal_texture: Texture,
     material_texture: Texture,
     // G-buffer bind group for lighting pass
@@ -59,6 +69,17 @@ impl DeferedRenderer3D {
             sample_count: 1,
             dimension: TextureDimension::D2,
             format: TextureFormat::Rgba8UnormSrgb,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
+        let position_texture = gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Position"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -105,8 +126,9 @@ impl DeferedRenderer3D {
             gpu_controller.create_bind_group_layout(&BindGroupLayoutDescriptor {
                 label: Some("G-Buffer Bind Group Layout"),
                 entries: &[
+                    // Albedo
                     BindGroupLayoutEntry {
-                        binding: 0,
+                        binding: ALBEDO_BIND_GROUP,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -116,7 +138,7 @@ impl DeferedRenderer3D {
                         },
                     },
                     BindGroupLayoutEntry {
-                        binding: 1,
+                        binding: POSITION_BIND_GROUP,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -125,8 +147,9 @@ impl DeferedRenderer3D {
                             view_dimension: TextureViewDimension::D2,
                         },
                     },
+                    // Normal
                     BindGroupLayoutEntry {
-                        binding: 2,
+                        binding: NORMAL_BIND_GROUP,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -135,8 +158,20 @@ impl DeferedRenderer3D {
                             view_dimension: TextureViewDimension::D2,
                         },
                     },
+                    // Material
                     BindGroupLayoutEntry {
-                        binding: 3,
+                        binding: MATERIAL_BIND_GROUP,
+                        count: None,
+                        visibility: ShaderStages::FRAGMENT,
+                        ty: BindingType::Texture {
+                            multisampled: false,
+                            sample_type: TextureSampleType::Float { filterable: true },
+                            view_dimension: TextureViewDimension::D2,
+                        },
+                    },
+                    // Sampler
+                    BindGroupLayoutEntry {
+                        binding: SAMPLER_BIND_GROUP,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
@@ -149,29 +184,37 @@ impl DeferedRenderer3D {
             layout: &g_buffer_bind_group_layout,
             entries: &[
                 BindGroupEntry {
-                    binding: 0,
+                    binding: ALBEDO_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &albedo_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: 1,
+                    binding: POSITION_BIND_GROUP,
+                    resource: BindingResource::TextureView(
+                        &position_texture.create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: NORMAL_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &normal_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: 2,
+                    binding: MATERIAL_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &material_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: 3,
+                    binding: SAMPLER_BIND_GROUP,
                     resource: BindingResource::Sampler(&g_buffer_sampler),
                 },
             ],
         });
+
+        let lights_manager = LightsManager::new(gpu_controller.clone())?;
 
         let camera_bind_group_layout =
             gpu_controller.create_bind_group_layout(&CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR);
@@ -186,7 +229,11 @@ impl DeferedRenderer3D {
         let lighting_pipeline_layout =
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Lighting Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &g_buffer_bind_group_layout],
+                bind_group_layouts: &[
+                    &camera_bind_group_layout,
+                    &lights_manager.bind_group_layout,
+                    &g_buffer_bind_group_layout,
+                ],
                 push_constant_ranges: &[],
             });
 
@@ -215,6 +262,19 @@ impl DeferedRenderer3D {
                         // Albedo
                         Some(ColorTargetState {
                             format: TextureFormat::Rgba8UnormSrgb,
+                            blend: Some(BlendState {
+                                color: BlendComponent {
+                                    src_factor: BlendFactor::SrcAlpha,
+                                    dst_factor: BlendFactor::OneMinusSrcAlpha,
+                                    operation: BlendOperation::Add,
+                                },
+                                alpha: BlendComponent::OVER,
+                            }),
+                            write_mask: ColorWrites::ALL,
+                        }),
+                        // Position
+                        Some(ColorTargetState {
+                            format: TextureFormat::Rgba16Float,
                             blend: Some(BlendState {
                                 color: BlendComponent {
                                     src_factor: BlendFactor::SrcAlpha,
@@ -348,6 +408,7 @@ impl DeferedRenderer3D {
 
         Ok(Self {
             albedo_texture,
+            position_texture,
             normal_texture,
             material_texture,
             depth_texture,
@@ -356,6 +417,7 @@ impl DeferedRenderer3D {
             g_buffer_bind_group_layout,
             g_buffer_bind_group,
             g_buffer_sampler,
+            lights_manager,
             gpu_controller,
             instance_buffer,
             index_buffer,
@@ -382,6 +444,9 @@ impl DeferedRenderer3D {
         let albedo_view = self
             .albedo_texture
             .create_view(&TextureViewDescriptor::default());
+        let position_view = self
+            .position_texture
+            .create_view(&TextureViewDescriptor::default());
         let normal_view = self
             .normal_texture
             .create_view(&TextureViewDescriptor::default());
@@ -398,6 +463,14 @@ impl DeferedRenderer3D {
                 color_attachments: &[
                     Some(RenderPassColorAttachment {
                         view: &albedo_view,
+                        resolve_target: None,
+                        ops: Operations {
+                            load: LoadOp::Clear(Color::TRANSPARENT),
+                            store: StoreOp::Store,
+                        },
+                    }),
+                    Some(RenderPassColorAttachment {
+                        view: &position_view,
                         resolve_target: None,
                         ops: Operations {
                             load: LoadOp::Clear(Color::TRANSPARENT),
@@ -468,6 +541,7 @@ impl DeferedRenderer3D {
             render_pass.set_pipeline(&self.lighting_render_pipeline);
 
             render_pass.set_bind_group(CAMERA_BIND_GROUP, camera.bind_group(), &[]);
+            render_pass.set_bind_group(LIGHTS_BIND_GROUP, &self.lights_manager.bind_group, &[]);
             render_pass.set_bind_group(G_BUFFER_BIND_GROUP, &self.g_buffer_bind_group, &[]);
 
             render_pass.set_index_buffer(self.index_buffer.slice(..), IndexFormat::Uint32);
@@ -546,7 +620,7 @@ impl DeferedRenderer3D {
             layout: &self.g_buffer_bind_group_layout,
             entries: &[
                 BindGroupEntry {
-                    binding: 0,
+                    binding: ALBEDO_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &self
                             .albedo_texture
@@ -554,7 +628,15 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: 1,
+                    binding: POSITION_BIND_GROUP,
+                    resource: BindingResource::TextureView(
+                        &self
+                            .position_texture
+                            .create_view(&TextureViewDescriptor::default()),
+                    ),
+                },
+                BindGroupEntry {
+                    binding: NORMAL_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &self
                             .normal_texture
@@ -562,7 +644,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: 2,
+                    binding: MATERIAL_BIND_GROUP,
                     resource: BindingResource::TextureView(
                         &self
                             .material_texture
@@ -570,7 +652,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: 3,
+                    binding: SAMPLER_BIND_GROUP,
                     resource: BindingResource::Sampler(&self.g_buffer_sampler),
                 },
             ],

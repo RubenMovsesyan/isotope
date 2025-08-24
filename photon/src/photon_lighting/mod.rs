@@ -1,8 +1,9 @@
-use std::sync::Arc;
+use std::{ops::Range, sync::Arc};
 
 use anyhow::Result;
 use gpu_controller::GpuController;
 pub use light::Light;
+use log::{debug, warn};
 use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, ShaderStages,
@@ -20,6 +21,9 @@ pub struct LightsManager {
     num_lights_buffer: Buffer,
     pub bind_group_layout: BindGroupLayout,
     pub bind_group: BindGroup,
+
+    lights: [Light; MAX_LIGHTS],
+    num_lights: u32,
 }
 
 impl LightsManager {
@@ -91,6 +95,54 @@ impl LightsManager {
             num_lights_buffer,
             bind_group_layout,
             bind_group,
+            lights: [Light::default(); MAX_LIGHTS],
+            num_lights: 0,
         })
     }
+
+    // Copys the light to the buffer
+    // pub fn add_light(&mut self, light: &Light) {
+    //     if self.num_lights < MAX_LIGHTS as u32 {
+    //         self.lights[self.num_lights as usize] = *light;
+    //         self.num_lights += 1;
+    //         self.update_buffer();
+    //     }
+    // }
+
+    // pub fn update_lights(&mut self, lights: &[Light], range: Range<u32>) {
+    //     self.lights[range.start as usize..range.end as usize].copy_from_slice(lights);
+    //     self.update_buffer_range(range);
+    // }
+
+    // Updates the buffer with the current lights
+    pub fn update_lights(&mut self, lights: &[Light]) {
+        if lights.len() > MAX_LIGHTS {
+            warn!("Too many lights");
+        } else {
+            for (i, light) in lights.iter().enumerate() {
+                self.lights[i] = *light;
+            }
+            self.num_lights = lights.len() as u32;
+        }
+
+        self.gpu_controller.write_buffer(
+            &self.lights_buffer,
+            0,
+            bytemuck::cast_slice(&self.lights),
+        );
+
+        self.gpu_controller.write_buffer(
+            &self.num_lights_buffer,
+            0,
+            bytemuck::cast_slice(&[self.num_lights]),
+        );
+    }
+
+    // fn update_buffer_range(&self, range: Range<u32>) {
+    //     self.gpu_controller.write_buffer(
+    //         &self.lights_buffer,
+    //         range.start as u64 * std::mem::size_of::<Light>() as u64,
+    //         bytemuck::cast_slice(&self.lights[range.start as usize..range.end as usize]),
+    //     );
+    // }
 }

@@ -415,6 +415,10 @@ impl GpuController {
         self.device.create_buffer_init(buffer_init_descriptor)
     }
 
+    pub fn write_buffer(&self, buffer: &Buffer, offset: u64, data: &[u8]) {
+        self.queue.write_buffer(buffer, offset, data);
+    }
+
     pub fn create_pipeline_layout(
         &self,
         pipeline_layout_descriptor: &PipelineLayoutDescriptor,

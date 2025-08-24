@@ -119,11 +119,25 @@ impl ApplicationHandler for IsotopeApplication {
         }
 
         self.isotope.compound.spawn((Light::new(
-            [10.0, 0.0, 0.0],
+            [10.0, 2.0, 3.0],
             [0.0, 0.0, 0.0],
-            [1.0, 1.0, 1.0],
-            10.0,
+            [0.0, 0.0, 0.5],
+            5.0,
         ),));
+
+        // self.isotope.compound.spawn((Light::new(
+        //     [-10.0, 0.0, 0.0],
+        //     [0.0, 0.0, 0.0],
+        //     [1.0, 1.0, 1.0],
+        //     10.0,
+        // ),));
+
+        // self.isotope.compound.spawn((Light::new(
+        //     [0.0, 10.0, 0.0],
+        //     [0.0, 0.0, 0.0],
+        //     [1.0, 1.0, 1.0],
+        //     10.0,
+        // ),));
         // TEMP ======
 
         if let Ok(rendering_window) = RenderingWindow::new(
@@ -147,7 +161,7 @@ impl ApplicationHandler for IsotopeApplication {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
         if let Some(window) = self.window.as_ref() {
             window.window.request_redraw();
         }
@@ -169,6 +183,25 @@ impl ApplicationHandler for IsotopeApplication {
                     }
                     WindowEvent::RedrawRequested => {
                         if let Ok(surface_texture) = window.surface.get_current_texture() {
+                            // Update the lights if there are any modified lights
+                            let mut lights_changed = false;
+                            self.isotope
+                                .compound
+                                .iter_mol_mod(|_entity, _light: &Light| {
+                                    lights_changed = true;
+                                    return;
+                                });
+
+                            if lights_changed {
+                                debug!("Lights changed");
+                                let mut lights = Vec::new();
+                                self.isotope.compound.iter_mol(|_entity, light: &Light| {
+                                    debug!("Light: {:#?}", light);
+                                    lights.push(light.clone());
+                                });
+                                self.isotope.photon.update_lights(&lights);
+                            }
+
                             self.isotope.photon.render(
                                 &self.isotope.camera,
                                 &surface_texture.texture,

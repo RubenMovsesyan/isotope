@@ -7,8 +7,9 @@ struct VertexOutput {
 
 struct FragmentOutput {
     @location(0) albedo: vec4<f32>,
-    @location(1) normal: vec4<f32>,
-    @location(2) material: vec4<f32>,
+    @location(1) position: vec4<f32>,
+    @location(2) normal: vec4<f32>,
+    @location(3) material: vec4<f32>,
 }
 
 struct VertexInput {
@@ -70,6 +71,9 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
 
     // Color of the object
     output.albedo = vec4<f32>(1.0, 0.0, 1.0, 1.0);
+
+    // Position of the fragment
+    output.position = vec4<f32>(in.world_position, 1.0);
 
     // Normals of the object
     output.normal = vec4<f32>(in.world_normal, 1.0);

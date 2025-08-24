@@ -5,7 +5,7 @@ use defered_renderer::DeferedRenderer3D;
 use gpu_controller::GpuController;
 use wgpu::{RenderPass, Texture};
 
-use crate::camera::Camera;
+use crate::{Light, camera::Camera};
 
 pub mod defered_renderer;
 
@@ -19,6 +19,14 @@ pub enum Renderer {
 impl Renderer {
     pub fn new_defered_3d(gpu_controller: Arc<GpuController>) -> Result<Self> {
         Ok(Self::Defered3D(DeferedRenderer3D::new(gpu_controller)?))
+    }
+
+    pub fn update_lights(&mut self, lights: &[Light]) {
+        match self {
+            Self::Defered3D(renderer) => {
+                renderer.lights_manager.update_lights(lights);
+            }
+        }
     }
 
     pub fn render<G>(&self, camera: &Camera, output: &Texture, geometry_callback: G)
