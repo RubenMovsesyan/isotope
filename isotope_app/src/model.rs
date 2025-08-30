@@ -10,7 +10,7 @@ use log::{debug, info};
 use matter_vault::SharedMatter;
 use wgpu::RenderPass;
 
-use crate::asset_server::AssetServer;
+use crate::{asset_server::AssetServer, material::Material};
 
 type Position = [f32; 3];
 type Normal = [f32; 3];
@@ -18,6 +18,7 @@ type UV = [f32; 2];
 
 pub struct Model {
     meshes: Vec<SharedMatter<Mesh>>,
+    materials: Vec<SharedMatter<Material>>,
 }
 
 impl Model {

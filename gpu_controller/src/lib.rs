@@ -42,18 +42,27 @@ use defaults::DEFAULT_SURFACE_CONFIGURATION;
 use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
-    Adapter, Backends, BindGroup, BindGroupDescriptor, BindGroupLayout, BindGroupLayoutDescriptor,
-    Buffer, BufferDescriptor, CommandEncoder, CommandEncoderDescriptor, Device, DeviceDescriptor,
-    Features, InstanceDescriptor, Limits, MemoryHints, PipelineLayout, PipelineLayoutDescriptor,
-    PowerPreference, PresentMode, Queue, RenderPipeline, RenderPipelineDescriptor,
-    RequestAdapterOptionsBase, Sampler, SamplerDescriptor, ShaderModule, ShaderModuleDescriptor,
-    ShaderSource, Surface, SurfaceConfiguration, Texture, TextureDescriptor, TextureUsages, Trace,
-    VertexBufferLayout,
-    util::{BufferInitDescriptor, DeviceExt},
+    Adapter, Backends, Device, DeviceDescriptor, Features, InstanceDescriptor, Limits, MemoryHints,
+    PipelineLayout, PollError, PollStatus, PowerPreference, PresentMode, Queue,
+    RenderPipelineDescriptor, RequestAdapterOptionsBase, Sampler, SamplerDescriptor, Trace,
+    VertexBufferLayout, util::DeviceExt,
 };
 
 // public re-exports
 pub use geometry::{instance::Instance, mesh::Mesh, vertex::Vertex};
+pub use wgpu::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
+    BufferDescriptor, BufferUsages, Color, CommandEncoder, CommandEncoderDescriptor,
+    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, LoadOp,
+    MaintainBase, MapMode, Operations, Origin3d, PipelineCompilationOptions,
+    PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StorageTextureAccess,
+    StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo,
+    TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
+    TextureViewDimension, util::BufferInitDescriptor,
+};
 use winit::window::Window;
 
 mod defaults;
@@ -419,6 +428,17 @@ impl GpuController {
         self.queue.write_buffer(buffer, offset, data);
     }
 
+    pub fn write_texture(
+        &self,
+        texture: &Texture,
+        data: &[u8],
+        layout: TexelCopyBufferLayout,
+        size: Extent3d,
+    ) {
+        self.queue
+            .write_texture(texture.as_image_copy(), data, layout, size);
+    }
+
     pub fn create_pipeline_layout(
         &self,
         pipeline_layout_descriptor: &PipelineLayoutDescriptor,
@@ -433,6 +453,14 @@ impl GpuController {
     ) -> RenderPipeline {
         self.device
             .create_render_pipeline(render_pipeline_descriptor)
+    }
+
+    pub fn create_compute_pipeline(
+        &self,
+        compute_pipeline_descriptor: &ComputePipelineDescriptor,
+    ) -> ComputePipeline {
+        self.device
+            .create_compute_pipeline(compute_pipeline_descriptor)
     }
 
     pub fn create_shader(&self, shader: &str) -> ShaderModule {
@@ -481,6 +509,18 @@ impl GpuController {
         if let Ok(sc) = self.surface_configuration.read() {
             surface.configure(&self.device, &sc);
         }
+    }
+
+    pub fn poll(&self, base: MaintainBase<wgpu::SubmissionIndex>) -> Result<PollStatus, PollError> {
+        self.device.poll(base)
+    }
+
+    pub fn device(&self) -> &Device {
+        &self.device
+    }
+
+    pub fn queue(&self) -> &Queue {
+        &self.queue
     }
 }
 

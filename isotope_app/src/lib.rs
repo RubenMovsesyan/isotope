@@ -1,4 +1,7 @@
-use std::sync::Arc;
+use std::{
+    sync::{Arc, RwLock},
+    time::Instant,
+};
 
 use anyhow::Result;
 use asset_server::AssetServer;
@@ -23,6 +26,7 @@ use winit::{
 };
 
 mod asset_server;
+mod material;
 mod model;
 mod rendering_window;
 
@@ -41,6 +45,10 @@ pub struct Isotope {
 
     // Entity component system
     compound: Arc<Compound>,
+
+    // Timeing
+    time: Arc<RwLock<Instant>>,
+    delta: Arc<RwLock<Instant>>,
 
     // Temp
     camera: Camera,
@@ -68,6 +76,8 @@ impl Isotope {
                 1.0,   // near plane - try 1.0 instead
                 100.0, // far plane
             ),
+            time: Arc::new(RwLock::new(Instant::now())),
+            delta: Arc::new(RwLock::new(Instant::now())),
             matter_vault,
             gpu_controller,
         })
@@ -183,6 +193,24 @@ impl ApplicationHandler for IsotopeApplication {
                     }
                     WindowEvent::RedrawRequested => {
                         if let Ok(surface_texture) = window.surface.get_current_texture() {
+                            // TEMP
+                            let time = self
+                                .isotope
+                                .time
+                                .read()
+                                .expect("Failed to read")
+                                .elapsed()
+                                .as_secs_f32();
+
+                            self.isotope
+                                .compound
+                                .iter_mut_mol(|_entity, light: &mut Light| {
+                                    light.pos(|position| {
+                                        *position =
+                                            [5.0 * f32::cos(time), 2.0, 5.0 * f32::sin(time)];
+                                    });
+                                });
+
                             // Update the lights if there are any modified lights
                             let mut lights_changed = false;
                             self.isotope

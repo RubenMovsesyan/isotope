@@ -839,6 +839,7 @@ name = "isotope_app"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "compound",
  "gpu_controller",
  "log",
