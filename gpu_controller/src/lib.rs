@@ -42,10 +42,10 @@ use defaults::DEFAULT_SURFACE_CONFIGURATION;
 use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
-    Adapter, Backends, Device, DeviceDescriptor, Features, InstanceDescriptor, Limits, MemoryHints,
-    PipelineLayout, PollError, PollStatus, PowerPreference, PresentMode, Queue,
-    RenderPipelineDescriptor, RequestAdapterOptionsBase, Sampler, SamplerDescriptor, Trace,
-    VertexBufferLayout, util::DeviceExt,
+    Adapter, Backends, Device, DeviceDescriptor, InstanceDescriptor, MemoryHints, PipelineLayout,
+    PollError, PollStatus, PowerPreference, PresentMode, Queue, RenderPipelineDescriptor,
+    RequestAdapterOptionsBase, Sampler, SamplerDescriptor, Trace, VertexBufferLayout,
+    util::DeviceExt,
 };
 
 // public re-exports
@@ -54,8 +54,8 @@ pub use wgpu::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
     BufferDescriptor, BufferUsages, Color, CommandEncoder, CommandEncoderDescriptor,
-    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, LoadOp,
-    MaintainBase, MapMode, Operations, Origin3d, PipelineCompilationOptions,
+    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, Features, Limits,
+    LoadOp, MaintainBase, MapMode, Operations, Origin3d, PipelineCompilationOptions,
     PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
     ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StorageTextureAccess,
     StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo,
