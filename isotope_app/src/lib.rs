@@ -6,7 +6,10 @@ use std::{
 use anyhow::Result;
 use asset_server::AssetServer;
 use compound::Compound;
-use gpu_controller::{GpuController, Mesh, Vertex};
+use gpu_controller::{
+    CompositeAlphaMode, GpuController, Mesh, PresentMode, SurfaceConfiguration, TextureFormat,
+    TextureUsages, Vertex,
+};
 use log::{debug, error, info};
 use matter_vault::MatterVault;
 use model::Model;
@@ -17,7 +20,6 @@ use photon::{
 };
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
-use wgpu::{CompositeAlphaMode, PresentMode, SurfaceConfiguration, TextureFormat, TextureUsages};
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalSize, Size},
@@ -29,6 +31,7 @@ mod asset_server;
 mod material;
 mod model;
 mod rendering_window;
+mod texture;
 
 pub struct Isotope {
     // GPU
@@ -221,10 +224,8 @@ impl ApplicationHandler for IsotopeApplication {
                                 });
 
                             if lights_changed {
-                                debug!("Lights changed");
                                 let mut lights = Vec::new();
                                 self.isotope.compound.iter_mol(|_entity, light: &Light| {
-                                    debug!("Light: {:#?}", light);
                                     lights.push(light.clone());
                                 });
                                 self.isotope.photon.update_lights(&lights);

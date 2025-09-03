@@ -43,21 +43,21 @@ use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
     Adapter, Backends, Device, DeviceDescriptor, InstanceDescriptor, MemoryHints, PipelineLayout,
-    PollError, PollStatus, PowerPreference, PresentMode, Queue, RenderPipelineDescriptor,
-    RequestAdapterOptionsBase, Sampler, SamplerDescriptor, Trace, VertexBufferLayout,
+    PollError, PollStatus, PowerPreference, Queue, RenderPipelineDescriptor,
+    RequestAdapterOptionsBase, Trace, VertexBufferLayout,
     util::DeviceExt,
 };
 
 // public re-exports
 pub use geometry::{instance::Instance, mesh::Mesh, vertex::Vertex};
 pub use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType,
+    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType, CompositeAlphaMode,
     BufferDescriptor, BufferUsages, Color, CommandEncoder, CommandEncoderDescriptor,
-    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, Features, Limits,
-    LoadOp, MaintainBase, MapMode, Operations, Origin3d, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StorageTextureAccess,
+    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, Features, FilterMode, Limits,
+    LoadOp, MaintainBase, MapMode, Operations, Origin3d, PresentMode, PipelineCompilationOptions, Sampler,
+    PipelineLayoutDescriptor, RenderPass, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
+    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StorageTextureAccess,
     StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo,
     TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
     TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,

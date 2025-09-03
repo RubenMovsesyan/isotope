@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use gpu_controller::GpuController;
-use wgpu::Surface;
+use gpu_controller::{GpuController, Surface};
 use winit::{
     dpi::{PhysicalSize, Size},
     event_loop::ActiveEventLoop,

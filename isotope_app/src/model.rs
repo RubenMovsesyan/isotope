@@ -4,13 +4,15 @@ use std::{
     path::Path,
 };
 
-use anyhow::Result;
-use gpu_controller::{Mesh, Vertex};
+use anyhow::{Result, anyhow};
+use gpu_controller::{Mesh, RenderPass, Vertex};
 use log::{debug, info};
 use matter_vault::SharedMatter;
-use wgpu::RenderPass;
 
-use crate::{asset_server::AssetServer, material::Material};
+use crate::{
+    asset_server::AssetServer,
+    material::{Material, load_materials},
+};
 
 type Position = [f32; 3];
 type Normal = [f32; 3];
@@ -44,6 +46,7 @@ impl Model {
 
         // For the end return
         let mut meshes: Vec<SharedMatter<Mesh>> = Vec::new();
+        let mut materials: Vec<SharedMatter<Material>> = Vec::new();
 
         for line in lines.map_while(Result::ok) {
             let tokens = line.split_whitespace().collect::<Vec<_>>();
@@ -123,13 +126,37 @@ impl Model {
                             None => {}
                         }
                     }
-                    // TODO: Add materials
+                    "mtllib" => {
+                        let path_to_material = path
+                            .as_ref()
+                            .parent()
+                            .ok_or(anyhow!("Obj Path is invalid"))?
+                            .join(tokens[1]);
+
+                        materials = load_materials(&path_to_material, asset_server)?;
+                    }
                     _ => {}
                 }
             } else {
                 match tokens[0] {
                     "o" => {
                         label_exists = false;
+
+                        let label = tokens[1].to_string();
+
+                        // If the mesh is already shared, add it to the list of meshes
+                        if let Ok(mesh) = asset_server.asset_manager.share(&label) {
+                            debug!("Mesh already exists: {}", label);
+                            meshes.push(mesh);
+                            label_exists = true;
+                        } else {
+                            debug!("Creating new mesh: {}", label);
+                            current_mesh = Some(Mesh::Cpu {
+                                label: label.clone(),
+                                vertices: Vec::new(),
+                                indices: Vec::new(),
+                            });
+                        }
                     }
                     _ => {}
                 }
@@ -142,7 +169,7 @@ impl Model {
             meshes.push(asset_server.asset_manager.add(mesh_label, mesh)?);
         }
 
-        Ok(Self { meshes })
+        Ok(Self { meshes, materials })
     }
 
     pub fn render(&self, render_pass: &mut RenderPass) {

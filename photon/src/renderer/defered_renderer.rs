@@ -582,6 +582,17 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
+        self.position_texture = self.gpu_controller.create_texture(&TextureDescriptor {
+            label: Some("G-Buffer Position"),
+            size: texture_size,
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: TextureDimension::D2,
+            format: TextureFormat::Rgba16Float,
+            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
+            view_formats: &[],
+        });
+
         self.normal_texture = self.gpu_controller.create_texture(&TextureDescriptor {
             label: Some("G-Buffer Normal"),
             size: texture_size,
