@@ -2,8 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use defered_renderer::DeferedRenderer3D;
-use gpu_controller::GpuController;
-use wgpu::{RenderPass, Texture};
+use gpu_controller::{GpuController, RenderPass, Texture};
 
 use crate::{Light, camera::Camera};
 
@@ -11,6 +10,7 @@ pub mod defered_renderer;
 
 const CAMERA_BIND_GROUP: u32 = 0;
 const LIGHTS_BIND_GROUP: u32 = 1;
+pub const MATERIALS_BIND_GROUP: u32 = 1;
 
 pub enum Renderer {
     Defered3D(DeferedRenderer3D),

@@ -6,15 +6,21 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use gpu_controller::GpuController;
+use gpu_controller::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindingResource, Buffer, BufferDescriptor,
+    BufferUsages, GpuController, TextureViewDescriptor,
+};
 use log::{debug, error, info};
 use matter_vault::SharedMatter;
 
 use crate::{asset_server::AssetServer, texture::IsotopeTexture};
 
+const FALSE: u32 = 0;
+const TRUE: u32 = 1;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-struct MaterialProperties {
+pub struct MaterialProperties {
     _padding: [u32; 2],
     ambient_color: [f32; 3],
     diffuse_color: [f32; 3],
@@ -23,6 +29,7 @@ struct MaterialProperties {
     optical_density: f32,
     dissolve: f32,
     illum: u32,
+    texture: u32,
 }
 
 // ERROR color as default
@@ -37,16 +44,19 @@ impl Default for MaterialProperties {
             optical_density: 0.0,
             dissolve: 0.0,
             illum: 0,
+            texture: FALSE,
         }
     }
 }
 
 pub struct Material {
-    properties: MaterialProperties,
-    label: String,
+    pub properties: MaterialProperties,
+    properties_buffer: Buffer,
+    pub label: String,
 
     gpu_controller: Arc<GpuController>,
     texture: Option<SharedMatter<IsotopeTexture>>,
+    pub(crate) bind_group: BindGroup,
 }
 
 pub fn load_materials<P>(path: P, asset_server: &AssetServer) -> Result<Vec<SharedMatter<Material>>>
@@ -73,6 +83,13 @@ where
                 "newmtl" => {
                     // If there is a material already in the queue then push it to the list of materials
                     if let Some(material) = current_material.take() {
+                        info!("Writing material properties to GPU buffer");
+                        material.gpu_controller.write_buffer(
+                            &material.properties_buffer,
+                            0,
+                            bytemuck::cast_slice(&[material.properties]),
+                        );
+
                         let material_label = material.label.clone();
                         materials.push(asset_server.asset_manager.add(material_label, material)?);
                     }
@@ -86,11 +103,54 @@ where
                         label_exists = true;
                     } else {
                         debug!("Creating new material: {}", label);
+                        let properties_buffer =
+                            asset_server
+                                .gpu_controller
+                                .create_buffer(&BufferDescriptor {
+                                    label: Some(&format!("{} properties", label)),
+                                    size: std::mem::size_of::<MaterialProperties>() as u64,
+                                    usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                                    mapped_at_creation: false,
+                                });
+
+                        let material_texture = IsotopeTexture::new_empty(asset_server);
+                        let material_texture_view = material_texture
+                            .texture
+                            .create_view(&TextureViewDescriptor::default());
+
+                        let bind_group =
+                            asset_server
+                                .gpu_controller
+                                .create_bind_group(&BindGroupDescriptor {
+                                    label: Some(&format!("{} bind group", label)),
+                                    layout: &asset_server.layouts["Material"],
+                                    entries: &[
+                                        BindGroupEntry {
+                                            binding: 0,
+                                            resource: properties_buffer.as_entire_binding(),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 1,
+                                            resource: BindingResource::TextureView(
+                                                &material_texture_view,
+                                            ),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 2,
+                                            resource: BindingResource::Sampler(
+                                                &material_texture.sampler,
+                                            ),
+                                        },
+                                    ],
+                                });
+
                         current_material = Some(Material {
                             gpu_controller: asset_server.gpu_controller.clone(),
                             label: label.clone(),
                             properties: MaterialProperties::default(),
                             texture: None,
+                            properties_buffer,
+                            bind_group,
                         })
                     }
                 }
@@ -175,30 +235,80 @@ where
 
                     debug!("Searching in path: {:#?}", material_path);
 
-                    current_material
-                        .as_mut()
-                        .ok_or_else(|| anyhow!("No Current Material"))?
-                        .texture = Some(
-                        asset_server
-                            .asset_manager
-                            .share(tokens[1].to_string())
-                            .or_else(|_err| {
-                                asset_server.asset_manager.add(
-                                    tokens[1].to_string(),
-                                    IsotopeTexture::new_from_path(material_path, asset_server)
-                                        .map_err(|err| {
-                                            error!("Failed to Load Texture: {:#?}", err);
-                                            err
-                                        })?,
-                                )
-                            })?,
-                    )
+                    if let Some(current_material) = current_material.as_mut() {
+                        current_material.texture = Some(
+                            asset_server
+                                .asset_manager
+                                .share(tokens[1].to_string())
+                                .or_else(|_err| {
+                                    asset_server.asset_manager.add(
+                                        tokens[1].to_string(),
+                                        IsotopeTexture::new_from_path(material_path, asset_server)
+                                            .map_err(|err| {
+                                                error!("Failed to Load Texture: {:#?}", err);
+                                                err
+                                            })?,
+                                    )
+                                })?,
+                        );
+
+                        current_material.properties.texture = TRUE;
+
+                        if let Some(texture) = current_material.texture.as_ref() {
+                            texture.read(|texture| {
+                                current_material.bind_group = asset_server
+                                    .gpu_controller
+                                    .create_bind_group(&BindGroupDescriptor {
+                                        label: Some(&format!(
+                                            "Material {} bind group",
+                                            current_material.label
+                                        )),
+                                        layout: &asset_server.layouts["Material"],
+                                        entries: &[
+                                            BindGroupEntry {
+                                                binding: 0,
+                                                resource: current_material
+                                                    .properties_buffer
+                                                    .as_entire_binding(),
+                                            },
+                                            BindGroupEntry {
+                                                binding: 1,
+                                                resource: BindingResource::TextureView(
+                                                    &texture.view,
+                                                ),
+                                            },
+                                            BindGroupEntry {
+                                                binding: 2,
+                                                resource: BindingResource::Sampler(
+                                                    &texture.sampler,
+                                                ),
+                                            },
+                                        ],
+                                    });
+                            });
+                        } else {
+                            error!("Failed to access texture, Continuing...");
+                        }
+                    }
                 }
                 _ => {}
             }
         } else {
             match tokens[0] {
                 "newmtl" => {
+                    // If there is a material already in the queue then push it to the list of materials
+                    if let Some(material) = current_material.take() {
+                        info!("Writing material properties to GPU buffer");
+                        material.gpu_controller.write_buffer(
+                            &material.properties_buffer,
+                            0,
+                            bytemuck::cast_slice(&[material.properties]),
+                        );
+
+                        let material_label = material.label.clone();
+                        materials.push(asset_server.asset_manager.add(material_label, material)?);
+                    }
+
                     label_exists = false;
 
                     let label = tokens[1].to_string();
@@ -210,11 +320,51 @@ where
                         label_exists = true;
                     } else {
                         debug!("Creating new material: {}", label);
+                        let properties_buffer =
+                            asset_server
+                                .gpu_controller
+                                .create_buffer(&BufferDescriptor {
+                                    label: Some(&format!("{} properties", label)),
+                                    size: std::mem::size_of::<MaterialProperties>() as u64,
+                                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                                    mapped_at_creation: false,
+                                });
+
+                        let material_texture = IsotopeTexture::new_empty(asset_server);
+
+                        let bind_group =
+                            asset_server
+                                .gpu_controller
+                                .create_bind_group(&BindGroupDescriptor {
+                                    label: Some(&format!("Material {} bind group", label)),
+                                    layout: &asset_server.layouts["Material"],
+                                    entries: &[
+                                        BindGroupEntry {
+                                            binding: 0,
+                                            resource: properties_buffer.as_entire_binding(),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 1,
+                                            resource: BindingResource::TextureView(
+                                                &material_texture.view,
+                                            ),
+                                        },
+                                        BindGroupEntry {
+                                            binding: 2,
+                                            resource: BindingResource::Sampler(
+                                                &material_texture.sampler,
+                                            ),
+                                        },
+                                    ],
+                                });
+
                         current_material = Some(Material {
                             gpu_controller: asset_server.gpu_controller.clone(),
                             label: label.clone(),
                             properties: MaterialProperties::default(),
                             texture: None,
+                            properties_buffer,
+                            bind_group,
                         })
                     }
                 }
@@ -224,6 +374,13 @@ where
     }
 
     if let Some(material) = current_material.take() {
+        info!("Writing material properties to GPU buffer");
+        material.gpu_controller.write_buffer(
+            &material.properties_buffer,
+            0,
+            bytemuck::cast_slice(&[material.properties]),
+        );
+
         let material_label = material.label.clone();
         materials.push(asset_server.asset_manager.add(material_label, material)?);
     }

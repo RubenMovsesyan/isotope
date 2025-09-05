@@ -43,25 +43,30 @@ use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
     Adapter, Backends, Device, DeviceDescriptor, InstanceDescriptor, MemoryHints, PipelineLayout,
-    PollError, PollStatus, PowerPreference, Queue, RenderPipelineDescriptor,
-    RequestAdapterOptionsBase, Trace, VertexBufferLayout,
-    util::DeviceExt,
+    PollError, PollStatus, PowerPreference, Queue, RequestAdapterOptionsBase, Trace,
+    VertexBufferLayout, util::DeviceExt,
 };
 
 // public re-exports
 pub use geometry::{instance::Instance, mesh::Mesh, vertex::Vertex};
 pub use wgpu::{
-    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingResource, BindingType, Buffer, BufferBindingType, CompositeAlphaMode,
-    BufferDescriptor, BufferUsages, Color, CommandEncoder, CommandEncoderDescriptor,
-    ComputePassDescriptor, ComputePipeline, ComputePipelineDescriptor, Extent3d, Features, FilterMode, Limits,
-    LoadOp, MaintainBase, MapMode, Operations, Origin3d, PresentMode, PipelineCompilationOptions, Sampler,
-    PipelineLayoutDescriptor, RenderPass, RenderPassColorAttachment, RenderPassDescriptor, RenderPipeline,
-    SamplerDescriptor, ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StorageTextureAccess,
-    StoreOp, Surface, SurfaceConfiguration, SurfaceTexture, TexelCopyBufferInfo,
-    TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureUsages, TextureView, TextureViewDescriptor,
-    TextureViewDimension, util::BufferInitDescriptor,
+    AddressMode, BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout,
+    BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent,
+    BlendFactor, BlendOperation, BlendState, Buffer, BufferBindingType, BufferDescriptor,
+    BufferUsages, Color, ColorTargetState, ColorWrites, CommandEncoder, CommandEncoderDescriptor,
+    CompareFunction, CompositeAlphaMode, ComputePassDescriptor, ComputePipeline,
+    ComputePipelineDescriptor, DepthBiasState, DepthStencilState, Extent3d, Face, Features,
+    FilterMode, FragmentState, FrontFace, IndexFormat, Limits, LoadOp, MaintainBase, MapMode,
+    MultisampleState, Operations, Origin3d, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    PolygonMode, PresentMode, PrimitiveState, PrimitiveTopology, RenderPass,
+    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
+    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
+    ShaderModule, ShaderModuleDescriptor, ShaderSource, ShaderStages, StencilState,
+    StorageTextureAccess, StoreOp, Surface, SurfaceConfiguration, SurfaceTexture,
+    TexelCopyBufferInfo, TexelCopyBufferLayout, TexelCopyTextureInfo, Texture, TextureAspect,
+    TextureDescriptor, TextureDimension, TextureFormat, TextureSampleType, TextureUsages,
+    TextureView, TextureViewDescriptor, TextureViewDimension, VertexState,
+    util::BufferInitDescriptor,
 };
 use winit::window::Window;
 

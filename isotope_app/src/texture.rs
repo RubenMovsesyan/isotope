@@ -14,9 +14,9 @@ use crate::asset_server::AssetServer;
 const ROW_SIZE: u32 = std::mem::size_of::<f32>() as u32;
 
 pub(crate) struct IsotopeTexture {
-    texture: Texture,
-    view: TextureView,
-    sampler: Sampler,
+    pub texture: Texture,
+    pub view: TextureView,
+    pub sampler: Sampler,
 }
 
 impl IsotopeTexture {

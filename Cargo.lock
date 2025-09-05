@@ -1807,7 +1807,6 @@ dependencies = [
  "gpu_controller",
  "log",
  "matter_vault",
- "wgpu",
 ]
 
 [[package]]

@@ -63,10 +63,10 @@ impl Isotope {
 
         Ok(Self {
             photon: Renderer::new_defered_3d(gpu_controller.clone())?,
-            asset_server: Arc::new(AssetServer {
-                gpu_controller: gpu_controller.clone(),
-                asset_manager: matter_vault.clone(),
-            }),
+            asset_server: Arc::new(AssetServer::new(
+                matter_vault.clone(),
+                gpu_controller.clone(),
+            )),
             compound: Arc::new(Compound::new()),
             // Temp camera setup
             camera: Camera::new_perspective_3d(
@@ -122,7 +122,7 @@ impl ApplicationHandler for IsotopeApplication {
         info!("Isotope Resumed");
 
         // TEMP ======
-        match Model::from_obj("test_files/cube.obj", &self.isotope.asset_server) {
+        match Model::from_obj("test_files/monkey.obj", &self.isotope.asset_server) {
             Ok(model) => {
                 self.isotope.compound.spawn((model,));
             }
@@ -134,7 +134,7 @@ impl ApplicationHandler for IsotopeApplication {
         self.isotope.compound.spawn((Light::new(
             [10.0, 2.0, 3.0],
             [0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.5],
+            [1.0, 1.0, 1.0],
             5.0,
         ),));
 

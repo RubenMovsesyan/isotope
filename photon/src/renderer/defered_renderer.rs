@@ -1,21 +1,58 @@
 use std::{ops::Mul, sync::Arc};
 
 use anyhow::Result;
-use gpu_controller::{Buffered, GpuController, Instance, Vertex};
-use log::error;
-use wgpu::{
+use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendFactor,
-    BlendOperation, BlendState, Buffer, BufferUsages, Color, ColorTargetState, ColorWrites,
-    CompareFunction, DepthBiasState, DepthStencilState, Extent3d, Face, FragmentState, FrontFace,
-    IndexFormat, LoadOp, MultisampleState, Operations, PipelineCompilationOptions,
-    PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass,
-    RenderPassColorAttachment, RenderPassDepthStencilAttachment, RenderPassDescriptor,
-    RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor,
-    ShaderStages, StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension,
-    TextureFormat, TextureSampleType, TextureUsages, TextureViewDimension, VertexState,
-    util::BufferInitDescriptor, wgt::TextureViewDescriptor,
+    BlendOperation, BlendState, Buffer, BufferInitDescriptor, BufferUsages, Color,
+    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Extent3d,
+    Face, FragmentState, FrontFace, IndexFormat, LoadOp, MultisampleState, Operations,
+    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
+    PrimitiveTopology, RenderPass, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
+    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
+    SamplerDescriptor, ShaderStages, StencilState, StoreOp, Texture, TextureDescriptor,
+    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor,
+    TextureViewDimension, VertexState,
 };
+use gpu_controller::{BufferBindingType, Buffered, GpuController, Instance, Vertex};
+use log::error;
+
+// TEMP
+const MATERIAL_BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor =
+    BindGroupLayoutDescriptor {
+        label: Some("Material Bind Group Layout"),
+        entries: &[
+            // Material Properties
+            BindGroupLayoutEntry {
+                binding: 0,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Storage { read_only: true },
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            },
+            // Texture
+            BindGroupLayoutEntry {
+                binding: 1,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty: BindingType::Texture {
+                    sample_type: TextureSampleType::Float { filterable: true },
+                    view_dimension: TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            // Sampler
+            BindGroupLayoutEntry {
+                binding: 2,
+                visibility: ShaderStages::VERTEX_FRAGMENT,
+                ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    };
 
 use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
 use crate::photon_lighting::LightsManager;
@@ -23,11 +60,11 @@ use crate::photon_lighting::LightsManager;
 use super::CAMERA_BIND_GROUP;
 use super::LIGHTS_BIND_GROUP;
 
-const ALBEDO_BIND_GROUP: u32 = 0;
-const POSITION_BIND_GROUP: u32 = 1;
-const NORMAL_BIND_GROUP: u32 = 2;
-const MATERIAL_BIND_GROUP: u32 = 3;
-const SAMPLER_BIND_GROUP: u32 = 4;
+const ALBEDO_BINDING: u32 = 0;
+const POSITION_BINDING: u32 = 1;
+const NORMAL_BINDING: u32 = 2;
+const MATERIAL_BINDING: u32 = 3;
+const SAMPLER_BINDING: u32 = 4;
 
 const G_BUFFER_BIND_GROUP: u32 = 2; // TODO: Lights are 1
 
@@ -128,7 +165,7 @@ impl DeferedRenderer3D {
                 entries: &[
                     // Albedo
                     BindGroupLayoutEntry {
-                        binding: ALBEDO_BIND_GROUP,
+                        binding: ALBEDO_BINDING,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -138,7 +175,7 @@ impl DeferedRenderer3D {
                         },
                     },
                     BindGroupLayoutEntry {
-                        binding: POSITION_BIND_GROUP,
+                        binding: POSITION_BINDING,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -149,7 +186,7 @@ impl DeferedRenderer3D {
                     },
                     // Normal
                     BindGroupLayoutEntry {
-                        binding: NORMAL_BIND_GROUP,
+                        binding: NORMAL_BINDING,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -160,7 +197,7 @@ impl DeferedRenderer3D {
                     },
                     // Material
                     BindGroupLayoutEntry {
-                        binding: MATERIAL_BIND_GROUP,
+                        binding: MATERIAL_BINDING,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Texture {
@@ -171,7 +208,7 @@ impl DeferedRenderer3D {
                     },
                     // Sampler
                     BindGroupLayoutEntry {
-                        binding: SAMPLER_BIND_GROUP,
+                        binding: SAMPLER_BINDING,
                         count: None,
                         visibility: ShaderStages::FRAGMENT,
                         ty: BindingType::Sampler(SamplerBindingType::Filtering),
@@ -184,31 +221,31 @@ impl DeferedRenderer3D {
             layout: &g_buffer_bind_group_layout,
             entries: &[
                 BindGroupEntry {
-                    binding: ALBEDO_BIND_GROUP,
+                    binding: ALBEDO_BINDING,
                     resource: BindingResource::TextureView(
                         &albedo_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: POSITION_BIND_GROUP,
+                    binding: POSITION_BINDING,
                     resource: BindingResource::TextureView(
                         &position_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: NORMAL_BIND_GROUP,
+                    binding: NORMAL_BINDING,
                     resource: BindingResource::TextureView(
                         &normal_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: MATERIAL_BIND_GROUP,
+                    binding: MATERIAL_BINDING,
                     resource: BindingResource::TextureView(
                         &material_texture.create_view(&TextureViewDescriptor::default()),
                     ),
                 },
                 BindGroupEntry {
-                    binding: SAMPLER_BIND_GROUP,
+                    binding: SAMPLER_BINDING,
                     resource: BindingResource::Sampler(&g_buffer_sampler),
                 },
             ],
@@ -219,10 +256,13 @@ impl DeferedRenderer3D {
         let camera_bind_group_layout =
             gpu_controller.create_bind_group_layout(&CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR);
 
+        let material_bind_group_layout =
+            gpu_controller.create_bind_group_layout(&MATERIAL_BIND_GROUP_LAYOUT_DESCRIPTOR);
+
         let geometry_pipeline_layout =
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Geometry Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout],
+                bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -631,7 +671,7 @@ impl DeferedRenderer3D {
             layout: &self.g_buffer_bind_group_layout,
             entries: &[
                 BindGroupEntry {
-                    binding: ALBEDO_BIND_GROUP,
+                    binding: ALBEDO_BINDING,
                     resource: BindingResource::TextureView(
                         &self
                             .albedo_texture
@@ -639,7 +679,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: POSITION_BIND_GROUP,
+                    binding: POSITION_BINDING,
                     resource: BindingResource::TextureView(
                         &self
                             .position_texture
@@ -647,7 +687,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: NORMAL_BIND_GROUP,
+                    binding: NORMAL_BINDING,
                     resource: BindingResource::TextureView(
                         &self
                             .normal_texture
@@ -655,7 +695,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: MATERIAL_BIND_GROUP,
+                    binding: MATERIAL_BINDING,
                     resource: BindingResource::TextureView(
                         &self
                             .material_texture
@@ -663,7 +703,7 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: SAMPLER_BIND_GROUP,
+                    binding: SAMPLER_BINDING,
                     resource: BindingResource::Sampler(&self.g_buffer_sampler),
                 },
             ],

@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
 use cgmath::{Deg, Matrix4, Point3, Vector3, perspective};
-use gpu_controller::GpuController;
-use wgpu::{
+use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, ShaderStages,
-    util::BufferInitDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferInitDescriptor,
+    BufferUsages, GpuController, ShaderStages,
 };
 
 use super::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, OPENGL_TO_WGPU_MATIX};

@@ -2,10 +2,9 @@ use std::sync::Arc;
 
 use camera_3d::PerspectiveCamera3D;
 use cgmath::{Matrix4, Point3, Vector3};
-use gpu_controller::GpuController;
-use wgpu::{
+use gpu_controller::{
     BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BufferBindingType,
-    ShaderStages,
+    GpuController, ShaderStages,
 };
 
 mod camera_3d;

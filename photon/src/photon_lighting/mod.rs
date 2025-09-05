@@ -1,14 +1,13 @@
 use std::{ops::Range, sync::Arc};
 
 use anyhow::Result;
-use gpu_controller::GpuController;
+use gpu_controller::{
+    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferInitDescriptor,
+    BufferUsages, GpuController, ShaderStages,
+};
 pub use light::Light;
 use log::{debug, warn};
-use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferUsages, ShaderStages,
-    util::BufferInitDescriptor,
-};
 
 // TODO: Change the size of later
 const MAX_LIGHTS: usize = 1024;

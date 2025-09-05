@@ -8,6 +8,7 @@ use anyhow::{Result, anyhow};
 use gpu_controller::{Mesh, RenderPass, Vertex};
 use log::{debug, info};
 use matter_vault::SharedMatter;
+use photon::MATERIALS_BIND_GROUP;
 
 use crate::{
     asset_server::AssetServer,
@@ -19,7 +20,7 @@ type Normal = [f32; 3];
 type UV = [f32; 2];
 
 pub struct Model {
-    meshes: Vec<SharedMatter<Mesh>>,
+    meshes: Vec<(Option<usize>, SharedMatter<Mesh>)>,
     materials: Vec<SharedMatter<Material>>,
 }
 
@@ -37,6 +38,7 @@ impl Model {
         let lines = BufReader::new(file).lines();
 
         let mut current_mesh: Option<Mesh> = None;
+        let mut current_material_index: Option<usize> = None;
         let mut label_exists = false;
 
         // For mesh building
@@ -45,7 +47,7 @@ impl Model {
         let mut uvs: Vec<UV> = Vec::new();
 
         // For the end return
-        let mut meshes: Vec<SharedMatter<Mesh>> = Vec::new();
+        let mut meshes: Vec<(Option<usize>, SharedMatter<Mesh>)> = Vec::new();
         let mut materials: Vec<SharedMatter<Material>> = Vec::new();
 
         for line in lines.map_while(Result::ok) {
@@ -61,7 +63,10 @@ impl Model {
                         if let Some(mut mesh) = current_mesh.take() {
                             mesh.buffer(asset_server.gpu_controller.clone());
                             let mesh_label = mesh.label().clone();
-                            meshes.push(asset_server.asset_manager.add(mesh_label, mesh)?);
+                            meshes.push((
+                                current_material_index,
+                                asset_server.asset_manager.add(mesh_label, mesh)?,
+                            ));
                         }
 
                         let label = tokens[1].to_string();
@@ -69,7 +74,7 @@ impl Model {
                         // If the mesh is already shared, add it to the list of meshes
                         if let Ok(mesh) = asset_server.asset_manager.share(&label) {
                             debug!("Mesh already exists: {}", label);
-                            meshes.push(mesh);
+                            meshes.push((current_material_index, mesh));
                             label_exists = true;
                         } else {
                             debug!("Creating new mesh: {}", label);
@@ -135,6 +140,17 @@ impl Model {
 
                         materials = load_materials(&path_to_material, asset_server)?;
                     }
+                    "usemtl" => {
+                        let material_name = tokens[1].to_string();
+                        current_material_index =
+                            materials.iter().enumerate().find_map(|(index, material)| {
+                                if material.read(|m| m.label == material_name) {
+                                    Some(index)
+                                } else {
+                                    None
+                                }
+                            });
+                    }
                     _ => {}
                 }
             } else {
@@ -147,7 +163,7 @@ impl Model {
                         // If the mesh is already shared, add it to the list of meshes
                         if let Ok(mesh) = asset_server.asset_manager.share(&label) {
                             debug!("Mesh already exists: {}", label);
-                            meshes.push(mesh);
+                            meshes.push((current_material_index, mesh));
                             label_exists = true;
                         } else {
                             debug!("Creating new mesh: {}", label);
@@ -158,6 +174,26 @@ impl Model {
                             });
                         }
                     }
+                    "mtllib" => {
+                        let path_to_material = path
+                            .as_ref()
+                            .parent()
+                            .ok_or(anyhow!("Obj Path is invalid"))?
+                            .join(tokens[1]);
+
+                        materials = load_materials(&path_to_material, asset_server)?;
+                    }
+                    "usemtl" => {
+                        let material_name = tokens[1].to_string();
+                        current_material_index =
+                            materials.iter().enumerate().find_map(|(index, material)| {
+                                if material.read(|m| m.label == material_name) {
+                                    Some(index)
+                                } else {
+                                    None
+                                }
+                            });
+                    }
                     _ => {}
                 }
             }
@@ -166,15 +202,25 @@ impl Model {
         if let Some(mut mesh) = current_mesh.take() {
             mesh.buffer(asset_server.gpu_controller.clone());
             let mesh_label = mesh.label().clone();
-            meshes.push(asset_server.asset_manager.add(mesh_label, mesh)?);
+            meshes.push((
+                current_material_index,
+                asset_server.asset_manager.add(mesh_label, mesh)?,
+            ));
         }
 
         Ok(Self { meshes, materials })
     }
 
     pub fn render(&self, render_pass: &mut RenderPass) {
-        for mesh in self.meshes.iter() {
+        for (material_index, mesh) in self.meshes.iter() {
             mesh.read(|mesh| {
+                if let Some(material_index) = material_index.as_ref() {
+                    self.materials[*material_index].read(|material| {
+                        debug!("Material Properties: {:#?}", material.properties);
+                        render_pass.set_bind_group(MATERIALS_BIND_GROUP, &material.bind_group, &[]);
+                    });
+                }
+
                 mesh.render(render_pass);
             });
         }

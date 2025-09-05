@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 bytemuck = "1.23.1"
 log = "0.4.27"
-wgpu = "25.0.2"
 gpu_controller = { path = "../gpu_controller" }
 matter_vault = { path = "../matter_vault" }
 anyhow = "1.0.98"

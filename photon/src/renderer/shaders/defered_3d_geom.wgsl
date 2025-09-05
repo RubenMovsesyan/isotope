@@ -28,9 +28,32 @@ struct CameraUniform {
     view_proj: mat4x4<f32>,
 }
 
+const FALSE: u32 = 0;
+const TRUE: u32 = 1;
+
+struct MaterialProperties {
+    ambient_color: vec3<f32>,
+    diffuse_color: vec3<f32>,
+    specular_color: vec3<f32>,
+    specular_focus: f32,
+    optical_density: f32,
+    dissolve: f32,
+    illum: u32,
+    texture: u32,
+}
+
 // Bind Groups
 @group(0) @binding(0)
 var<uniform> camera: CameraUniform;
+
+@group(1) @binding(0)
+var<storage> material_properties: MaterialProperties;
+
+@group(1) @binding(1)
+var material_texture: texture_2d<f32>;
+
+@group(1) @binding(2)
+var material_sampler: sampler;
 
 fn hamilton_prod(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
     return vec4<f32>(
@@ -61,6 +84,7 @@ var out: VertexOutput;
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
     out.world_normal = model.normal;
+    out.uv_coords = model.uv_coords;
 
     return out;
 }
@@ -70,7 +94,12 @@ fn fs_main(in: VertexOutput) -> FragmentOutput {
     var output: FragmentOutput;
 
     // Color of the object
-    output.albedo = vec4<f32>(1.0, 0.0, 1.0, 1.0);
+    // output.albedo = vec4<f32>(1.0, 0.0, 1.0, 1.0);
+    if (material_properties.texture == TRUE) {
+        output.albedo = textureSample(material_texture, material_sampler, in.uv_coords);
+    } else {
+        output.albedo = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    }
 
     // Position of the fragment
     output.position = vec4<f32>(in.world_position, 1.0);
