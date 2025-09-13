@@ -7,6 +7,9 @@ use gpu_controller::{
 };
 use matter_vault::MatterVault;
 
+unsafe impl Send for AssetServer {}
+unsafe impl Sync for AssetServer {}
+
 pub struct AssetServer {
     pub(crate) asset_manager: Arc<MatterVault>,
     pub(crate) gpu_controller: Arc<GpuController>,

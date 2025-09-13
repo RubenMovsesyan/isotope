@@ -1,25 +1,27 @@
 use std::{
     sync::{Arc, RwLock},
-    time::Instant,
+    thread::JoinHandle,
+    time::{Duration, Instant},
 };
 
 use anyhow::Result;
-use asset_server::AssetServer;
-use compound::Compound;
+pub use asset_server::AssetServer;
+pub use compound::Compound;
 use gpu_controller::{
     CompositeAlphaMode, GpuController, Mesh, PresentMode, SurfaceConfiguration, TextureFormat,
     TextureUsages, Vertex,
 };
-use log::{debug, error, info};
+pub use log::*;
 use matter_vault::MatterVault;
-use model::Model;
+pub use model::Model;
+pub use photon::Light;
 use photon::{
-    Light,
     camera::Camera,
     renderer::{Renderer, defered_renderer::DeferedRenderer3D},
 };
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
+pub use state::IsotopeState;
 use winit::{
     application::ApplicationHandler,
     dpi::{PhysicalSize, Size},
@@ -27,18 +29,18 @@ use winit::{
     window::Window,
 };
 
+pub const ISOTOPE_DEFAULT_TICK_RATE: Duration = Duration::from_micros(50);
+
 mod asset_server;
 mod material;
 mod model;
 mod rendering_window;
+mod state;
 mod texture;
 
 pub struct Isotope {
     // GPU
     gpu_controller: Arc<GpuController>,
-
-    // Asset Manager
-    matter_vault: Arc<MatterVault>,
 
     // Asset Server
     asset_server: Arc<AssetServer>,
@@ -49,40 +51,115 @@ pub struct Isotope {
     // Entity component system
     compound: Arc<Compound>,
 
-    // Timeing
-    time: Arc<RwLock<Instant>>,
-    delta: Arc<RwLock<Instant>>,
+    // State for interacting with the engine
+    state: Arc<RwLock<dyn IsotopeState>>,
+
+    // ============== Multi-Threading ==============
+    state_thread: (Arc<RwLock<bool>>, JoinHandle<()>),
+
+    // Timing
+    time: Arc<Instant>,
+    tick_rate: Duration,
+
+    // Master Running state
+    running: Arc<RwLock<bool>>,
 
     // Temp
     camera: Camera,
 }
 
 impl Isotope {
-    pub fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
-        let matter_vault = Arc::new(MatterVault::new());
+    pub fn new<I>(gpu_controller: Arc<GpuController>, mut state: I) -> Result<Self>
+    where
+        I: IsotopeState,
+    {
+        let photon = Renderer::new_defered_3d(gpu_controller.clone())?;
+        let asset_server = Arc::new(AssetServer::new(
+            Arc::new(MatterVault::new()),
+            gpu_controller.clone(),
+        ));
+        let compound = Arc::new(Compound::new());
+        // TEMP camera
+        let camera = Camera::new_perspective_3d(
+            gpu_controller.clone(),
+            [5.0, 5.0, 5.0],                         // eye position
+            [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
+            [0.0, 1.0, 0.0],                         // up vector
+            gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
+            45.0,  // FOV
+            1.0,   // near plane - try 1.0 instead
+            100.0, // far plane
+        );
+        let running = Arc::new(RwLock::new(false));
+        let time = Arc::new(Instant::now());
+        let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
+
+        // Initialize the game state and start the update thread
+        state.init(&compound, &asset_server);
+        let state = Arc::new(RwLock::new(state));
+        let state_running = Arc::new(RwLock::new(true));
+
+        let state_ecs = compound.clone();
+        let state_asset_server = asset_server.clone();
+        let state_isotope_running = running.clone();
+        let state_state = state.clone();
+        let state_time = time.clone();
+        let state_state_running = state_running.clone();
+        let state_tick_rate = tick_rate.clone();
+        let state_thread_handle = std::thread::spawn(move || {
+            info!("Running State Update Thread");
+
+            if let Ok(running) = state_isotope_running.read() {
+                if !*running {
+                    debug!("Isotope not running. Waiting for initialization...");
+                }
+            }
+
+            // Wait for Isotope to start running
+            while let Ok(running) = state_isotope_running.read() {
+                if *running {
+                    break;
+                }
+            }
+
+            debug!("Isotope has started running! Starting State Thread...");
+
+            let mut delta_t = Instant::now();
+
+            loop {
+                if let Ok(mut state) = state_state.write() {
+                    let dt = delta_t.elapsed().as_secs_f32();
+                    let t = state_time.elapsed().as_secs_f32();
+
+                    state.update(&state_ecs, &state_asset_server, dt, t);
+                }
+
+                delta_t = Instant::now();
+
+                if let Ok(running) = state_state_running.read() {
+                    if !*running {
+                        warn!("State Update Thread Exiting....");
+                        break;
+                    }
+                }
+
+                // TODO: make tick rate dependent on how long update takes
+                // Sleep for a little so that the rest of Isotope can catch up
+                std::thread::sleep(state_tick_rate);
+            }
+        });
 
         Ok(Self {
-            photon: Renderer::new_defered_3d(gpu_controller.clone())?,
-            asset_server: Arc::new(AssetServer::new(
-                matter_vault.clone(),
-                gpu_controller.clone(),
-            )),
-            compound: Arc::new(Compound::new()),
-            // Temp camera setup
-            camera: Camera::new_perspective_3d(
-                gpu_controller.clone(),
-                [5.0, 5.0, 5.0],                         // eye position
-                [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
-                [0.0, 1.0, 0.0],                         // up vector
-                gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
-                45.0,  // FOV
-                1.0,   // near plane - try 1.0 instead
-                100.0, // far plane
-            ),
-            time: Arc::new(RwLock::new(Instant::now())),
-            delta: Arc::new(RwLock::new(Instant::now())),
-            matter_vault,
+            photon,
+            asset_server,
+            compound,
+            camera,
+            state,
+            running,
+            time,
+            tick_rate,
             gpu_controller,
+            state_thread: (state_running, state_thread_handle),
         })
     }
 }
@@ -93,7 +170,10 @@ pub struct IsotopeApplication {
 }
 
 impl IsotopeApplication {
-    pub fn new() -> Result<Self> {
+    pub fn new<I>(state: I) -> Result<Self>
+    where
+        I: IsotopeState,
+    {
         info!("Creating Gpu Controller");
         let gpu_controller = block_on(GpuController::new(
             None,
@@ -112,7 +192,7 @@ impl IsotopeApplication {
 
         Ok(Self {
             window: None,
-            isotope: Isotope::new(gpu_controller)?,
+            isotope: Isotope::new(gpu_controller, state)?,
         })
     }
 }
@@ -122,21 +202,6 @@ impl ApplicationHandler for IsotopeApplication {
         info!("Isotope Resumed");
 
         // TEMP ======
-        match Model::from_obj("test_files/monkey.obj", &self.isotope.asset_server) {
-            Ok(model) => {
-                self.isotope.compound.spawn((model,));
-            }
-            Err(err) => {
-                error!("Failed to load model: {}", err);
-            }
-        }
-
-        self.isotope.compound.spawn((Light::new(
-            [10.0, 2.0, 3.0],
-            [0.0, 0.0, 0.0],
-            [1.0, 1.0, 1.0],
-            5.0,
-        ),));
 
         // self.isotope.compound.spawn((Light::new(
         //     [-10.0, 0.0, 0.0],
@@ -153,6 +218,7 @@ impl ApplicationHandler for IsotopeApplication {
         // ),));
         // TEMP ======
 
+        // Initialize the rendering window with Photon
         if let Ok(rendering_window) = RenderingWindow::new(
             event_loop,
             self.isotope.gpu_controller.clone(),
@@ -172,6 +238,11 @@ impl ApplicationHandler for IsotopeApplication {
                     }
                 };
         }
+
+        _ = self.isotope.running.write().and_then(|mut running| {
+            *running = true;
+            Ok(())
+        });
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
@@ -190,29 +261,28 @@ impl ApplicationHandler for IsotopeApplication {
             if window.window.id() == window_id {
                 match event {
                     WindowEvent::CloseRequested => {
-                        info!("Shutting Down Isotope");
+                        info!("Shutting Down Isotope...");
+
+                        _ = self.isotope.running.write().and_then(|mut running| {
+                            *running = false;
+                            Ok(())
+                        });
 
                         event_loop.exit();
                     }
                     WindowEvent::RedrawRequested => {
                         if let Ok(surface_texture) = window.surface.get_current_texture() {
                             // TEMP
-                            let time = self
-                                .isotope
-                                .time
-                                .read()
-                                .expect("Failed to read")
-                                .elapsed()
-                                .as_secs_f32();
+                            // let time = self.isotope.time.elapsed().as_secs_f32();
 
-                            self.isotope
-                                .compound
-                                .iter_mut_mol(|_entity, light: &mut Light| {
-                                    light.pos(|position| {
-                                        *position =
-                                            [5.0 * f32::cos(time), 2.0, 5.0 * f32::sin(time)];
-                                    });
-                                });
+                            // self.isotope
+                            //     .compound
+                            //     .iter_mut_mol(|_entity, light: &mut Light| {
+                            //         light.pos(|position| {
+                            //             *position =
+                            //                 [5.0 * f32::cos(time), 2.0, 5.0 * f32::sin(time)];
+                            //         });
+                            //     });
 
                             // Update the lights if there are any modified lights
                             let mut lights_changed = false;
