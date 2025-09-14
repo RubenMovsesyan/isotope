@@ -33,16 +33,24 @@ pub enum Camera {
 }
 
 impl Camera {
-    pub fn new_perspective_3d<V: Into<[f32; 3]>>(
+    pub fn new_perspective_3d<V1, V2, V3>(
         gpu_controller: Arc<GpuController>,
-        eye: V,
-        target: V,
-        up: V,
-        aspect: f32,
+        eye: V1,
+        target: V2,
+        up: V3,
         fovy: f32,
         near: f32,
         far: f32,
-    ) -> Self {
+    ) -> Self
+    where
+        V1: Into<[f32; 3]>,
+        V2: Into<[f32; 3]>,
+        V3: Into<[f32; 3]>,
+    {
+        let aspect = gpu_controller
+            .read_surface_config(|sc| sc.width as f32 / sc.height as f32)
+            .unwrap_or_else(|_err| 1.0);
+
         Self::PerspectiveCamera3D(PerspectiveCamera3D::new(
             gpu_controller,
             Point3::from(eye.into()),

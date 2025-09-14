@@ -1,4 +1,4 @@
-use isotope_app::*;
+use isotope::*;
 use winit::event_loop::{self, ControlFlow, EventLoop};
 
 struct GameState {}
@@ -20,14 +20,35 @@ impl IsotopeState for GameState {
             [1.0, 1.0, 1.0],
             5.0,
         ),));
+
+        ecs.spawn((
+            new_perspective_camera(
+                assets,
+                Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
+                [-0.57735027, -0.57735027, -0.57735027],
+                Vector3::unit_y(),
+                45.0,
+                1.0,
+                100.0,
+            ),
+            Transform::new(
+                Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
+                Quaternion::from_axis_angle(Vector3::unit_y(), Deg(90.0)),
+            ),
+        ));
     }
 
     fn update(&mut self, ecs: &Compound, assets: &AssetServer, delta_t: f32, t: f32) {
-        debug!("Ran Update");
         ecs.iter_mut_mol(|_entity, light: &mut Light| {
             light.pos(|position| {
                 *position = [5.0 * f32::cos(t), 2.0, 5.0 * f32::sin(t)];
             });
+        });
+
+        ecs.iter_mut_duo(|_entity, _camera: &mut Camera, transform: &mut Transform| {
+            transform.position(|pos| {
+                *pos = Vector3::new(5.0 + t.cos(), 5.0, 5.0 + t.sin());
+            })
         });
     }
 }

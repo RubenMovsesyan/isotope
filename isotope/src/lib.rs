@@ -6,32 +6,28 @@ use std::{
 
 use anyhow::Result;
 pub use asset_server::AssetServer;
+pub use cgmath::{Deg, Quaternion, Rad, Rotation, Rotation3, Vector3};
 pub use compound::Compound;
+pub use elements::*;
 use gpu_controller::{
-    CompositeAlphaMode, GpuController, Mesh, PresentMode, SurfaceConfiguration, TextureFormat,
-    TextureUsages, Vertex,
+    CompositeAlphaMode, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,
+    TextureUsages,
 };
 pub use log::*;
 use matter_vault::MatterVault;
 pub use model::Model;
 pub use photon::Light;
-use photon::{
-    camera::Camera,
-    renderer::{Renderer, defered_renderer::DeferedRenderer3D},
-};
+pub use photon::camera::Camera;
+use photon::renderer::Renderer;
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
 pub use state::IsotopeState;
-use winit::{
-    application::ApplicationHandler,
-    dpi::{PhysicalSize, Size},
-    event::WindowEvent,
-    window::Window,
-};
+use winit::{application::ApplicationHandler, event::WindowEvent};
 
 pub const ISOTOPE_DEFAULT_TICK_RATE: Duration = Duration::from_micros(50);
 
 mod asset_server;
+mod elements;
 mod material;
 mod model;
 mod rendering_window;
@@ -63,9 +59,8 @@ pub struct Isotope {
 
     // Master Running state
     running: Arc<RwLock<bool>>,
-
     // Temp
-    camera: Camera,
+    // camera: Camera,
 }
 
 impl Isotope {
@@ -80,16 +75,16 @@ impl Isotope {
         ));
         let compound = Arc::new(Compound::new());
         // TEMP camera
-        let camera = Camera::new_perspective_3d(
-            gpu_controller.clone(),
-            [5.0, 5.0, 5.0],                         // eye position
-            [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
-            [0.0, 1.0, 0.0],                         // up vector
-            gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
-            45.0,  // FOV
-            1.0,   // near plane - try 1.0 instead
-            100.0, // far plane
-        );
+        // let camera = Camera::new_perspective_3d(
+        //     gpu_controller.clone(),
+        //     [5.0, 5.0, 5.0],                         // eye position
+        //     [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
+        //     [0.0, 1.0, 0.0],                         // up vector
+        //     gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
+        //     45.0,  // FOV
+        //     1.0,   // near plane - try 1.0 instead
+        //     100.0, // far plane
+        // );
         let running = Arc::new(RwLock::new(false));
         let time = Arc::new(Instant::now());
         let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
@@ -153,7 +148,7 @@ impl Isotope {
             photon,
             asset_server,
             compound,
-            camera,
+            // camera,
             state,
             running,
             time,
@@ -200,23 +195,6 @@ impl IsotopeApplication {
 impl ApplicationHandler for IsotopeApplication {
     fn resumed(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
         info!("Isotope Resumed");
-
-        // TEMP ======
-
-        // self.isotope.compound.spawn((Light::new(
-        //     [-10.0, 0.0, 0.0],
-        //     [0.0, 0.0, 0.0],
-        //     [1.0, 1.0, 1.0],
-        //     10.0,
-        // ),));
-
-        // self.isotope.compound.spawn((Light::new(
-        //     [0.0, 10.0, 0.0],
-        //     [0.0, 0.0, 0.0],
-        //     [1.0, 1.0, 1.0],
-        //     10.0,
-        // ),));
-        // TEMP ======
 
         // Initialize the rendering window with Photon
         if let Ok(rendering_window) = RenderingWindow::new(
@@ -272,45 +250,61 @@ impl ApplicationHandler for IsotopeApplication {
                     }
                     WindowEvent::RedrawRequested => {
                         if let Ok(surface_texture) = window.surface.get_current_texture() {
-                            // TEMP
-                            // let time = self.isotope.time.elapsed().as_secs_f32();
-
-                            // self.isotope
-                            //     .compound
-                            //     .iter_mut_mol(|_entity, light: &mut Light| {
-                            //         light.pos(|position| {
-                            //             *position =
-                            //                 [5.0 * f32::cos(time), 2.0, 5.0 * f32::sin(time)];
-                            //         });
-                            //     });
-
                             // Update the lights if there are any modified lights
-                            let mut lights_changed = false;
-                            self.isotope
-                                .compound
-                                .iter_mol_mod(|_entity, _light: &Light| {
-                                    lights_changed = true;
-                                    return;
-                                });
+                            {
+                                let mut lights_changed = false;
+                                self.isotope
+                                    .compound
+                                    .iter_mol_mod(|_entity, _light: &Light| {
+                                        lights_changed = true;
+                                        return;
+                                    });
 
-                            if lights_changed {
-                                let mut lights = Vec::new();
-                                self.isotope.compound.iter_mol(|_entity, light: &Light| {
-                                    lights.push(light.clone());
-                                });
-                                self.isotope.photon.update_lights(&lights);
+                                if lights_changed {
+                                    let mut lights = Vec::new();
+                                    self.isotope.compound.iter_mol(|_entity, light: &Light| {
+                                        lights.push(light.clone());
+                                    });
+                                    self.isotope.photon.update_lights(&lights);
+                                }
                             }
 
-                            self.isotope.photon.render(
-                                &self.isotope.camera,
-                                &surface_texture.texture,
-                                |render_pass| {
-                                    // Temp
-                                    self.isotope.compound.iter_mol(|_entity, model: &Model| {
-                                        model.render(render_pass);
-                                    });
-                                },
-                            );
+                            // Update the camera if there are any modifications
+                            {
+                                self.isotope.compound.iter_mut_duo_mod(
+                                    |_entity, transform: &mut Transform, camera: &mut Camera| {
+                                        match camera {
+                                            Camera::PerspectiveCamera3D(camera) => {
+                                                camera.all(|eye, target, _, _, _, _, _| {
+                                                    *eye = transform.position.into();
+
+                                                    // let forward = Vector3::new(0.0, 0.0, -1.0);
+                                                    // let rotated_forward = transform
+                                                    //     .rotation(|rot| rot.rotate_vector(forward));
+
+                                                    // target.x = eye.x + rotated_forward.x;
+                                                    // target.y = eye.y + rotated_forward.y;
+                                                    // target.z = eye.z + rotated_forward.z;
+                                                });
+                                            }
+                                        }
+                                    },
+                                );
+                            }
+
+                            // Render to the display
+                            self.isotope.compound.iter_mol(|_entity, camera: &Camera| {
+                                self.isotope.photon.render(
+                                    camera,
+                                    &surface_texture.texture,
+                                    |render_pass| {
+                                        // Temp
+                                        self.isotope.compound.iter_mol(|_entity, model: &Model| {
+                                            model.render(render_pass);
+                                        });
+                                    },
+                                );
+                            });
 
                             // Display on the surface
                             surface_texture.present();
@@ -338,20 +332,20 @@ impl ApplicationHandler for IsotopeApplication {
                             .photon
                             .resize((new_size.width, new_size.height));
 
-                        // TEMP
-                        self.isotope.camera = Camera::new_perspective_3d(
-                            self.isotope.gpu_controller.clone(),
-                            [5.0, 5.0, 5.0],                         // eye position
-                            [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
-                            [0.0, 1.0, 0.0],                         // up vector
-                            self.isotope
-                                .gpu_controller
-                                .read_surface_config(|sc| sc.width as f32 / sc.height as f32)
-                                .unwrap_or_else(|_| 640.0 / 480.0),
-                            45.0,  // FOV
-                            1.0,   // near plane - try 1.0 instead
-                            100.0, // far plane
-                        );
+                        self.isotope
+                            .compound
+                            .iter_mut_mol(|_entity, camera: &mut Camera| match camera {
+                                Camera::PerspectiveCamera3D(camera) => {
+                                    camera.aspect(|aspect| {
+                                        *aspect = self.isotope.gpu_controller.read_surface_config(|sc| {
+                                            sc.width as f32 / sc.height as f32
+                                        }).unwrap_or_else(|err| {
+                                            warn!("Reading Surface Configuration Failed: {}, Continuing with aspect ration of 1.0...", err);
+                                            1.0
+                                        });
+                                    });
+                                }
+                            });
                     }
                     _ => {}
                 }

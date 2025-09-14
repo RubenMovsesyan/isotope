@@ -216,7 +216,6 @@ impl Model {
             mesh.read(|mesh| {
                 if let Some(material_index) = material_index.as_ref() {
                     self.materials[*material_index].read(|material| {
-                        debug!("Material Properties: {:#?}", material.properties);
                         render_pass.set_bind_group(MATERIALS_BIND_GROUP, &material.bind_group, &[]);
                     });
                 }

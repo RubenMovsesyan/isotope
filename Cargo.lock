@@ -1089,11 +1089,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "isotope_app"
+name = "isotope"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "cgmath",
  "compound",
  "gpu_controller",
  "image",
@@ -1108,7 +1109,7 @@ dependencies = [
 name = "isotope_test"
 version = "0.1.0"
 dependencies = [
- "isotope_app",
+ "isotope",
  "log",
  "pretty_env_logger",
  "winit",

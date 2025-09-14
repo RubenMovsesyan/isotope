@@ -2,12 +2,15 @@ use std::sync::Arc;
 
 use cgmath::{Deg, Matrix4, Point3, Vector3, perspective};
 use gpu_controller::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferInitDescriptor,
-    BufferUsages, GpuController, ShaderStages,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
+    GpuController,
 };
 
 use super::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, OPENGL_TO_WGPU_MATIX};
+
+// Clamping constants
+const FOVY_CLAMP: (f32, f32) = (0.1, 179.9);
+const MAX_UP_DOT: f32 = 0.99;
 
 #[repr(C)]
 #[derive(Default, Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
@@ -85,5 +88,141 @@ impl PerspectiveCamera3D {
             gpu_controller,
             bind_group,
         }
+    }
+
+    fn update(&mut self) {
+        let view = Matrix4::look_to_rh(self.eye, self.target, self.up);
+        let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
+
+        let view_proj = OPENGL_TO_WGPU_MATIX * proj * view;
+
+        self.camera_uniform = PerspectiveCam3DUniform {
+            view_position: self.eye.to_homogeneous().into(),
+            view_projection: view_proj.into(),
+        };
+
+        self.gpu_controller.write_buffer(
+            &self.buffer,
+            0,
+            bytemuck::cast_slice(&[self.camera_uniform]),
+        );
+    }
+
+    /// Provides mutable access to the camera's eye position.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the eye position
+    pub fn eye<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Point3<f32>),
+    {
+        callback(&mut self.eye);
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's target direction vector.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the target vector
+    pub fn target<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        callback(&mut self.target);
+        // TODO: add limiting to the target to prevent camera lock
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's up vector.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the up vector
+    pub fn up<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        callback(&mut self.up);
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's aspect ratio.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the aspect ratio
+    pub fn aspect<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        callback(&mut self.aspect);
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's field of view in the y direction.
+    ///
+    /// The field of view value is automatically clamped to safe limits (0.1 to 179.9 degrees)
+    /// after the callback executes to prevent rendering issues.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the field of view in degrees
+    pub fn fovy<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        callback(&mut self.fovy);
+        self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's near clipping plane distance.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the near clipping distance
+    pub fn znear<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        callback(&mut self.znear);
+        self.update();
+    }
+
+    /// Provides mutable access to the camera's far clipping plane distance.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives a mutable reference to the far clipping distance
+    pub fn zfar<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        callback(&mut self.zfar);
+        self.update();
+    }
+
+    /// Provides mutable access to all camera parameters at once.
+    ///
+    /// # Arguments
+    /// * `callback` - A closure that receives mutable references to all camera parameters
+    pub fn all<F>(&mut self, callback: F)
+    where
+        F: FnOnce(
+            &mut Point3<f32>,
+            &mut Vector3<f32>,
+            &mut Vector3<f32>,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+        ),
+    {
+        callback(
+            &mut self.eye,
+            &mut self.target,
+            &mut self.up,
+            &mut self.aspect,
+            &mut self.fovy,
+            &mut self.znear,
+            &mut self.zfar,
+        );
+        self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
+        self.update();
     }
 }

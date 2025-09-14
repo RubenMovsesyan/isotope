@@ -1,5 +1,5 @@
 [package]
-name = "isotope_app"
+name = "isotope"
 version = "0.1.0"
 edition = "2024"
 
@@ -14,3 +14,4 @@ anyhow = "1.0.98"
 smol = "2.0.2"
 bytemuck = "1.23.2"
 image = "0.25.6"
+cgmath = "0.18.0"
