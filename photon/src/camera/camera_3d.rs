@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::{Deg, Matrix4, Point3, Vector3, perspective};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, perspective};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
     GpuController,
@@ -91,6 +91,7 @@ impl PerspectiveCamera3D {
     }
 
     fn update(&mut self) {
+        self.target = self.target.normalize();
         let view = Matrix4::look_to_rh(self.eye, self.target, self.up);
         let proj = perspective(Deg(self.fovy), self.aspect, self.znear, self.zfar);
 

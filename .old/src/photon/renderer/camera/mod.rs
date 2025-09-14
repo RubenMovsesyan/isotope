@@ -1,20 +1,20 @@
 use std::sync::Arc;
 
 use cgmath::{
-    Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation, Rotation3,
-    SquareMatrix, Vector3, perspective,
+    perspective, Deg, EuclideanSpace, InnerSpace, Matrix4, Point3, Quaternion, Rad, Rotation,
+    Rotation3, SquareMatrix, Vector3,
 };
 use frustum::Frustum;
 use wgpu::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
     util::{BufferInitDescriptor, DeviceExt},
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferUsages,
 };
 
 mod frustum;
 
 use crate::{
-    GpuController, Transform,
     photon::window::{DEFAULT_HEIGHT, DEFAULT_WIDTH},
+    GpuController, Transform,
 };
 
 pub(crate) type Vector4 = [f32; 4];

@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::Result;
 pub use asset_server::AssetServer;
-pub use cgmath::{Deg, Quaternion, Rad, Rotation, Rotation3, Vector3};
+pub use cgmath::*;
 pub use compound::Compound;
 pub use elements::*;
 use gpu_controller::{
@@ -22,7 +22,10 @@ use photon::renderer::Renderer;
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
 pub use state::IsotopeState;
-use winit::{application::ApplicationHandler, event::WindowEvent};
+use winit::{
+    application::ApplicationHandler,
+    event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
+};
 
 pub const ISOTOPE_DEFAULT_TICK_RATE: Duration = Duration::from_micros(50);
 
@@ -59,8 +62,6 @@ pub struct Isotope {
 
     // Master Running state
     running: Arc<RwLock<bool>>,
-    // Temp
-    // camera: Camera,
 }
 
 impl Isotope {
@@ -74,17 +75,6 @@ impl Isotope {
             gpu_controller.clone(),
         ));
         let compound = Arc::new(Compound::new());
-        // TEMP camera
-        // let camera = Camera::new_perspective_3d(
-        //     gpu_controller.clone(),
-        //     [5.0, 5.0, 5.0],                         // eye position
-        //     [-0.57735027, -0.57735027, -0.57735027], // direction toward origin (normalized)
-        //     [0.0, 1.0, 0.0],                         // up vector
-        //     gpu_controller.read_surface_config(|sc| sc.width as f32 / sc.height as f32)?,
-        //     45.0,  // FOV
-        //     1.0,   // near plane - try 1.0 instead
-        //     100.0, // far plane
-        // );
         let running = Arc::new(RwLock::new(false));
         let time = Arc::new(Instant::now());
         let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
@@ -272,19 +262,17 @@ impl ApplicationHandler for IsotopeApplication {
                             // Update the camera if there are any modifications
                             {
                                 self.isotope.compound.iter_mut_duo_mod(
-                                    |_entity, transform: &mut Transform, camera: &mut Camera| {
+                                    |_entity, transform: &mut Transform3D, camera: &mut Camera| {
                                         match camera {
                                             Camera::PerspectiveCamera3D(camera) => {
                                                 camera.all(|eye, target, _, _, _, _, _| {
                                                     *eye = transform.position.into();
 
-                                                    // let forward = Vector3::new(0.0, 0.0, -1.0);
-                                                    // let rotated_forward = transform
-                                                    //     .rotation(|rot| rot.rotate_vector(forward));
+                                                    let forward = Vector3::new(0.0, 0.0, 1.0);
 
-                                                    // target.x = eye.x + rotated_forward.x;
-                                                    // target.y = eye.y + rotated_forward.y;
-                                                    // target.z = eye.z + rotated_forward.z;
+                                                    *target = transform
+                                                        .rotation(|rot| *rot * forward)
+                                                        .normalize();
                                                 });
                                             }
                                         }
@@ -347,9 +335,93 @@ impl ApplicationHandler for IsotopeApplication {
                                 }
                             });
                     }
+                    WindowEvent::KeyboardInput { event, .. } => match event {
+                        KeyEvent {
+                            physical_key,
+                            state,
+                            ..
+                        } => match state {
+                            ElementState::Pressed => match physical_key {
+                                winit::keyboard::PhysicalKey::Code(code) => {
+                                    self.isotope.state.write().and_then(|mut state| {
+                                        state.key_is_pressed(
+                                            &self.isotope.compound,
+                                            &self.isotope.asset_server,
+                                            code,
+                                            self.isotope.time.elapsed().as_secs_f32(),
+                                        );
+                                        Ok(())
+                                    }).unwrap_or_else(|err| {
+                                        warn!("Failed to update game state with key: {} continuing...", err);
+                                    });
+                                }
+                                _ => {}
+                            },
+                            ElementState::Released => match physical_key {
+                                winit::keyboard::PhysicalKey::Code(code) => {
+                                    self.isotope.state.write().and_then(|mut state| {
+                                        state.key_is_released(
+                                            &self.isotope.compound,
+                                            &self.isotope.asset_server,
+                                            code,
+                                            self.isotope.time.elapsed().as_secs_f32(),
+                                        );
+                                        Ok(())
+                                    }).unwrap_or_else(|err| {
+                                        warn!("Failed to update game state with key: {} continuing...", err);
+                                    });
+                                }
+                                _ => {}
+                            },
+                        },
+                    },
+                    WindowEvent::CursorMoved { position, .. } => {
+                        self.isotope.state.write().and_then(|mut state| {
+                            state.cursor_moved(
+                                &self.isotope.compound,
+                                &self.isotope.asset_server,
+                                position.into(),
+                                self.isotope.time.elapsed().as_secs_f32(),
+                            );
+                            Ok(())
+                        }).unwrap_or_else(|err| {
+                            warn!("Failed to update game state with cursor position: {} continuing...", err);
+                        });
+                    }
                     _ => {}
                 }
             }
+        }
+    }
+
+    fn device_event(
+        &mut self,
+        _event_loop: &winit::event_loop::ActiveEventLoop,
+        _device_id: winit::event::DeviceId,
+        event: winit::event::DeviceEvent,
+    ) {
+        match event {
+            DeviceEvent::MouseMotion { delta } => {
+                self.isotope
+                    .state
+                    .write()
+                    .and_then(|mut state| {
+                        state.mouse_is_moved(
+                            &self.isotope.compound,
+                            &self.isotope.asset_server,
+                            delta,
+                            self.isotope.time.elapsed().as_secs_f32(),
+                        );
+                        Ok(())
+                    })
+                    .unwrap_or_else(|err| {
+                        warn!(
+                            "Failed to update game state with mouse movement: {} continuing...",
+                            err
+                        );
+                    });
+            }
+            _ => {}
         }
     }
 }

@@ -31,7 +31,7 @@ impl IsotopeState for GameState {
                 1.0,
                 100.0,
             ),
-            Transform::new(
+            Transform3D::new(
                 Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
                 Quaternion::from_axis_angle(Vector3::unit_y(), Deg(90.0)),
             ),
@@ -45,11 +45,33 @@ impl IsotopeState for GameState {
             });
         });
 
-        ecs.iter_mut_duo(|_entity, _camera: &mut Camera, transform: &mut Transform| {
-            transform.position(|pos| {
-                *pos = Vector3::new(5.0 + t.cos(), 5.0, 5.0 + t.sin());
-            })
-        });
+        ecs.iter_mut_duo(
+            |_entity, _camera: &mut Camera, transform: &mut Transform3D| {
+                transform.position(|pos| {
+                    *pos = Vector3::new(2.5 + t.cos(), 0.0, 10.0 + t.sin());
+                })
+            },
+        );
+    }
+
+    fn mouse_is_moved(&mut self, ecs: &Compound, assets: &AssetServer, delta: (f64, f64), t: f32) {
+        ecs.iter_mut_duo(
+            |_entity, _camera: &mut Camera, transform: &mut Transform3D| {
+                debug!("Here I am");
+                transform.rotation(|rot| {
+                    let sens = 0.002;
+                    let yaw_delta = Rad(-delta.0 as f32 * sens);
+                    let pitch_delta = Rad(delta.1 as f32 * sens);
+
+                    let yaw_rot = Quaternion::from_axis_angle(Vector3::unit_y(), yaw_delta);
+                    let pitch_rot = Quaternion::from_axis_angle(Vector3::unit_x(), pitch_delta);
+
+                    let target_rotation = yaw_rot * *rot * pitch_rot;
+
+                    *rot = rot.slerp(target_rotation, 0.8);
+                });
+            },
+        );
     }
 }
 

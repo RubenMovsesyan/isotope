@@ -2,12 +2,12 @@ use cgmath::{Quaternion, Vector3};
 
 #[repr(C)]
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Transform {
+pub struct Transform3D {
     pub(crate) position: [f32; 3],
     pub(crate) rotation: [f32; 4],
 }
 
-impl Transform {
+impl Transform3D {
     pub fn new<V, Q>(position: V, rotation: Q) -> Self
     where
         V: Into<[f32; 3]>,

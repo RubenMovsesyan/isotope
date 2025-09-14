@@ -11,25 +11,9 @@ pub trait IsotopeState: Send + Sync + 'static {
 
     fn update(&mut self, ecs: &Compound, assets: &AssetServer, delta_t: f32, t: f32) {}
 
-    fn key_is_pressed(
-        &mut self,
-        ecs: &Compound,
-        assets: &AssetServer,
-        key: KeyCode,
-        delta_t: f32,
-        t: f32,
-    ) {
-    }
+    fn key_is_pressed(&mut self, ecs: &Compound, assets: &AssetServer, key: KeyCode, t: f32) {}
 
-    fn key_is_released(
-        &mut self,
-        ecs: &Compound,
-        assets: &AssetServer,
-        key: KeyCode,
-        delta_t: f32,
-        t: f32,
-    ) {
-    }
+    fn key_is_released(&mut self, ecs: &Compound, assets: &AssetServer, key: KeyCode, t: f32) {}
 
     // Window Event
     fn cursor_moved(
@@ -37,19 +21,10 @@ pub trait IsotopeState: Send + Sync + 'static {
         ecs: &Compound,
         assets: &AssetServer,
         cursor_position: (f32, f32),
-        delta_t: f32,
         t: f32,
     ) {
     }
 
     // Device event
-    fn mouse_is_moved(
-        &mut self,
-        ecs: &Compound,
-        assets: &AssetServer,
-        cursor_position: (f32, f32),
-        delta_t: f32,
-        t: f32,
-    ) {
-    }
+    fn mouse_is_moved(&mut self, ecs: &Compound, assets: &AssetServer, delta: (f64, f64), t: f32) {}
 }
