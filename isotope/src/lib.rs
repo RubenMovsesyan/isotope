@@ -22,6 +22,7 @@ use photon::renderer::Renderer;
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
 pub use state::IsotopeState;
+pub use winit::keyboard::KeyCode;
 use winit::{
     application::ApplicationHandler,
     event::{DeviceEvent, ElementState, KeyEvent, WindowEvent},
@@ -196,6 +197,11 @@ impl ApplicationHandler for IsotopeApplication {
                 title: "Isotope".to_string(),
             },
         ) {
+            // Add the window controller to Isotope
+            self.isotope
+                .compound
+                .spawn((WindowController::new(rendering_window.window.clone()),));
+
             self.window = Some(rendering_window);
             self.isotope.photon =
                 match Renderer::new_defered_3d(self.isotope.gpu_controller.clone()) {

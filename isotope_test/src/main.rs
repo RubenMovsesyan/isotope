@@ -1,7 +1,10 @@
 use isotope::*;
 use winit::event_loop::{self, ControlFlow, EventLoop};
 
-struct GameState {}
+#[derive(Default)]
+struct GameState {
+    window_focused: bool,
+}
 
 impl IsotopeState for GameState {
     fn init(&mut self, ecs: &Compound, assets: &AssetServer) {
@@ -55,30 +58,51 @@ impl IsotopeState for GameState {
     }
 
     fn mouse_is_moved(&mut self, ecs: &Compound, assets: &AssetServer, delta: (f64, f64), t: f32) {
-        ecs.iter_mut_duo(
-            |_entity, _camera: &mut Camera, transform: &mut Transform3D| {
-                debug!("Here I am");
-                transform.rotation(|rot| {
-                    let sens = 0.002;
-                    let yaw_delta = Rad(-delta.0 as f32 * sens);
-                    let pitch_delta = Rad(delta.1 as f32 * sens);
+        if self.window_focused {
+            ecs.iter_mut_duo(
+                |_entity, _camera: &mut Camera, transform: &mut Transform3D| {
+                    transform.rotation(|rot| {
+                        let sens = 0.002;
+                        let yaw_delta = Rad(-delta.0 as f32 * sens);
+                        let pitch_delta = Rad(delta.1 as f32 * sens);
 
-                    let yaw_rot = Quaternion::from_axis_angle(Vector3::unit_y(), yaw_delta);
-                    let pitch_rot = Quaternion::from_axis_angle(Vector3::unit_x(), pitch_delta);
+                        let yaw_rot = Quaternion::from_axis_angle(Vector3::unit_y(), yaw_delta);
+                        let pitch_rot = Quaternion::from_axis_angle(Vector3::unit_x(), pitch_delta);
 
-                    let target_rotation = yaw_rot * *rot * pitch_rot;
+                        let target_rotation = yaw_rot * *rot * pitch_rot;
 
-                    *rot = rot.slerp(target_rotation, 0.8);
+                        *rot = rot.slerp(target_rotation, 0.8);
+                    });
+                },
+            );
+        }
+    }
+
+    fn key_is_pressed(&mut self, ecs: &Compound, assets: &AssetServer, key: KeyCode, t: f32) {
+        match key {
+            KeyCode::Escape => {
+                ecs.iter_mut_mol(|_entity, window_controller: &mut WindowController| {
+                    window_controller.all(|cursor_grab_mode, cursor_visible| {
+                        if *cursor_visible {
+                            *cursor_grab_mode = CursorGrabMode::Locked;
+                        } else {
+                            *cursor_grab_mode = CursorGrabMode::None;
+                        }
+                        *cursor_visible = !*cursor_visible;
+
+                        self.window_focused = !*cursor_visible;
+                    });
                 });
-            },
-        );
+            }
+            _ => {}
+        }
     }
 }
 
 fn main() {
     pretty_env_logger::init();
 
-    let game_state = GameState {};
+    let game_state = GameState::default();
 
     let mut isotope = IsotopeApplication::new(game_state).unwrap();
 
