@@ -1,7 +1,7 @@
 use isotope::*;
 use winit::event_loop::{ControlFlow, EventLoop};
 
-const CAMERA_SPEED: f32 = 0.001;
+const CAMERA_SPEED: f32 = 10.0;
 
 #[derive(Default)]
 struct GameState {
@@ -63,31 +63,31 @@ impl IsotopeState for GameState {
                 |_entity, camera: &mut Camera, transform: &mut Transform3D| {
                     transform.position(|pos| {
                         if self.w_pressed {
-                            camera.target(|target| *pos += *target * CAMERA_SPEED);
+                            camera.target(|target| *pos += *target * CAMERA_SPEED * delta_t);
                         }
 
                         if self.s_pressed {
-                            camera.target(|target| *pos -= *target * CAMERA_SPEED);
+                            camera.target(|target| *pos -= *target * CAMERA_SPEED * delta_t);
                         }
 
                         if self.a_pressed {
                             camera.all(|_, target, up, _, _, _, _| {
-                                *pos -= target.cross(*up).normalize() * CAMERA_SPEED
+                                *pos -= target.cross(*up).normalize() * CAMERA_SPEED * delta_t
                             });
                         }
 
                         if self.d_pressed {
                             camera.all(|_, target, up, _, _, _, _| {
-                                *pos += target.cross(*up).normalize() * CAMERA_SPEED
+                                *pos += target.cross(*up).normalize() * CAMERA_SPEED * delta_t
                             });
                         }
 
                         if self.space_pressed {
-                            camera.up(|up| *pos += *up * CAMERA_SPEED);
+                            camera.up(|up| *pos += *up * CAMERA_SPEED * delta_t);
                         }
 
                         if self.shift_pressed {
-                            camera.up(|up| *pos -= *up * CAMERA_SPEED);
+                            camera.up(|up| *pos -= *up * CAMERA_SPEED * delta_t);
                         }
                     });
                 },
