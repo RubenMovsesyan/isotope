@@ -39,7 +39,6 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use defaults::DEFAULT_SURFACE_CONFIGURATION;
-use layouts::LayoutsManager;
 use log::info;
 use wgpu::{
     Adapter, Backends, Device, DeviceDescriptor, InstanceDescriptor, MemoryHints, PipelineLayout,
@@ -72,7 +71,6 @@ use winit::window::Window;
 
 mod defaults;
 mod geometry;
-mod layouts;
 
 /// The main GPU controller that manages all WGPU resources and provides a simplified interface
 /// for GPU operations.
@@ -100,8 +98,6 @@ pub struct GpuController {
     adapter: Adapter,
     device: Device,
     queue: Queue,
-
-    layouts_manager: LayoutsManager,
 
     // Interior Mutability
     surface_configuration: RwLock<SurfaceConfiguration>,
@@ -192,9 +188,6 @@ impl GpuController {
 
         info!("WGPU Initialized");
 
-        let layouts_manager = LayoutsManager::new();
-        info!("Layouts Initialized");
-
         let surface_configuration = if let Some(config) = surface_configuration {
             RwLock::new(config)
         } else {
@@ -207,7 +200,6 @@ impl GpuController {
             adapter,
             device,
             queue,
-            layouts_manager,
             surface_configuration,
         }))
     }

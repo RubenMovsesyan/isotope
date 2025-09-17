@@ -51,4 +51,84 @@ impl Camera {
             far,
         ))
     }
+
+    pub fn eye<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Point3<f32>),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.eye(callback),
+        }
+    }
+
+    pub fn target<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.target(callback),
+        }
+    }
+
+    pub fn up<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut Vector3<f32>),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.up(callback),
+        }
+    }
+
+    pub fn aspect<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.aspect(callback),
+        }
+    }
+
+    pub fn fovy<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.fovy(callback),
+        }
+    }
+
+    pub fn znear<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.znear(callback),
+        }
+    }
+
+    pub fn zfar<F>(&mut self, callback: F)
+    where
+        F: FnOnce(&mut f32),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.zfar(callback),
+        }
+    }
+
+    pub fn all<F>(&mut self, callback: F)
+    where
+        F: FnOnce(
+            &mut Point3<f32>,
+            &mut Vector3<f32>,
+            &mut Vector3<f32>,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+            &mut f32,
+        ),
+    {
+        match self {
+            Self::PerspectiveCamera3D(camera) => camera.all(callback),
+        }
+    }
 }

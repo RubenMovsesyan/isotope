@@ -1,7 +1,7 @@
 use std::{f32, sync::Arc};
 
 use anyhow::{Result, anyhow};
-use log::{debug, info, warn};
+use log::{info, warn};
 use wgpu::{Buffer, BufferUsages, IndexFormat, RenderPass, util::BufferInitDescriptor};
 
 use crate::GpuController;

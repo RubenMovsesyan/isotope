@@ -8,7 +8,6 @@ use anyhow::Result;
 pub use asset_server::AssetServer;
 pub use cgmath::*;
 pub use compound::Compound;
-pub use elements::Camera;
 pub use elements::*;
 use gpu_controller::{
     CompositeAlphaMode, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,

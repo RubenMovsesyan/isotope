@@ -1,9 +1,19 @@
 use isotope::*;
-use winit::event_loop::{self, ControlFlow, EventLoop};
+use winit::event_loop::{ControlFlow, EventLoop};
+
+const CAMERA_SPEED: f32 = 0.001;
 
 #[derive(Default)]
 struct GameState {
     window_focused: bool,
+
+    w_pressed: bool,
+    a_pressed: bool,
+    s_pressed: bool,
+    d_pressed: bool,
+
+    space_pressed: bool,
+    shift_pressed: bool,
 }
 
 impl IsotopeState for GameState {
@@ -48,13 +58,41 @@ impl IsotopeState for GameState {
             });
         });
 
-        ecs.iter_mut_duo(
-            |_entity, _camera: &mut Camera, transform: &mut Transform3D| {
-                transform.position(|pos| {
-                    *pos = Vector3::new(2.5 + t.cos(), 0.0, 10.0 + t.sin());
-                })
-            },
-        );
+        if self.window_focused {
+            ecs.iter_mut_duo(
+                |_entity, camera: &mut Camera, transform: &mut Transform3D| {
+                    transform.position(|pos| {
+                        if self.w_pressed {
+                            camera.target(|target| *pos += *target * CAMERA_SPEED);
+                        }
+
+                        if self.s_pressed {
+                            camera.target(|target| *pos -= *target * CAMERA_SPEED);
+                        }
+
+                        if self.a_pressed {
+                            camera.all(|_, target, up, _, _, _, _| {
+                                *pos -= target.cross(*up).normalize() * CAMERA_SPEED
+                            });
+                        }
+
+                        if self.d_pressed {
+                            camera.all(|_, target, up, _, _, _, _| {
+                                *pos += target.cross(*up).normalize() * CAMERA_SPEED
+                            });
+                        }
+
+                        if self.space_pressed {
+                            camera.up(|up| *pos += *up * CAMERA_SPEED);
+                        }
+
+                        if self.shift_pressed {
+                            camera.up(|up| *pos -= *up * CAMERA_SPEED);
+                        }
+                    });
+                },
+            )
+        }
     }
 
     fn mouse_is_moved(&mut self, ecs: &Compound, assets: &AssetServer, delta: (f64, f64), t: f32) {
@@ -93,6 +131,48 @@ impl IsotopeState for GameState {
                         self.window_focused = !*cursor_visible;
                     });
                 });
+            }
+            KeyCode::KeyW => {
+                self.w_pressed = true;
+            }
+            KeyCode::KeyS => {
+                self.s_pressed = true;
+            }
+            KeyCode::KeyA => {
+                self.a_pressed = true;
+            }
+            KeyCode::KeyD => {
+                self.d_pressed = true;
+            }
+            KeyCode::Space => {
+                self.space_pressed = true;
+            }
+            KeyCode::ShiftLeft => {
+                self.shift_pressed = true;
+            }
+            _ => {}
+        }
+    }
+
+    fn key_is_released(&mut self, ecs: &Compound, assets: &AssetServer, key: KeyCode, t: f32) {
+        match key {
+            KeyCode::KeyW => {
+                self.w_pressed = false;
+            }
+            KeyCode::KeyS => {
+                self.s_pressed = false;
+            }
+            KeyCode::KeyA => {
+                self.a_pressed = false;
+            }
+            KeyCode::KeyD => {
+                self.d_pressed = false;
+            }
+            KeyCode::Space => {
+                self.space_pressed = false;
+            }
+            KeyCode::ShiftLeft => {
+                self.shift_pressed = false;
             }
             _ => {}
         }
