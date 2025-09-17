@@ -4,7 +4,7 @@ use anyhow::Result;
 use defered_renderer::DeferedRenderer3D;
 use gpu_controller::{GpuController, RenderPass, Texture};
 
-use crate::{Light, camera::Camera};
+use crate::{Light, camera::PhotonCamera};
 
 pub mod defered_renderer;
 
@@ -29,8 +29,9 @@ impl Renderer {
         }
     }
 
-    pub fn render<G>(&self, camera: &Camera, output: &Texture, geometry_callback: G)
+    pub fn render<C, G>(&self, camera: &C, output: &Texture, geometry_callback: G)
     where
+        C: PhotonCamera,
         G: FnOnce(&mut RenderPass),
     {
         match self {

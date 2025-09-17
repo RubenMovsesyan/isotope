@@ -1,10 +1,8 @@
-use std::sync::Arc;
-
-use camera_3d::PerspectiveCamera3D;
-use cgmath::{Matrix4, Point3, Vector3};
+pub use camera_3d::PerspectiveCamera3D;
+use cgmath::Matrix4;
 use gpu_controller::{
     BindGroup, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingType, BufferBindingType,
-    GpuController, ShaderStages,
+    ShaderStages,
 };
 
 mod camera_3d;
@@ -28,44 +26,6 @@ pub const CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor =
         }],
     };
 
-pub enum Camera {
-    PerspectiveCamera3D(PerspectiveCamera3D),
-}
-
-impl Camera {
-    pub fn new_perspective_3d<V1, V2, V3>(
-        gpu_controller: Arc<GpuController>,
-        eye: V1,
-        target: V2,
-        up: V3,
-        fovy: f32,
-        near: f32,
-        far: f32,
-    ) -> Self
-    where
-        V1: Into<[f32; 3]>,
-        V2: Into<[f32; 3]>,
-        V3: Into<[f32; 3]>,
-    {
-        let aspect = gpu_controller
-            .read_surface_config(|sc| sc.width as f32 / sc.height as f32)
-            .unwrap_or_else(|_err| 1.0);
-
-        Self::PerspectiveCamera3D(PerspectiveCamera3D::new(
-            gpu_controller,
-            Point3::from(eye.into()),
-            Vector3::from(target.into()),
-            Vector3::from(up.into()),
-            aspect,
-            fovy,
-            near,
-            far,
-        ))
-    }
-
-    pub fn bind_group(&self) -> &BindGroup {
-        match self {
-            Camera::PerspectiveCamera3D(camera) => &camera.bind_group,
-        }
-    }
+pub trait PhotonCamera {
+    fn bind_group(&self) -> &BindGroup;
 }

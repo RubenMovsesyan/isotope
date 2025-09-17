@@ -6,7 +6,7 @@ use gpu_controller::{
     GpuController,
 };
 
-use super::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, OPENGL_TO_WGPU_MATIX};
+use super::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, OPENGL_TO_WGPU_MATIX, PhotonCamera};
 
 // Clamping constants
 const FOVY_CLAMP: (f32, f32) = (0.1, 179.9);
@@ -225,5 +225,11 @@ impl PerspectiveCamera3D {
         );
         self.fovy = self.fovy.clamp(FOVY_CLAMP.0, FOVY_CLAMP.1);
         self.update();
+    }
+}
+
+impl PhotonCamera for PerspectiveCamera3D {
+    fn bind_group(&self) -> &BindGroup {
+        &self.bind_group
     }
 }

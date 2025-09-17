@@ -25,7 +25,7 @@ impl IsotopeState for GameState {
         ),));
 
         ecs.spawn((
-            new_perspective_camera(
+            Camera::new_perspective_3d(
                 assets,
                 Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
                 [-0.57735027, -0.57735027, -0.57735027],

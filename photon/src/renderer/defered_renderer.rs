@@ -54,7 +54,7 @@ const MATERIAL_BIND_GROUP_LAYOUT_DESCRIPTOR: BindGroupLayoutDescriptor =
         ],
     };
 
-use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, Camera};
+use crate::camera::{CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR, PhotonCamera};
 use crate::photon_lighting::LightsManager;
 
 use super::CAMERA_BIND_GROUP;
@@ -464,13 +464,14 @@ impl DeferedRenderer3D {
         })
     }
 
-    pub(crate) fn render<F>(
+    pub(crate) fn render<C, F>(
         &self,
-        camera: &Camera,
+        camera: &C,
         output: &Texture,
         geometry_callback: F,
     ) -> Result<()>
     where
+        C: PhotonCamera,
         F: FnOnce(&mut RenderPass),
     {
         // Get the output texture for the renderer

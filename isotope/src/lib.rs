@@ -8,6 +8,7 @@ use anyhow::Result;
 pub use asset_server::AssetServer;
 pub use cgmath::*;
 pub use compound::Compound;
+pub use elements::Camera;
 pub use elements::*;
 use gpu_controller::{
     CompositeAlphaMode, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,
@@ -17,7 +18,6 @@ pub use log::*;
 use matter_vault::MatterVault;
 pub use model::Model;
 pub use photon::Light;
-pub use photon::camera::Camera;
 use photon::renderer::Renderer;
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
