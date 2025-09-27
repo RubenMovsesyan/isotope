@@ -1,8 +1,12 @@
-use cgmath::{Point3, Vector3};
+use cgmath::{InnerSpace, Point3, Vector3};
 use log::warn;
 use photon::camera::{PerspectiveCamera3D, PhotonCamera};
 
 use crate::AssetServer;
+
+const DEFAULT_FOVY: f32 = 45.0;
+const DEFAULT_NEAR: f32 = 0.1;
+const DEFAULT_FAR: f32 = 1000.0;
 
 pub enum Camera {
     PerspectiveCamera3D(PerspectiveCamera3D),
@@ -49,6 +53,27 @@ impl Camera {
             fovy,
             near,
             far,
+        ))
+    }
+
+    pub fn perspective_3d_default(asset_server: &AssetServer) -> Self {
+        let aspect = asset_server
+            .gpu_controller
+            .read_surface_config(|sc| sc.width as f32 / sc.height as f32)
+            .unwrap_or_else(|err| {
+                warn!("Error getting surface config for camera: {}", err);
+                1.0
+            });
+
+        Self::PerspectiveCamera3D(PerspectiveCamera3D::new(
+            asset_server.gpu_controller.clone(),
+            Point3::from([0.0, 0.0, 0.0]),
+            Vector3::from([-1.0, 0.0, -1.0]).normalize(),
+            Vector3::unit_y(),
+            aspect,
+            DEFAULT_FOVY,
+            DEFAULT_NEAR,
+            DEFAULT_FAR,
         ))
     }
 

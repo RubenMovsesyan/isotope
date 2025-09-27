@@ -1,5 +1,3 @@
-use std::any::Any;
-
 use compound::Compound;
 use winit::keyboard::KeyCode;
 

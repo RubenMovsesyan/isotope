@@ -11,7 +11,9 @@
         "env": {
             "RUST_LOG": "info"
         },
-        "command": "cargo run --bin isotope_test"
+        "command": "cargo run --bin isotope_test; exec $SHELL",
+        "use_new_terminal": false,
+        "reveal": "always"
     },
     {
         "label": "Run Backtrace",

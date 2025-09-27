@@ -118,9 +118,10 @@ impl IsotopeTexture {
             let path_clone = path.to_string();
             let gpu_controller_clone = asset_server.gpu_controller.clone();
             std::thread::spawn(move || {
-                ImageReader::open(&path_clone)
+                _ = ImageReader::open(&path_clone)
                     .and_then(|img| {
-                        img.decode()
+                        _ = img
+                            .decode()
                             .and_then(|img| {
                                 let rgba = img.to_rgba8();
 

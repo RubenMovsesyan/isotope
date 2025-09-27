@@ -35,18 +35,10 @@ impl IsotopeState for GameState {
         ),));
 
         ecs.spawn((
-            Camera::new_perspective_3d(
-                assets,
-                Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
-                [-0.57735027, -0.57735027, -0.57735027],
-                Vector3::unit_y(),
-                45.0,
-                1.0,
-                100.0,
-            ),
+            Camera::perspective_3d_default(assets),
             Transform3D::new(
-                Vector3::new(5.0 + f32::cos(0.0), 5.0, 5.0 + f32::sin(0.0)),
-                Quaternion::from_axis_angle(Vector3::unit_y(), Deg(90.0)),
+                Vector3::new(0.0, 0.0, 10.0),
+                Quaternion::from_axis_angle(Vector3::unit_y(), Deg(180.0)),
             ),
         ));
     }
