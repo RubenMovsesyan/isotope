@@ -116,7 +116,7 @@ fn vs_main(
 
     out.world_position = world_position.xyz;
     out.clip_position = camera.view_proj * world_position;
-    out.world_normal = model.normal;
+    // out.world_normal = model.normal;
 
     return out;
 }

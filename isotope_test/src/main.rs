@@ -18,22 +18,19 @@ struct GameState {
 
 impl IsotopeState for GameState {
     fn init(&mut self, ecs: &Compound, assets: &AssetServer) {
-        match Model::from_obj(
-            "test_files/monkey.obj",
-            assets,
-            Some(&[
-                Instance::new(
-                    Vector3::new(-2.0, 0.0, 0.0),
-                    Quaternion::new(0.0, 0.0, 0.0, 1.0),
+        let mut instances: Vec<Instance> = Vec::new();
+
+        for i in 0..10 {
+            for j in 0..10 {
+                instances.push(Instance::new(
+                    Vector3::new(-5.0 * i as f32, 0.0, -5.0 * j as f32),
+                    Quaternion::one(),
                     Matrix4::identity(),
-                ),
-                Instance::new(
-                    Vector3::new(2.0, 0.0, 0.0),
-                    Quaternion::new(0.0, 0.0, 0.0, 1.0),
-                    Matrix4::identity(),
-                ),
-            ]),
-        ) {
+                ));
+            }
+        }
+
+        match Model::from_obj("test_files/monkey.obj", assets, Some(&instances)) {
             Ok(model) => {
                 ecs.spawn((model,));
             }
