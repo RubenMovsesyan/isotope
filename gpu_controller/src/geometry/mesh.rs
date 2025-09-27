@@ -4,7 +4,7 @@ use anyhow::{Result, anyhow};
 use log::{info, warn};
 use wgpu::{Buffer, BufferUsages, IndexFormat, RenderPass, util::BufferInitDescriptor};
 
-use crate::GpuController;
+use crate::{GpuController, defaults::VERTECIES_BUFFER_INDEX};
 
 use super::vertex::Vertex;
 
@@ -152,7 +152,7 @@ impl Mesh {
                 num_indices,
                 ..
             } => {
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.set_vertex_buffer(VERTECIES_BUFFER_INDEX, vertex_buffer.slice(..));
                 render_pass.set_index_buffer(index_buffer.slice(..), IndexFormat::Uint32);
                 render_pass.draw_indexed(0..*num_indices, 0, 0..1);
             }

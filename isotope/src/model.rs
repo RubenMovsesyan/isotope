@@ -5,7 +5,11 @@ use std::{
 };
 
 use anyhow::{Result, anyhow};
-use gpu_controller::{Mesh, RenderPass, Vertex};
+use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
+use gpu_controller::{
+    Buffer, BufferInitDescriptor, BufferUsages, INSTANCE_BUFFER_INDEX, Instance, Mesh, RenderPass,
+    Vertex,
+};
 use log::{debug, info};
 use matter_vault::SharedMatter;
 use photon::MATERIALS_BIND_GROUP;
@@ -22,10 +26,15 @@ type UV = [f32; 2];
 pub struct Model {
     meshes: Vec<(Option<usize>, SharedMatter<Mesh>)>,
     materials: Vec<SharedMatter<Material>>,
+    instance_buffer: Buffer,
 }
 
 impl Model {
-    pub fn from_obj<P>(path: P, asset_server: &AssetServer) -> Result<Self>
+    pub fn from_obj<P>(
+        path: P,
+        asset_server: &AssetServer,
+        instances: Option<Vec<Instance>>,
+    ) -> Result<Self>
     where
         P: AsRef<Path>,
     {
@@ -208,7 +217,34 @@ impl Model {
             ));
         }
 
-        Ok(Self { meshes, materials })
+        // Create the instance buffer for the model
+        let instance_buffer = if let Some(instances) = instances {
+            asset_server
+                .gpu_controller
+                .create_buffer_init(&BufferInitDescriptor {
+                    label: Some("Model Instance Buffer"),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                    contents: bytemuck::cast_slice(&instances),
+                })
+        } else {
+            asset_server
+                .gpu_controller
+                .create_buffer_init(&BufferInitDescriptor {
+                    label: Some("Model Instance Buffer"),
+                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
+                    contents: bytemuck::cast_slice(&[Instance::new(
+                        Vector3::zero(),
+                        Quaternion::new(0.0, 0.0, 0.0, 1.0),
+                        Matrix4::identity(),
+                    )]),
+                })
+        };
+
+        Ok(Self {
+            meshes,
+            materials,
+            instance_buffer,
+        })
     }
 
     pub fn render(&self, render_pass: &mut RenderPass) {
@@ -220,6 +256,8 @@ impl Model {
                     });
                 }
 
+                render_pass
+                    .set_vertex_buffer(INSTANCE_BUFFER_INDEX, self.instance_buffer.slice(..));
                 mesh.render(render_pass);
             });
         }

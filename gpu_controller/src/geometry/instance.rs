@@ -2,7 +2,7 @@ use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexFormat, Ver
 
 use crate::Buffered;
 
-use super::{Orientation, Position};
+use super::{Orientation, Position, Scale};
 
 #[repr(C)]
 #[derive(Debug, bytemuck::Pod, bytemuck::Zeroable, Copy, Clone)]
@@ -10,18 +10,21 @@ pub struct Instance {
     position: Position,
     _padding: f32,
     orientation: Orientation,
+    scale: Scale,
 }
 
 impl Instance {
-    pub fn new<PN, OR>(position: PN, orientation: OR) -> Self
+    pub fn new<PN, OR, SC>(position: PN, orientation: OR, scale: SC) -> Self
     where
         PN: Into<Position>,
         OR: Into<Orientation>,
+        SC: Into<Scale>,
     {
         Self {
             position: position.into(),
             _padding: 0.0,
             orientation: orientation.into(),
+            scale: scale.into(),
         }
     }
 }

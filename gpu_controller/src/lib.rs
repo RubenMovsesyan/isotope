@@ -39,6 +39,7 @@ use std::{
 
 use anyhow::{Result, anyhow};
 use defaults::DEFAULT_SURFACE_CONFIGURATION;
+pub use defaults::{INSTANCE_BUFFER_INDEX, VERTECIES_BUFFER_INDEX};
 use log::info;
 use wgpu::{
     Adapter, Backends, Device, DeviceDescriptor, InstanceDescriptor, MemoryHints, PipelineLayout,

@@ -83,3 +83,6 @@ pub(crate) const DEFAULT_SURFACE_CONFIGURATION: SurfaceConfiguration = SurfaceCo
     view_formats: vec![],
     desired_maximum_frame_latency: 2,
 };
+
+pub const VERTECIES_BUFFER_INDEX: u32 = 0;
+pub const INSTANCE_BUFFER_INDEX: u32 = 1;

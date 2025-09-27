@@ -18,7 +18,7 @@ struct GameState {
 
 impl IsotopeState for GameState {
     fn init(&mut self, ecs: &Compound, assets: &AssetServer) {
-        match Model::from_obj("test_files/monkey.obj", assets) {
+        match Model::from_obj("test_files/monkey.obj", assets, None) {
             Ok(model) => {
                 ecs.spawn((model,));
             }

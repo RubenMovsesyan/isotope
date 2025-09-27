@@ -1,6 +1,7 @@
 use std::{ops::Mul, sync::Arc};
 
 use anyhow::Result;
+use cgmath::{Matrix4, Vector3, Zero};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendFactor,
@@ -437,7 +438,11 @@ impl DeferedRenderer3D {
         let instance_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
             label: Some("Temp Instance Buffer"),
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
-            contents: bytemuck::cast_slice(&[Instance::new([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0])]),
+            contents: bytemuck::cast_slice(&[Instance::new(
+                Vector3::zero(),
+                [0.0, 0.0, 0.0, 1.0],
+                Matrix4::zero(),
+            )]),
         });
 
         let index_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
@@ -554,8 +559,8 @@ impl DeferedRenderer3D {
             // Set bind groups here
             render_pass.set_bind_group(CAMERA_BIND_GROUP, camera.bind_group(), &[]);
 
-            // temp
-            render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
+            // // temp
+            // render_pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
 
             // Run render callback
             geometry_callback(&mut render_pass);
