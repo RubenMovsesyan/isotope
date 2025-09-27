@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::{ops::Mul, sync::Arc};
 
 use anyhow::Result;
@@ -61,11 +62,11 @@ use crate::photon_lighting::LightsManager;
 use super::CAMERA_BIND_GROUP;
 use super::LIGHTS_BIND_GROUP;
 
-const ALBEDO_BINDING: u32 = 0;
-const POSITION_BINDING: u32 = 1;
-const NORMAL_BINDING: u32 = 2;
-const MATERIAL_BINDING: u32 = 3;
-const SAMPLER_BINDING: u32 = 4;
+pub const ALBEDO_BINDING: u32 = 0;
+pub const POSITION_BINDING: u32 = 1;
+pub const NORMAL_BINDING: u32 = 2;
+pub const MATERIAL_BINDING: u32 = 3;
+pub const SAMPLER_BINDING: u32 = 4;
 
 const G_BUFFER_BIND_GROUP: u32 = 2; // TODO: Lights are 1
 
@@ -93,7 +94,10 @@ pub struct DeferedRenderer3D {
 }
 
 impl DeferedRenderer3D {
-    pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
+    pub(crate) fn new(
+        gpu_controller: Arc<GpuController>,
+        layouts: &HashMap<String, BindGroupLayout>,
+    ) -> Result<Self> {
         let texture_size = gpu_controller.read_surface_config(|config| Extent3d {
             width: config.width,
             height: config.height,
@@ -160,66 +164,9 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
-        let g_buffer_bind_group_layout =
-            gpu_controller.create_bind_group_layout(&BindGroupLayoutDescriptor {
-                label: Some("G-Buffer Bind Group Layout"),
-                entries: &[
-                    // Albedo
-                    BindGroupLayoutEntry {
-                        binding: ALBEDO_BINDING,
-                        count: None,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            multisampled: false,
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                        },
-                    },
-                    BindGroupLayoutEntry {
-                        binding: POSITION_BINDING,
-                        count: None,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            multisampled: false,
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                        },
-                    },
-                    // Normal
-                    BindGroupLayoutEntry {
-                        binding: NORMAL_BINDING,
-                        count: None,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            multisampled: false,
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                        },
-                    },
-                    // Material
-                    BindGroupLayoutEntry {
-                        binding: MATERIAL_BINDING,
-                        count: None,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Texture {
-                            multisampled: false,
-                            sample_type: TextureSampleType::Float { filterable: true },
-                            view_dimension: TextureViewDimension::D2,
-                        },
-                    },
-                    // Sampler
-                    BindGroupLayoutEntry {
-                        binding: SAMPLER_BINDING,
-                        count: None,
-                        visibility: ShaderStages::FRAGMENT,
-                        ty: BindingType::Sampler(SamplerBindingType::Filtering),
-                    },
-                ],
-            });
-
         let g_buffer_bind_group = gpu_controller.create_bind_group(&BindGroupDescriptor {
             label: Some("G-Buffer Bind Group"),
-            layout: &g_buffer_bind_group_layout,
+            layout: &layouts["G-Buffer"],
             entries: &[
                 BindGroupEntry {
                     binding: ALBEDO_BINDING,
@@ -252,29 +199,24 @@ impl DeferedRenderer3D {
             ],
         });
 
-        let lights_manager = LightsManager::new(gpu_controller.clone())?;
-
-        let camera_bind_group_layout =
-            gpu_controller.create_bind_group_layout(&CAMERA_BIND_GROUP_LAYOUT_DESCRIPTOR);
-
-        let material_bind_group_layout =
-            gpu_controller.create_bind_group_layout(&MATERIAL_BIND_GROUP_LAYOUT_DESCRIPTOR);
+        let lights_manager = LightsManager::new(gpu_controller.clone(), layouts)?;
 
         let geometry_pipeline_layout =
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Geometry Pipeline Layout"),
-                bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
+                // bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
+                bind_group_layouts: &[
+                    &layouts["Camera"],
+                    &layouts["Material"],
+                    &layouts["Global Transform"],
+                ],
                 push_constant_ranges: &[],
             });
 
         let lighting_pipeline_layout =
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Lighting Pipeline Layout"),
-                bind_group_layouts: &[
-                    &camera_bind_group_layout,
-                    &lights_manager.bind_group_layout,
-                    &g_buffer_bind_group_layout,
-                ],
+                bind_group_layouts: &[&layouts["Camera"], &layouts["Lights"], &layouts["G-Buffer"]],
                 push_constant_ranges: &[],
             });
 
@@ -459,7 +401,7 @@ impl DeferedRenderer3D {
             depth_texture,
             geometry_render_pipeline,
             lighting_render_pipeline,
-            g_buffer_bind_group_layout,
+            g_buffer_bind_group_layout: layouts["G-Buffer"].clone(), // Clone for resizing later if needed
             g_buffer_bind_group,
             g_buffer_sampler,
             lights_manager,

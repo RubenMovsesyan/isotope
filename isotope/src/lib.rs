@@ -9,6 +9,7 @@ pub use asset_server::AssetServer;
 pub use cgmath::*;
 pub use compound::Compound;
 pub use elements::*;
+pub use gpu_controller::Instance;
 use gpu_controller::{
     CompositeAlphaMode, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,
     TextureUsages,
@@ -69,11 +70,11 @@ impl Isotope {
     where
         I: IsotopeState,
     {
-        let photon = Renderer::new_defered_3d(gpu_controller.clone())?;
         let asset_server = Arc::new(AssetServer::new(
             Arc::new(MatterVault::new()),
             gpu_controller.clone(),
         ));
+        let photon = Renderer::new_defered_3d(gpu_controller.clone(), &asset_server.layouts)?;
         let compound = Arc::new(Compound::new());
         let running = Arc::new(RwLock::new(false));
         let time = Arc::new(Instant::now());
@@ -202,14 +203,16 @@ impl ApplicationHandler for IsotopeApplication {
                 .spawn((WindowController::new(rendering_window.window.clone()),));
 
             self.window = Some(rendering_window);
-            self.isotope.photon =
-                match Renderer::new_defered_3d(self.isotope.gpu_controller.clone()) {
-                    Ok(photon) => photon,
-                    Err(err) => {
-                        error!("Failed to create photon renderer: {}", err);
-                        panic!();
-                    }
-                };
+            self.isotope.photon = match Renderer::new_defered_3d(
+                self.isotope.gpu_controller.clone(),
+                &self.isotope.asset_server.layouts,
+            ) {
+                Ok(photon) => photon,
+                Err(err) => {
+                    error!("Failed to create photon renderer: {}", err);
+                    panic!();
+                }
+            };
         }
 
         _ = self.isotope.running.write().and_then(|mut running| {

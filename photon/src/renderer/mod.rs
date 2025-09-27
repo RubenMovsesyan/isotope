@@ -1,8 +1,8 @@
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use defered_renderer::DeferedRenderer3D;
-use gpu_controller::{GpuController, RenderPass, Texture};
+use gpu_controller::{BindGroupLayout, GpuController, RenderPass, Texture};
 
 use crate::{Light, camera::PhotonCamera};
 
@@ -11,14 +11,21 @@ pub mod defered_renderer;
 const CAMERA_BIND_GROUP: u32 = 0;
 const LIGHTS_BIND_GROUP: u32 = 1;
 pub const MATERIALS_BIND_GROUP: u32 = 1;
+pub const GLOBAL_TRANSFORM_BIND_GROUP: u32 = 2;
 
 pub enum Renderer {
     Defered3D(DeferedRenderer3D),
 }
 
 impl Renderer {
-    pub fn new_defered_3d(gpu_controller: Arc<GpuController>) -> Result<Self> {
-        Ok(Self::Defered3D(DeferedRenderer3D::new(gpu_controller)?))
+    pub fn new_defered_3d(
+        gpu_controller: Arc<GpuController>,
+        layouts: &HashMap<String, BindGroupLayout>,
+    ) -> Result<Self> {
+        Ok(Self::Defered3D(DeferedRenderer3D::new(
+            gpu_controller,
+            layouts,
+        )?))
     }
 
     pub fn update_lights(&mut self, lights: &[Light]) {

@@ -4,7 +4,18 @@ use cgmath::{Quaternion, Vector3};
 #[derive(Copy, Clone, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Transform3D {
     pub(crate) position: [f32; 3],
+    _padding: f32,
     pub(crate) rotation: [f32; 4],
+}
+
+impl Default for Transform3D {
+    fn default() -> Self {
+        Self {
+            position: [0.0, 0.0, 0.0],
+            _padding: 0.0,
+            rotation: [0.0, 0.0, 0.0, 1.0],
+        }
+    }
 }
 
 impl Transform3D {
@@ -20,6 +31,7 @@ impl Transform3D {
     {
         Self {
             position: position.into(),
+            _padding: 0.0,
             rotation: rotation.into(),
         }
     }

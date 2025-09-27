@@ -7,14 +7,15 @@ use std::{
 use anyhow::{Result, anyhow};
 use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
 use gpu_controller::{
-    Buffer, BufferInitDescriptor, BufferUsages, INSTANCE_BUFFER_INDEX, Instance, Mesh, RenderPass,
-    Vertex,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
+    INSTANCE_BUFFER_INDEX, Instance, Mesh, RenderPass, Vertex,
 };
 use log::{debug, info};
 use matter_vault::SharedMatter;
-use photon::MATERIALS_BIND_GROUP;
+use photon::{MATERIALS_BIND_GROUP, renderer::GLOBAL_TRANSFORM_BIND_GROUP};
 
 use crate::{
+    Transform3D,
     asset_server::AssetServer,
     material::{Material, load_materials},
 };
@@ -26,14 +27,18 @@ type UV = [f32; 2];
 pub struct Model {
     meshes: Vec<(Option<usize>, SharedMatter<Mesh>)>,
     materials: Vec<SharedMatter<Material>>,
+
+    global_transform_bind_group: BindGroup,
+    global_transformation_buffer: Buffer,
     instance_buffer: Buffer,
+    num_instaces: u32,
 }
 
 impl Model {
     pub fn from_obj<P>(
         path: P,
         asset_server: &AssetServer,
-        instances: Option<Vec<Instance>>,
+        instances: Option<&[Instance]>,
     ) -> Result<Self>
     where
         P: AsRef<Path>,
@@ -218,32 +223,66 @@ impl Model {
         }
 
         // Create the instance buffer for the model
-        let instance_buffer = if let Some(instances) = instances {
-            asset_server
-                .gpu_controller
-                .create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Model Instance Buffer"),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    contents: bytemuck::cast_slice(&instances),
-                })
+        let (instance_buffer, num_instaces) = if let Some(instances) = instances {
+            (
+                asset_server
+                    .gpu_controller
+                    .create_buffer_init(&BufferInitDescriptor {
+                        label: Some("Model Instance Buffer"),
+                        usage: BufferUsages::VERTEX
+                            | BufferUsages::COPY_DST
+                            | BufferUsages::COPY_SRC,
+                        contents: bytemuck::cast_slice(&instances),
+                    }),
+                instances.len() as u32,
+            )
         } else {
+            (
+                asset_server
+                    .gpu_controller
+                    .create_buffer_init(&BufferInitDescriptor {
+                        label: Some("Model Instance Buffer"),
+                        usage: BufferUsages::VERTEX
+                            | BufferUsages::COPY_DST
+                            | BufferUsages::COPY_SRC,
+                        contents: bytemuck::cast_slice(&[Instance::new(
+                            Vector3::zero(),
+                            Quaternion::new(0.0, 0.0, 0.0, 1.0),
+                            Matrix4::identity(),
+                        )]),
+                    }),
+                1,
+            )
+        };
+
+        let global_transformation_buffer =
             asset_server
                 .gpu_controller
                 .create_buffer_init(&BufferInitDescriptor {
-                    label: Some("Model Instance Buffer"),
-                    usage: BufferUsages::VERTEX | BufferUsages::COPY_DST | BufferUsages::COPY_SRC,
-                    contents: bytemuck::cast_slice(&[Instance::new(
-                        Vector3::zero(),
-                        Quaternion::new(0.0, 0.0, 0.0, 1.0),
-                        Matrix4::identity(),
-                    )]),
-                })
-        };
+                    label: Some("Global Transformation Buffer"),
+                    usage: BufferUsages::STORAGE | BufferUsages::COPY_DST,
+                    contents: bytemuck::cast_slice(&[Transform3D::default()]),
+                });
+
+        let global_transform_bind_group =
+            asset_server
+                .gpu_controller
+                .create_bind_group(&BindGroupDescriptor {
+                    label: Some("Global Transform Bind Group"),
+                    layout: &asset_server.layouts["Global Transform"],
+                    entries: &[BindGroupEntry {
+                        binding: 0,
+                        resource: global_transformation_buffer.as_entire_binding(),
+                    }],
+                });
 
         Ok(Self {
             meshes,
             materials,
             instance_buffer,
+            global_transform_bind_group,
+            global_transformation_buffer,
+            num_instaces,
         })
     }
 
@@ -256,9 +295,16 @@ impl Model {
                     });
                 }
 
+                render_pass.set_bind_group(
+                    GLOBAL_TRANSFORM_BIND_GROUP,
+                    &self.global_transform_bind_group,
+                    &[],
+                );
+
                 render_pass
                     .set_vertex_buffer(INSTANCE_BUFFER_INDEX, self.instance_buffer.slice(..));
-                mesh.render(render_pass);
+
+                mesh.render(render_pass, self.num_instaces);
             });
         }
     }

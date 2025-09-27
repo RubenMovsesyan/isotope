@@ -141,7 +141,7 @@ impl Mesh {
         }
     }
 
-    pub fn render(&self, render_pass: &mut RenderPass) {
+    pub fn render(&self, render_pass: &mut RenderPass, num_instances: u32) {
         match self {
             Self::Cpu { .. } => {
                 warn!("Mesh in unbuffered CPU state, not rendered");
@@ -154,7 +154,7 @@ impl Mesh {
             } => {
                 render_pass.set_vertex_buffer(VERTECIES_BUFFER_INDEX, vertex_buffer.slice(..));
                 render_pass.set_index_buffer(index_buffer.slice(..), IndexFormat::Uint32);
-                render_pass.draw_indexed(0..*num_indices, 0, 0..1);
+                render_pass.draw_indexed(0..*num_indices, 0, 0..num_instances);
             }
         }
     }
