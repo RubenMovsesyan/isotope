@@ -94,10 +94,7 @@ pub struct DeferedRenderer3D {
 }
 
 impl DeferedRenderer3D {
-    pub(crate) fn new(
-        gpu_controller: Arc<GpuController>,
-        layouts: &HashMap<String, BindGroupLayout>,
-    ) -> Result<Self> {
+    pub(crate) fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
         let texture_size = gpu_controller.read_surface_config(|config| Extent3d {
             width: config.width,
             height: config.height,
@@ -164,44 +161,46 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
-        let g_buffer_bind_group = gpu_controller.create_bind_group(&BindGroupDescriptor {
-            label: Some("G-Buffer Bind Group"),
-            layout: &layouts["G-Buffer"],
-            entries: &[
-                BindGroupEntry {
-                    binding: ALBEDO_BINDING,
-                    resource: BindingResource::TextureView(
-                        &albedo_texture.create_view(&TextureViewDescriptor::default()),
-                    ),
-                },
-                BindGroupEntry {
-                    binding: POSITION_BINDING,
-                    resource: BindingResource::TextureView(
-                        &position_texture.create_view(&TextureViewDescriptor::default()),
-                    ),
-                },
-                BindGroupEntry {
-                    binding: NORMAL_BINDING,
-                    resource: BindingResource::TextureView(
-                        &normal_texture.create_view(&TextureViewDescriptor::default()),
-                    ),
-                },
-                BindGroupEntry {
-                    binding: MATERIAL_BINDING,
-                    resource: BindingResource::TextureView(
-                        &material_texture.create_view(&TextureViewDescriptor::default()),
-                    ),
-                },
-                BindGroupEntry {
-                    binding: SAMPLER_BINDING,
-                    resource: BindingResource::Sampler(&g_buffer_sampler),
-                },
-            ],
-        });
+        let g_buffer_bind_group = gpu_controller.read_layouts(|layouts| {
+            gpu_controller.create_bind_group(&BindGroupDescriptor {
+                label: Some("G-Buffer Bind Group"),
+                layout: &layouts["G-Buffer"],
+                entries: &[
+                    BindGroupEntry {
+                        binding: ALBEDO_BINDING,
+                        resource: BindingResource::TextureView(
+                            &albedo_texture.create_view(&TextureViewDescriptor::default()),
+                        ),
+                    },
+                    BindGroupEntry {
+                        binding: POSITION_BINDING,
+                        resource: BindingResource::TextureView(
+                            &position_texture.create_view(&TextureViewDescriptor::default()),
+                        ),
+                    },
+                    BindGroupEntry {
+                        binding: NORMAL_BINDING,
+                        resource: BindingResource::TextureView(
+                            &normal_texture.create_view(&TextureViewDescriptor::default()),
+                        ),
+                    },
+                    BindGroupEntry {
+                        binding: MATERIAL_BINDING,
+                        resource: BindingResource::TextureView(
+                            &material_texture.create_view(&TextureViewDescriptor::default()),
+                        ),
+                    },
+                    BindGroupEntry {
+                        binding: SAMPLER_BINDING,
+                        resource: BindingResource::Sampler(&g_buffer_sampler),
+                    },
+                ],
+            })
+        })?;
 
-        let lights_manager = LightsManager::new(gpu_controller.clone(), layouts)?;
+        let lights_manager = LightsManager::new(gpu_controller.clone())?;
 
-        let geometry_pipeline_layout =
+        let geometry_pipeline_layout = gpu_controller.read_layouts(|layouts| {
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Geometry Pipeline Layout"),
                 // bind_group_layouts: &[&camera_bind_group_layout, &material_bind_group_layout],
@@ -211,14 +210,16 @@ impl DeferedRenderer3D {
                     &layouts["Global Transform"],
                 ],
                 push_constant_ranges: &[],
-            });
+            })
+        })?;
 
-        let lighting_pipeline_layout =
+        let lighting_pipeline_layout = gpu_controller.read_layouts(|layouts| {
             gpu_controller.create_pipeline_layout(&PipelineLayoutDescriptor {
                 label: Some("Lighting Pipeline Layout"),
                 bind_group_layouts: &[&layouts["Camera"], &layouts["Lights"], &layouts["G-Buffer"]],
                 push_constant_ranges: &[],
-            });
+            })
+        })?;
 
         let geometry_shader_module =
             gpu_controller.create_shader(include_str!("shaders/defered_3d_geom.wgsl"));
@@ -393,6 +394,10 @@ impl DeferedRenderer3D {
             contents: bytemuck::cast_slice(&[0, 1, 2]),
         });
 
+        // Clone for resizing later if needed
+        let g_buffer_bind_group_layout =
+            gpu_controller.read_layouts(|layouts| layouts["G-Buffer"].clone())?;
+
         Ok(Self {
             albedo_texture,
             position_texture,
@@ -401,7 +406,7 @@ impl DeferedRenderer3D {
             depth_texture,
             geometry_render_pipeline,
             lighting_render_pipeline,
-            g_buffer_bind_group_layout: layouts["G-Buffer"].clone(), // Clone for resizing later if needed
+            g_buffer_bind_group_layout,
             g_buffer_bind_group,
             g_buffer_sampler,
             lights_manager,

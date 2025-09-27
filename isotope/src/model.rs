@@ -264,17 +264,18 @@ impl Model {
                     contents: bytemuck::cast_slice(&[Transform3D::default()]),
                 });
 
-        let global_transform_bind_group =
+        let global_transform_bind_group = asset_server.gpu_controller.read_layouts(|layouts| {
             asset_server
                 .gpu_controller
                 .create_bind_group(&BindGroupDescriptor {
                     label: Some("Global Transform Bind Group"),
-                    layout: &asset_server.layouts["Global Transform"],
+                    layout: &layouts["Global Transform"],
                     entries: &[BindGroupEntry {
                         binding: 0,
                         resource: global_transformation_buffer.as_entire_binding(),
                     }],
-                });
+                })
+        })?;
 
         Ok(Self {
             meshes,

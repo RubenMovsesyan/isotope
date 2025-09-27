@@ -118,12 +118,12 @@ where
                             .texture
                             .create_view(&TextureViewDescriptor::default());
 
-                        let bind_group =
+                        let bind_group = asset_server.gpu_controller.read_layouts(|layouts| {
                             asset_server
                                 .gpu_controller
                                 .create_bind_group(&BindGroupDescriptor {
                                     label: Some(&format!("{} bind group", label)),
-                                    layout: &asset_server.layouts["Material"],
+                                    layout: &layouts["Material"],
                                     entries: &[
                                         BindGroupEntry {
                                             binding: 0,
@@ -142,7 +142,8 @@ where
                                             ),
                                         },
                                     ],
-                                });
+                                })
+                        })?;
 
                         current_material = Some(Material {
                             gpu_controller: asset_server.gpu_controller.clone(),
@@ -255,37 +256,39 @@ where
                         current_material.properties.texture = TRUE;
 
                         if let Some(texture) = current_material.texture.as_ref() {
-                            texture.read(|texture| {
-                                current_material.bind_group = asset_server
-                                    .gpu_controller
-                                    .create_bind_group(&BindGroupDescriptor {
-                                        label: Some(&format!(
-                                            "Material {} bind group",
-                                            current_material.label
-                                        )),
-                                        layout: &asset_server.layouts["Material"],
-                                        entries: &[
-                                            BindGroupEntry {
-                                                binding: 0,
-                                                resource: current_material
-                                                    .properties_buffer
-                                                    .as_entire_binding(),
-                                            },
-                                            BindGroupEntry {
-                                                binding: 1,
-                                                resource: BindingResource::TextureView(
-                                                    &texture.view,
-                                                ),
-                                            },
-                                            BindGroupEntry {
-                                                binding: 2,
-                                                resource: BindingResource::Sampler(
-                                                    &texture.sampler,
-                                                ),
-                                            },
-                                        ],
-                                    });
-                            });
+                            asset_server.gpu_controller.read_layouts(|layouts| {
+                                texture.read(|texture| {
+                                    current_material.bind_group = asset_server
+                                        .gpu_controller
+                                        .create_bind_group(&BindGroupDescriptor {
+                                            label: Some(&format!(
+                                                "Material {} bind group",
+                                                current_material.label
+                                            )),
+                                            layout: &layouts["Material"],
+                                            entries: &[
+                                                BindGroupEntry {
+                                                    binding: 0,
+                                                    resource: current_material
+                                                        .properties_buffer
+                                                        .as_entire_binding(),
+                                                },
+                                                BindGroupEntry {
+                                                    binding: 1,
+                                                    resource: BindingResource::TextureView(
+                                                        &texture.view,
+                                                    ),
+                                                },
+                                                BindGroupEntry {
+                                                    binding: 2,
+                                                    resource: BindingResource::Sampler(
+                                                        &texture.sampler,
+                                                    ),
+                                                },
+                                            ],
+                                        })
+                                })
+                            })?;
                         } else {
                             error!("Failed to access texture, Continuing...");
                         }
@@ -332,12 +335,12 @@ where
 
                         let material_texture = IsotopeTexture::new_empty(asset_server);
 
-                        let bind_group =
+                        let bind_group = asset_server.gpu_controller.read_layouts(|layouts| {
                             asset_server
                                 .gpu_controller
                                 .create_bind_group(&BindGroupDescriptor {
                                     label: Some(&format!("Material {} bind group", label)),
-                                    layout: &asset_server.layouts["Material"],
+                                    layout: &layouts["Material"],
                                     entries: &[
                                         BindGroupEntry {
                                             binding: 0,
@@ -356,7 +359,8 @@ where
                                             ),
                                         },
                                     ],
-                                });
+                                })
+                        })?;
 
                         current_material = Some(Material {
                             gpu_controller: asset_server.gpu_controller.clone(),

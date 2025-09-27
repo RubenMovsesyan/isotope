@@ -2,9 +2,8 @@ use std::{collections::HashMap, ops::Range, sync::Arc};
 
 use anyhow::Result;
 use gpu_controller::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferInitDescriptor,
-    BufferUsages, GpuController, ShaderStages,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
+    GpuController,
 };
 pub use light::Light;
 use log::{debug, warn};
@@ -25,10 +24,7 @@ pub struct LightsManager {
 }
 
 impl LightsManager {
-    pub fn new(
-        gpu_controller: Arc<GpuController>,
-        layouts: &HashMap<String, BindGroupLayout>,
-    ) -> Result<Self> {
+    pub fn new(gpu_controller: Arc<GpuController>) -> Result<Self> {
         // Create buffers
         let lights_buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
             label: Some("Lights Buffer"),
@@ -43,22 +39,24 @@ impl LightsManager {
         });
 
         // Create the bind group
-        let bind_group = gpu_controller.create_bind_group(&BindGroupDescriptor {
-            label: Some("Lighting Bind Group"),
-            layout: &layouts["Lights"],
-            entries: &[
-                // Lights Buffer
-                BindGroupEntry {
-                    binding: 0,
-                    resource: lights_buffer.as_entire_binding(),
-                },
-                // Number of Lights
-                BindGroupEntry {
-                    binding: 1,
-                    resource: num_lights_buffer.as_entire_binding(),
-                },
-            ],
-        });
+        let bind_group = gpu_controller.read_layouts(|layouts| {
+            gpu_controller.create_bind_group(&BindGroupDescriptor {
+                label: Some("Lighting Bind Group"),
+                layout: &layouts["Lights"],
+                entries: &[
+                    // Lights Buffer
+                    BindGroupEntry {
+                        binding: 0,
+                        resource: lights_buffer.as_entire_binding(),
+                    },
+                    // Number of Lights
+                    BindGroupEntry {
+                        binding: 1,
+                        resource: num_lights_buffer.as_entire_binding(),
+                    },
+                ],
+            })
+        })?;
 
         Ok(Self {
             gpu_controller,

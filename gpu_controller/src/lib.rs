@@ -34,6 +34,7 @@ const DESIRED_MAX_FRAME_LATENCY: u32 = 2;
 
 use std::{
     borrow::Cow,
+    collections::HashMap,
     sync::{Arc, RwLock},
 };
 
@@ -102,6 +103,7 @@ pub struct GpuController {
 
     // Interior Mutability
     surface_configuration: RwLock<SurfaceConfiguration>,
+    layouts: RwLock<HashMap<String, BindGroupLayout>>,
 }
 
 impl GpuController {
@@ -196,12 +198,15 @@ impl GpuController {
         };
         info!("Surface Configuration Initialized");
 
+        let layouts = RwLock::new(HashMap::new());
+
         Ok(Arc::new(Self {
             instance,
             adapter,
             device,
             queue,
             surface_configuration,
+            layouts,
         }))
     }
 
@@ -323,6 +328,28 @@ impl GpuController {
             Ok(callback(&mut surface_config))
         } else {
             Err(anyhow!("Failed to write surface configuration"))
+        }
+    }
+
+    pub fn read_layouts<F, R>(&self, callback: F) -> Result<R>
+    where
+        F: FnOnce(&HashMap<String, BindGroupLayout>) -> R,
+    {
+        if let Ok(layouts) = self.layouts.read() {
+            Ok(callback(&layouts))
+        } else {
+            Err(anyhow!("Failed to read layouts"))
+        }
+    }
+
+    pub fn write_layouts<F, R>(&self, callback: F) -> Result<R>
+    where
+        F: FnOnce(&mut HashMap<String, BindGroupLayout>) -> R,
+    {
+        if let Ok(mut layouts) = self.layouts.write() {
+            Ok(callback(&mut layouts))
+        } else {
+            Err(anyhow!("Failed to write layouts"))
         }
     }
 

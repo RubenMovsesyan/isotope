@@ -18,14 +18,8 @@ pub enum Renderer {
 }
 
 impl Renderer {
-    pub fn new_defered_3d(
-        gpu_controller: Arc<GpuController>,
-        layouts: &HashMap<String, BindGroupLayout>,
-    ) -> Result<Self> {
-        Ok(Self::Defered3D(DeferedRenderer3D::new(
-            gpu_controller,
-            layouts,
-        )?))
+    pub fn new_defered_3d(gpu_controller: Arc<GpuController>) -> Result<Self> {
+        Ok(Self::Defered3D(DeferedRenderer3D::new(gpu_controller)?))
     }
 
     pub fn update_lights(&mut self, lights: &[Light]) {
