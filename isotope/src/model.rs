@@ -1,14 +1,17 @@
 use std::{
     fs::File,
     io::{BufRead, BufReader},
+    ops::Range,
     path::Path,
+    sync::Arc,
 };
 
 use anyhow::{Result, anyhow};
 use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
 use gpu_controller::{
-    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
-    INSTANCE_BUFFER_INDEX, Instance, Mesh, RenderPass, Vertex,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferInitDescriptor,
+    BufferUsages, GpuController, INSTANCE_BUFFER_INDEX, Instance, MaintainBase, MapMode, Mesh,
+    RenderPass, Vertex,
 };
 use log::{debug, info};
 use matter_vault::SharedMatter;
@@ -20,18 +23,23 @@ use crate::{
     material::{Material, load_materials},
 };
 
+const INSTANCE_SIZE: u64 = std::mem::size_of::<Instance>() as u64;
+
 type Position = [f32; 3];
 type Normal = [f32; 3];
 type UV = [f32; 2];
 
 pub struct Model {
+    gpu_controller: Arc<GpuController>,
     meshes: Vec<(Option<usize>, SharedMatter<Mesh>)>,
     materials: Vec<SharedMatter<Material>>,
 
     global_transform_bind_group: BindGroup,
     global_transformation_buffer: Buffer,
     instance_buffer: Buffer,
-    num_instaces: u32,
+    num_instances: u32,
+
+    instance_staging_buffer: Buffer,
 }
 
 impl Model {
@@ -223,7 +231,7 @@ impl Model {
         }
 
         // Create the instance buffer for the model
-        let (instance_buffer, num_instaces) = if let Some(instances) = instances {
+        let (instance_buffer, num_instances) = if let Some(instances) = instances {
             (
                 asset_server
                     .gpu_controller
@@ -255,6 +263,19 @@ impl Model {
             )
         };
 
+        let instance_staging_buffer =
+            asset_server
+                .gpu_controller
+                .create_buffer(&BufferDescriptor {
+                    label: Some("Model Instance Staging Buffer"),
+                    size: num_instances as u64 * INSTANCE_SIZE,
+                    usage: BufferUsages::MAP_READ
+                        | BufferUsages::MAP_WRITE
+                        | BufferUsages::COPY_SRC
+                        | BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+
         let global_transformation_buffer =
             asset_server
                 .gpu_controller
@@ -278,12 +299,14 @@ impl Model {
         })?;
 
         Ok(Self {
+            gpu_controller: asset_server.gpu_controller.clone(),
             meshes,
             materials,
             instance_buffer,
             global_transform_bind_group,
             global_transformation_buffer,
-            num_instaces,
+            num_instances,
+            instance_staging_buffer,
         })
     }
 
@@ -305,8 +328,58 @@ impl Model {
                 render_pass
                     .set_vertex_buffer(INSTANCE_BUFFER_INDEX, self.instance_buffer.slice(..));
 
-                mesh.render(render_pass, self.num_instaces);
+                mesh.render(render_pass, self.num_instances);
             });
         }
+    }
+
+    pub fn modify_instances<F>(&self, range: Option<Range<u64>>, callback: F) -> Result<()>
+    where
+        F: FnOnce(&mut [Instance]),
+    {
+        let range = range.unwrap_or(0..self.num_instances as u64);
+        let byte_range = (range.start * INSTANCE_SIZE)..(range.end * INSTANCE_SIZE);
+
+        // Copy the instance buffer to mappable buffer
+        let mut encoder = self
+            .gpu_controller
+            .create_command_encoder("Instance Update Copy To");
+        encoder.copy_buffer_to_buffer(
+            &self.instance_buffer,
+            byte_range.start,
+            &self.instance_staging_buffer,
+            byte_range.start,
+            byte_range.end - byte_range.start,
+        );
+        self.gpu_controller.submit(encoder);
+        self.gpu_controller.poll(MaintainBase::Wait)?;
+
+        // Map the buffer for the CPU to read
+        let buffer_slice = self.instance_staging_buffer.slice(byte_range.clone());
+        buffer_slice.map_async(MapMode::Write, |_| {});
+        self.gpu_controller.poll(MaintainBase::Wait)?;
+
+        {
+            let mut mapped_data = buffer_slice.get_mapped_range_mut();
+            let instances = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data);
+            callback(instances);
+        }
+
+        self.instance_staging_buffer.unmap();
+
+        // Copy the data back
+        let mut encoder = self
+            .gpu_controller
+            .create_command_encoder("Instance Update Copy Back");
+        encoder.copy_buffer_to_buffer(
+            &self.instance_staging_buffer,
+            byte_range.start,
+            &self.instance_buffer,
+            byte_range.start,
+            byte_range.end - byte_range.start,
+        );
+        self.gpu_controller.submit(encoder);
+
+        Ok(())
     }
 }

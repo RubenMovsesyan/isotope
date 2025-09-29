@@ -1,3 +1,4 @@
+use cgmath::{Matrix4, Quaternion, Vector3};
 use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode};
 
 use crate::Buffered;
@@ -26,6 +27,30 @@ impl Instance {
             orientation: orientation.into(),
             scale: scale.into(),
         }
+    }
+
+    pub fn pos<F, R>(&mut self, callback: F) -> R
+    where
+        F: FnOnce(&mut Vector3<f32>) -> R,
+    {
+        let pos_ref = unsafe { &mut *(self.position.as_mut_ptr() as *mut Vector3<f32>) };
+        callback(pos_ref)
+    }
+
+    pub fn orient<F, R>(&mut self, callback: F) -> R
+    where
+        F: FnOnce(&mut Quaternion<f32>) -> R,
+    {
+        let rot_ref = unsafe { &mut *(self.orientation.as_mut_ptr() as *mut Quaternion<f32>) };
+        callback(rot_ref)
+    }
+
+    pub fn scale<F, R>(&mut self, callback: F) -> R
+    where
+        F: FnOnce(&mut Scale) -> R,
+    {
+        // let scale_ref = unsafe { &mut *(self.scale.as_mut_ptr() as *mut Matrix4<f32>) };
+        callback(&mut self.scale)
     }
 }
 

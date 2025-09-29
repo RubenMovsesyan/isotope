@@ -11,7 +11,7 @@ pub use compound::Compound;
 pub use elements::*;
 pub use gpu_controller::Instance;
 use gpu_controller::{
-    CompositeAlphaMode, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,
+    CompositeAlphaMode, Features, GpuController, PresentMode, SurfaceConfiguration, TextureFormat,
     TextureUsages,
 };
 pub use log::*;
@@ -110,17 +110,18 @@ impl Isotope {
 
             debug!("Isotope has started running! Starting State Thread...");
 
-            let mut delta_t = Instant::now();
+            let mut last_frame_time = Instant::now();
 
             loop {
+                let now = Instant::now();
+                let dt = now.duration_since(last_frame_time).as_secs_f32();
+                last_frame_time = now;
+
                 if let Ok(mut state) = state_state.write() {
-                    let dt = delta_t.elapsed().as_secs_f32();
                     let t = state_time.elapsed().as_secs_f32();
 
                     state.update(&state_ecs, &state_asset_server, dt, t);
                 }
-
-                delta_t = Instant::now();
 
                 if let Ok(running) = state_state_running.read() {
                     if !*running {
@@ -162,7 +163,7 @@ impl IsotopeApplication {
     {
         info!("Creating Gpu Controller");
         let gpu_controller = block_on(GpuController::new(
-            None,
+            Some(Features::MAPPABLE_PRIMARY_BUFFERS),
             None,
             Some(SurfaceConfiguration {
                 usage: TextureUsages::RENDER_ATTACHMENT,

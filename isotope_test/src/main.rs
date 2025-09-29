@@ -62,6 +62,20 @@ impl IsotopeState for GameState {
             });
         });
 
+        ecs.iter_mol(|_entity, model: &Model| {
+            _ = model.modify_instances(None, |model_instance| {
+                for instance in model_instance.iter_mut() {
+                    instance.pos(|pos| {
+                        if pos.y >= 20.0 {
+                            pos.y = -20.0;
+                        }
+
+                        pos.y += (f32::abs(pos.x) + f32::abs(pos.z)) * delta_t;
+                    })
+                }
+            });
+        });
+
         if self.window_focused {
             ecs.iter_mut_duo(
                 |_entity, camera: &mut Camera, transform: &mut Transform3D| {
