@@ -52,6 +52,15 @@ impl Instance {
         // let scale_ref = unsafe { &mut *(self.scale.as_mut_ptr() as *mut Matrix4<f32>) };
         callback(&mut self.scale)
     }
+
+    pub fn transform<F, R>(&mut self, callback: F) -> R
+    where
+        F: FnOnce(&mut Vector3<f32>, &mut Quaternion<f32>, &mut Scale) -> R,
+    {
+        let pos_ref = unsafe { &mut *(self.position.as_mut_ptr() as *mut Vector3<f32>) };
+        let rot_ref = unsafe { &mut *(self.orientation.as_mut_ptr() as *mut Quaternion<f32>) };
+        callback(pos_ref, rot_ref, &mut self.scale)
+    }
 }
 
 impl Buffered for Instance {

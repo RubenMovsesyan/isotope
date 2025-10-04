@@ -71,7 +71,12 @@ impl IsotopeState for GameState {
                         }
 
                         pos.y += (f32::abs(pos.x) + f32::abs(pos.z)) * delta_t;
-                    })
+                    });
+
+                    instance.transform(|pos, orient, _scale| {
+                        *orient =
+                            Quaternion::from_axis_angle(Vector3::unit_y(), Deg((20.0 - pos.x) * t));
+                    });
                 }
             });
         });
