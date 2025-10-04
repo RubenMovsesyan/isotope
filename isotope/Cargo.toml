@@ -8,6 +8,7 @@ photon = { path = "../photon" }
 gpu_controller = { path = "../gpu_controller" }
 matter_vault = { path = "../matter_vault" }
 compound = { path = "../compound" }
+boson = { path = "../boson" }
 winit = "0.30.11"
 log = "0.4.27"
 anyhow = "1.0.98"

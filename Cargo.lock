@@ -377,6 +377,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "boson"
+version = "0.1.0"
+dependencies = [
+ "cgmath",
+ "gpu_controller",
+ "log",
+]
+
+[[package]]
 name = "built"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1094,6 +1103,7 @@ name = "isotope"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "boson",
  "bytemuck",
  "cgmath",
  "compound",

@@ -32,7 +32,10 @@ impl IsotopeState for GameState {
 
         match Model::from_obj("test_files/monkey.obj", assets, Some(&instances)) {
             Ok(model) => {
-                ecs.spawn((model,));
+                ecs.spawn((
+                    model,
+                    BosonObject::new(BosonBody::PointMass(PointMass::new(20.0))),
+                ));
             }
             Err(err) => {
                 error!("Failed to load model: {}", err);

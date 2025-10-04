@@ -6,6 +6,8 @@ use std::{
 
 use anyhow::Result;
 pub use asset_server::AssetServer;
+use boson::Boson;
+pub use boson::{BosonBody, BosonObject, PointMass, RigidBody, StaticCollider};
 pub use cgmath::*;
 pub use compound::Compound;
 pub use elements::*;
@@ -54,6 +56,9 @@ pub struct Isotope {
     // State for interacting with the engine
     state: Arc<RwLock<dyn IsotopeState>>,
 
+    // Physics Engine
+    boson: Arc<RwLock<Boson>>,
+
     // ============== Multi-Threading ==============
     state_thread: (Arc<RwLock<bool>>, JoinHandle<()>),
 
@@ -80,6 +85,9 @@ impl Isotope {
         let time = Arc::new(Instant::now());
         let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
 
+        // Initialize the physics engine
+        let boson = Arc::new(RwLock::new(Boson::new(gpu_controller.clone())));
+
         // Initialize the game state and start the update thread
         state.init(&compound, &asset_server);
         let state = Arc::new(RwLock::new(state));
@@ -92,6 +100,7 @@ impl Isotope {
         let state_time = time.clone();
         let state_state_running = state_running.clone();
         let state_tick_rate = tick_rate.clone();
+        let state_boson = boson.clone();
         let state_thread_handle = std::thread::spawn(move || {
             info!("Running State Update Thread");
 
@@ -123,6 +132,14 @@ impl Isotope {
                     state.update(&state_ecs, &state_asset_server, dt, t);
                 }
 
+                // Add any new boson objects
+                state_ecs.iter_mol_mod(|_entity, boson_object: &BosonObject| {
+                    if let Ok(mut boson) = state_boson.write() {
+                        info!("Adding Boson Object");
+                        boson.add_object(boson_object);
+                    }
+                });
+
                 if let Ok(running) = state_state_running.read() {
                     if !*running {
                         warn!("State Update Thread Exiting....");
@@ -140,8 +157,8 @@ impl Isotope {
             photon,
             asset_server,
             compound,
-            // camera,
             state,
+            boson,
             running,
             time,
             tick_rate,
