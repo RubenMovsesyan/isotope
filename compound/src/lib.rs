@@ -14,17 +14,24 @@
 //! All operations in this ECS are thread-safe through the use of `RwLock`s and atomic operations.
 //! Multiple threads can read/write different component types simultaneously without blocking each other.
 
+const MAX_LOCK_TIMEOUT: Duration = Duration::from_millis(50);
+const SECOND_ATTEMPT_MAX_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
+const MAX_WRITE_ATTEMPTS: u32 = 5;
+
 use std::{
     any::{Any, TypeId},
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
-        Arc, RwLock,
+        Arc,
         atomic::{AtomicU64, Ordering},
     },
+    time::Duration,
 };
 
-use log::warn;
+use parking_lot::RwLock;
+
+use log::{debug, error, warn};
 
 /// Internal component that tracks whether an entity has been modified.
 ///
@@ -130,11 +137,13 @@ impl<T: Send + Sync + 'static> MoleculeCell<T> {
     /// This method should not panic under normal circumstances as it handles
     /// poisoned locks gracefully.
     fn read(&self) -> impl Deref<Target = T> + '_ {
-        match self.data.read() {
-            Ok(data) => data,
-            Err(poisoned) => {
-                warn!("Molecule Cell Poisoned... Recovering");
-                poisoned.into_inner()
+        match self.data.try_read_for(MAX_LOCK_TIMEOUT) {
+            Some(data) => data,
+            None => {
+                warn!("Read lock timeout - potential deadlock avoided");
+                self.data
+                    .try_read_for(SECOND_ATTEMPT_MAX_LOCK_TIMEOUT)
+                    .expect("Failed to acquire read lock after extended timeout")
             }
         }
     }
@@ -152,13 +161,26 @@ impl<T: Send + Sync + 'static> MoleculeCell<T> {
     /// This method should not panic under normal circumstances as it handles
     /// poisoned locks gracefully.
     fn write(&self) -> impl DerefMut<Target = T> + '_ {
-        match self.data.write() {
-            Ok(data) => data,
-            Err(poisoned) => {
-                warn!("Molecule Cell Poisoned... Recovering");
-                poisoned.into_inner()
-            }
+        if let Some(data) = self.data.try_write_for(MAX_LOCK_TIMEOUT) {
+            return data;
         }
+
+        warn!("Write lock contention detected, retrying...");
+
+        for attempt in 1..=MAX_WRITE_ATTEMPTS {
+            let timeout = Duration::from_millis(100 * attempt as u64);
+            if let Some(data) = self.data.try_write_for(timeout) {
+                if attempt > 1 {
+                    debug!("Write lock acqured after {} attempts", attempt);
+                }
+
+                return data;
+            }
+            warn!("Write lock timeout attempt {}/5", attempt);
+        }
+
+        error!("Using blocking write lock after all timeouts failed - potential deadlock risk");
+        self.data.write()
     }
 }
 
@@ -281,13 +303,14 @@ impl Compound {
     /// - It ensures the storage exists before accessing it
     /// - Type safety is maintained through TypeId
     fn get_or_create_storage<T: Send + Sync + 'static>(&self) -> Arc<RwLock<MoleculeStorage<T>>> {
-        let mut storages = match self.storages.write() {
-            Ok(storages) => storages,
-            Err(poisoned) => {
-                warn!("Compound Storages Poisoned... Recovering");
-                poisoned.into_inner()
-            }
-        };
+        // let mut storages = match self.storages.write() {
+        //     Ok(storages) => storages,
+        //     Err(poisoned) => {
+        //         warn!("Compound Storages Poisoned... Recovering");
+        //         poisoned.into_inner()
+        //     }
+        // };
+        let mut storages = self.storages.write();
 
         let type_id = TypeId::of::<T>();
 
@@ -321,13 +344,14 @@ impl Compound {
     /// without ensuring the storage exists will cause undefined behavior.
     /// Use `get_or_create_storage` for safe access.
     unsafe fn get_storage<T: Send + Sync + 'static>(&self) -> Arc<RwLock<MoleculeStorage<T>>> {
-        let storages = match self.storages.read() {
-            Ok(storages) => storages,
-            Err(poisoned) => {
-                warn!("Compound Storages Poisoned... Recovering");
-                poisoned.into_inner()
-            }
-        };
+        // let storages = match self.storages.read() {
+        //     Ok(storages) => storages,
+        //     Err(poisoned) => {
+        //         warn!("Compound Storages Poisoned... Recovering");
+        //         poisoned.into_inner()
+        //     }
+        // };
+        let storages = self.storages.read();
 
         let type_id = TypeId::of::<T>();
 
@@ -364,13 +388,13 @@ impl Compound {
     /// compound.add_molecule(entity, Name("Player".to_string()));
     /// ```
     pub fn add_molecule<T: Send + Sync + 'static>(&self, entity: Entity, molecule: T) {
-        unsafe {
-            self.get_or_create_storage::<T>()
-                .write()
-                .unwrap_unchecked()
-                .compounds
-                .insert(entity, MoleculeCell::new(molecule));
-        };
+        // unsafe {
+        self.get_or_create_storage::<T>()
+            .write()
+            // .unwrap_unchecked()
+            .compounds
+            .insert(entity, MoleculeCell::new(molecule));
+        // };
     }
 
     /// Adds multiple components to an entity using a bundle.
@@ -453,13 +477,14 @@ impl Compound {
         F: FnMut(Entity, &T) + Send + Sync,
     {
         let storage = self.get_or_create_storage::<T>();
-        let storage_guard = match storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        // let storage_guard = match storage.read() {
+        //     Ok(guard) => guard,
+        //     Err(poisoned) => {
+        //         warn!("Storage poisoned, recovering...");
+        //         poisoned.into_inner()
+        //     }
+        // };
+        let storage_guard = storage.read();
 
         for (entity, cell) in &storage_guard.compounds {
             let data = cell.read();
@@ -510,22 +535,24 @@ impl Compound {
         F: FnMut(Entity, &T) + Send + Sync,
     {
         let storage = self.get_or_create_storage::<T>();
-        let storage_guard = match storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        // let storage_guard = match storage.read() {
+        //     Ok(guard) => guard,
+        //     Err(poisoned) => {
+        //         warn!("Storage poisoned, recovering...");
+        //         poisoned.into_inner()
+        //     }
+        // };
+        let storage_guard = storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        // let modified_storage_guard = match modified_storage.read() {
+        //     Ok(guard) => guard,
+        //     Err(poisoned) => {
+        //         warn!("Storage poisoned, recovering...");
+        //         poisoned.into_inner()
+        //     }
+        // };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, cell) in &storage_guard.compounds {
             if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
@@ -567,22 +594,10 @@ impl Compound {
         F: FnMut(Entity, &T) + Send + Sync,
     {
         let t_storage = self.get_or_create_storage::<T>();
-        let t_storage_guard = match t_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t_storage_guard = t_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         for (entity, t_cell) in &t_storage_guard.compounds {
             if let Some(_) = w_storage_guard.compounds.get(entity) {
@@ -629,31 +644,13 @@ impl Compound {
         F: FnMut(Entity, &T) + Send + Sync,
     {
         let t_storage = self.get_or_create_storage::<T>();
-        let t_storage_guard = match t_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t_storage_guard = t_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t_cell) in &t_storage_guard.compounds {
             if let Some(_) = w_storage_guard.compounds.get(entity) {
@@ -696,22 +693,10 @@ impl Compound {
         F: FnMut(Entity, &mut T) + Send + Sync,
     {
         let storage = self.get_or_create_storage::<T>();
-        let storage_guard = match storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let storage_guard = storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, cell) in &storage_guard.compounds {
             // Set the modified flag for the entity
@@ -763,22 +748,10 @@ impl Compound {
         F: FnMut(Entity, &mut T) + Send + Sync,
     {
         let storage = self.get_or_create_storage::<T>();
-        let storage_guard = match storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let storage_guard = storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, cell) in &storage_guard.compounds {
             if let Some(modified_flag) = modified_storage_guard.compounds.get(entity) {
@@ -819,31 +792,13 @@ impl Compound {
         F: FnMut(Entity, &mut T) + Send + Sync,
     {
         let t_storage = self.get_or_create_storage::<T>();
-        let t_storage_guard = match t_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t_storage_guard = t_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t_cell) in &t_storage_guard.compounds {
             if let Some(_) = w_storage_guard.compounds.get(entity) {
@@ -892,31 +847,13 @@ impl Compound {
         F: FnMut(Entity, &mut T) + Send + Sync,
     {
         let t_storage = self.get_or_create_storage::<T>();
-        let t_storage_guard = match t_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t_storage_guard = t_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t_cell) in &t_storage_guard.compounds {
             if let Some(_) = w_storage_guard.compounds.get(entity) {
@@ -965,21 +902,9 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1024,30 +949,12 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1098,30 +1005,12 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1173,39 +1062,15 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1255,30 +1120,12 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1331,30 +1178,12 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1407,39 +1236,15 @@ impl Compound {
         let t1_storage = self.get_or_create_storage::<T1>();
         let t2_storage = self.get_or_create_storage::<T2>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1500,29 +1305,11 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t3_storage_guard = t3_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1578,38 +1365,14 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t3_storage_guard = t3_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1674,36 +1437,12 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
+        let t2_storage_guard = t2_storage.read();
+        let t3_storage_guard = t3_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1764,47 +1503,17 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t3_storage_guard = t3_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1880,38 +1589,14 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t3_storage_guard = t3_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -1980,38 +1665,14 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
 
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t2_storage_guard = t2_storage.read();
 
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t3_storage_guard = t3_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -2086,45 +1747,15 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
+        let t2_storage_guard = t2_storage.read();
+        let t3_storage_guard = t3_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -2199,45 +1830,15 @@ impl Compound {
         let t2_storage = self.get_or_create_storage::<T2>();
         let t3_storage = self.get_or_create_storage::<T3>();
 
-        let t1_storage_guard = match t1_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t2_storage_guard = match t2_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
-        let t3_storage_guard = match t3_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let t1_storage_guard = t1_storage.read();
+        let t2_storage_guard = t2_storage.read();
+        let t3_storage_guard = t3_storage.read();
 
         let w_storage = self.get_or_create_storage::<W>();
-        let w_storage_guard = match w_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let w_storage_guard = w_storage.read();
 
         let modified_storage = self.get_or_create_storage::<Modified>();
-        let modified_storage_guard = match modified_storage.read() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                warn!("Storage poisoned, recovering...");
-                poisoned.into_inner()
-            }
-        };
+        let modified_storage_guard = modified_storage.read();
 
         for (entity, t1_cell) in &t1_storage_guard.compounds {
             if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
@@ -2523,10 +2124,10 @@ mod ecs_test {
         let compound = Arc::new(RwLock::new(Compound::new()));
         let running = Arc::new(RwLock::new(false));
 
-        let cat = compound.write().unwrap().create_entity();
-        let dog = compound.write().unwrap().create_entity();
+        let cat = compound.write().create_entity();
+        let dog = compound.write().create_entity();
 
-        compound.read().unwrap().add_molecule(
+        compound.read().add_molecule(
             cat,
             Label {
                 name: "John".to_string(),
@@ -2534,7 +2135,7 @@ mod ecs_test {
             },
         );
 
-        compound.read().unwrap().add_molecule(
+        compound.read().add_molecule(
             cat,
             Whiskers {
                 color: "Black".to_string(),
@@ -2542,7 +2143,7 @@ mod ecs_test {
             },
         );
 
-        compound.read().unwrap().add_molecule(
+        compound.read().add_molecule(
             dog,
             Label {
                 name: "Sparky".to_string(),
@@ -2550,7 +2151,7 @@ mod ecs_test {
             },
         );
 
-        compound.read().unwrap().add_molecule(
+        compound.read().add_molecule(
             dog,
             Collar {
                 name: "Sparky".to_string(),
@@ -2562,9 +2163,9 @@ mod ecs_test {
         let running_clone = running.clone();
 
         let other_thread = thread::spawn(move || {
-            let snake = compound_other_thread.write().unwrap().create_entity();
+            let snake = compound_other_thread.write().create_entity();
 
-            compound_other_thread.read().unwrap().add_molecule(
+            compound_other_thread.read().add_molecule(
                 snake,
                 Label {
                     name: "Snivvy".to_string(),
@@ -2572,7 +2173,7 @@ mod ecs_test {
                 },
             );
 
-            compound_other_thread.read().unwrap().add_molecule(
+            compound_other_thread.read().add_molecule(
                 snake,
                 Collar {
                     name: "Snivvy".to_string(),
@@ -2580,12 +2181,11 @@ mod ecs_test {
                 },
             );
 
-            *running_clone.write().unwrap() = true;
+            *running_clone.write() = true;
 
             for _ in 0..1000 {
                 compound_other_thread
                     .read()
-                    .unwrap()
                     .iter_mut_mol(|_entity, label: &mut Label| {
                         label.id += 1;
                         println!("Label From other thread: {} {}", label.name, label.id);
@@ -2593,11 +2193,12 @@ mod ecs_test {
             }
         });
 
-        while !*running.read().unwrap() {}
+        while !*running.read() {}
 
         for _ in 0..1000 {
-            compound.read().unwrap().iter_mut_duo(
-                |_entity, label: &mut Label, collar: &mut Collar| {
+            compound
+                .read()
+                .iter_mut_duo(|_entity, label: &mut Label, collar: &mut Collar| {
                     if label.id > 101 {
                         label.id = 101;
                     }
@@ -2606,8 +2207,7 @@ mod ecs_test {
                         "Collar: {} {}, Id: {}",
                         collar.name, collar.address, label.id
                     );
-                },
-            );
+                });
         }
 
         _ = other_thread.join();
