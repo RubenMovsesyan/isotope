@@ -20,6 +20,7 @@ const MAX_WRITE_ATTEMPTS: u32 = 5;
 
 use std::{
     any::{Any, TypeId},
+    cmp::min,
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
@@ -1134,8 +1135,24 @@ impl Compound {
                     modified_flag.write().set_modified();
                 }
 
-                let mut t1_data = t1_cell.write();
-                let mut t2_data = t2_cell.write();
+                // Lock aquisition ordering to prevent deadlocks
+                let (mut t1_data, mut t2_data) = {
+                    let t1_id = TypeId::of::<T1>();
+                    let t2_id = TypeId::of::<T2>();
+
+                    if t1_id <= t2_id {
+                        let t1_data = t1_cell.write();
+                        let t2_data = t2_cell.write();
+
+                        (t1_data, t2_data)
+                    } else {
+                        let t2_data = t2_cell.write();
+                        let t1_data = t1_cell.write();
+
+                        (t1_data, t2_data)
+                    }
+                };
+
                 f(*entity, &mut *t1_data, &mut *t2_data);
             }
         }
@@ -1192,8 +1209,24 @@ impl Compound {
                     let mut modified_flag = modified_flag.write();
 
                     if modified_flag.is_modified() {
-                        let mut t1_data = t1_cell.write();
-                        let mut t2_data = t2_cell.write();
+                        // Lock aquisition ordering to prevent deadlocks
+                        let (mut t1_data, mut t2_data) = {
+                            let t1_id = TypeId::of::<T1>();
+                            let t2_id = TypeId::of::<T2>();
+
+                            if t1_id <= t2_id {
+                                let t1_data = t1_cell.write();
+                                let t2_data = t2_cell.write();
+
+                                (t1_data, t2_data)
+                            } else {
+                                let t2_data = t2_cell.write();
+                                let t1_data = t1_cell.write();
+
+                                (t1_data, t2_data)
+                            }
+                        };
+
                         f(*entity, &mut *t1_data, &mut *t2_data);
                         modified_flag.clear_modified();
                     }
@@ -1255,8 +1288,23 @@ impl Compound {
                         modified_flag.write().set_modified();
                     }
 
-                    let mut t1_data = t1_cell.write();
-                    let mut t2_data = t2_cell.write();
+                    // Lock aquisition ordering to prevent deadlocks
+                    let (mut t1_data, mut t2_data) = {
+                        let t1_id = TypeId::of::<T1>();
+                        let t2_id = TypeId::of::<T2>();
+
+                        if t1_id <= t2_id {
+                            let t1_data = t1_cell.write();
+                            let t2_data = t2_cell.write();
+
+                            (t1_data, t2_data)
+                        } else {
+                            let t2_data = t2_cell.write();
+                            let t1_data = t1_cell.write();
+
+                            (t1_data, t2_data)
+                        }
+                    };
 
                     f(*entity, &mut *t1_data, &mut *t2_data);
                 }
@@ -1606,9 +1654,48 @@ impl Compound {
                         modified_flag.write().set_modified();
                     }
 
-                    let mut t1_data = t1_cell.write();
-                    let mut t2_data = t2_cell.write();
-                    let mut t3_data = t3_cell.write();
+                    // Lock aquisition ordering to prevent deadlocks
+                    let (mut t1_data, mut t2_data, mut t3_data) = {
+                        let t1_id = TypeId::of::<T1>();
+                        let t2_id = TypeId::of::<T2>();
+                        let t3_id = TypeId::of::<T3>();
+
+                        let total_min = min(t1_id, min(t2_id, t3_id));
+                        if t1_id == total_min {
+                            let t1_data = t1_cell.write();
+                            if t2_id == min(t2_id, t3_id) {
+                                let t2_data = t2_cell.write();
+                                let t3_data = t3_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t3_data = t3_cell.write();
+                                let t2_data = t2_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        } else if t2_id == total_min {
+                            let t2_data = t2_cell.write();
+                            if t3_id == min(t1_id, t3_id) {
+                                let t3_data = t3_cell.write();
+                                let t1_data = t1_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t1_data = t1_cell.write();
+                                let t3_data = t3_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        } else {
+                            let t3_data = t3_cell.write();
+                            if t1_id == min(t1_id, t2_id) {
+                                let t1_data = t1_cell.write();
+                                let t2_data = t2_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t2_data = t2_cell.write();
+                                let t1_data = t1_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        }
+                    };
 
                     f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                 }
@@ -1681,9 +1768,48 @@ impl Compound {
                         let mut modified_flag = modified_flag.write();
 
                         if modified_flag.is_modified() {
-                            let mut t1_data = t1_cell.write();
-                            let mut t2_data = t2_cell.write();
-                            let mut t3_data = t3_cell.write();
+                            // Lock aquisition ordering to prevent deadlocks
+                            let (mut t1_data, mut t2_data, mut t3_data) = {
+                                let t1_id = TypeId::of::<T1>();
+                                let t2_id = TypeId::of::<T2>();
+                                let t3_id = TypeId::of::<T3>();
+
+                                let total_min = min(t1_id, min(t2_id, t3_id));
+                                if t1_id == total_min {
+                                    let t1_data = t1_cell.write();
+                                    if t2_id == min(t2_id, t3_id) {
+                                        let t2_data = t2_cell.write();
+                                        let t3_data = t3_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    } else {
+                                        let t3_data = t3_cell.write();
+                                        let t2_data = t2_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    }
+                                } else if t2_id == total_min {
+                                    let t2_data = t2_cell.write();
+                                    if t3_id == min(t1_id, t3_id) {
+                                        let t3_data = t3_cell.write();
+                                        let t1_data = t1_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    } else {
+                                        let t1_data = t1_cell.write();
+                                        let t3_data = t3_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    }
+                                } else {
+                                    let t3_data = t3_cell.write();
+                                    if t1_id == min(t1_id, t2_id) {
+                                        let t1_data = t1_cell.write();
+                                        let t2_data = t2_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    } else {
+                                        let t2_data = t2_cell.write();
+                                        let t1_data = t1_cell.write();
+                                        (t1_data, t2_data, t3_data)
+                                    }
+                                }
+                            };
 
                             f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                             modified_flag.clear_modified();
@@ -1767,9 +1893,48 @@ impl Compound {
                             modified_flag.write().set_modified();
                         }
 
-                        let mut t1_data = t1_cell.write();
-                        let mut t2_data = t2_cell.write();
-                        let mut t3_data = t3_cell.write();
+                        // Lock aquisition ordering to prevent deadlocks
+                        let (mut t1_data, mut t2_data, mut t3_data) = {
+                            let t1_id = TypeId::of::<T1>();
+                            let t2_id = TypeId::of::<T2>();
+                            let t3_id = TypeId::of::<T3>();
+
+                            let total_min = min(t1_id, min(t2_id, t3_id));
+                            if t1_id == total_min {
+                                let t1_data = t1_cell.write();
+                                if t2_id == min(t2_id, t3_id) {
+                                    let t2_data = t2_cell.write();
+                                    let t3_data = t3_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t3_data = t3_cell.write();
+                                    let t2_data = t2_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            } else if t2_id == total_min {
+                                let t2_data = t2_cell.write();
+                                if t3_id == min(t1_id, t3_id) {
+                                    let t3_data = t3_cell.write();
+                                    let t1_data = t1_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t1_data = t1_cell.write();
+                                    let t3_data = t3_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            } else {
+                                let t3_data = t3_cell.write();
+                                if t1_id == min(t1_id, t2_id) {
+                                    let t1_data = t1_cell.write();
+                                    let t2_data = t2_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t2_data = t2_cell.write();
+                                    let t1_data = t1_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            }
+                        };
 
                         f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                     }
@@ -1849,9 +2014,48 @@ impl Compound {
                             let mut modified_flag = modified_flag.write();
 
                             if modified_flag.is_modified() {
-                                let mut t1_data = t1_cell.write();
-                                let mut t2_data = t2_cell.write();
-                                let mut t3_data = t3_cell.write();
+                                // Lock aquisition ordering to prevent deadlocks
+                                let (mut t1_data, mut t2_data, mut t3_data) = {
+                                    let t1_id = TypeId::of::<T1>();
+                                    let t2_id = TypeId::of::<T2>();
+                                    let t3_id = TypeId::of::<T3>();
+
+                                    let total_min = min(t1_id, min(t2_id, t3_id));
+                                    if t1_id == total_min {
+                                        let t1_data = t1_cell.write();
+                                        if t2_id == min(t2_id, t3_id) {
+                                            let t2_data = t2_cell.write();
+                                            let t3_data = t3_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        } else {
+                                            let t3_data = t3_cell.write();
+                                            let t2_data = t2_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        }
+                                    } else if t2_id == total_min {
+                                        let t2_data = t2_cell.write();
+                                        if t3_id == min(t1_id, t3_id) {
+                                            let t3_data = t3_cell.write();
+                                            let t1_data = t1_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        } else {
+                                            let t1_data = t1_cell.write();
+                                            let t3_data = t3_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        }
+                                    } else {
+                                        let t3_data = t3_cell.write();
+                                        if t1_id == min(t1_id, t2_id) {
+                                            let t1_data = t1_cell.write();
+                                            let t2_data = t2_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        } else {
+                                            let t2_data = t2_cell.write();
+                                            let t1_data = t1_cell.write();
+                                            (t1_data, t2_data, t3_data)
+                                        }
+                                    }
+                                };
 
                                 f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                                 modified_flag.clear_modified();
