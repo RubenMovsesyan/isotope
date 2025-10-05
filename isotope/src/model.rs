@@ -333,6 +333,14 @@ impl Model {
         }
     }
 
+    pub(crate) fn set_transform(&self, transform: &Transform3D) {
+        self.gpu_controller.write_buffer(
+            &self.global_transformation_buffer,
+            0,
+            bytemuck::cast_slice(&[*transform]),
+        );
+    }
+
     pub fn modify_instances<F>(&self, range: Option<Range<u64>>, callback: F) -> Result<()>
     where
         F: FnOnce(&mut [Instance]),

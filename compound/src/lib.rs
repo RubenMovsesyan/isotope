@@ -19,7 +19,7 @@ use std::{
     collections::HashMap,
     ops::{Deref, DerefMut},
     sync::{
-        Arc, RwLock, RwLockReadGuard,
+        Arc, RwLock,
         atomic::{AtomicU64, Ordering},
     },
 };
@@ -2630,7 +2630,7 @@ mod ecs_test {
             number: u32,
         }
 
-        let mut compound = Compound::new();
+        let compound = Compound::new();
 
         println!("Spawning new entity");
         _ = compound.spawn((

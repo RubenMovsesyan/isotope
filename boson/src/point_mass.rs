@@ -1,7 +1,10 @@
 use cgmath::{InnerSpace, MetricSpace, Vector3};
 use log::info;
 
-use crate::properties::gravity::{GRAVITATIONAL_CONSTANT, Gravitational, Gravity};
+use crate::{
+    BosonBody, BosonObject,
+    properties::gravity::{GRAVITATIONAL_CONSTANT, Gravitational, Gravity},
+};
 
 pub struct PointMass {
     pub position: Vector3<f64>,
@@ -35,19 +38,18 @@ impl Gravitational for PointMass {
 }
 
 impl PointMass {
-    pub fn new(mass: f64) -> Self {
-        Self {
+    pub fn new(mass: f64) -> BosonObject {
+        BosonObject::new(BosonBody::PointMass(Self {
             position: Vector3::new(0.0, 0.0, 0.0),
             velocity: Vector3::new(0.0, 0.0, 0.0),
             acceleration: Vector3::new(0.0, 0.0, 0.0),
 
             mass,
             inv_mass: if mass == 0.0 { 0.0 } else { 1.0 / mass },
-        }
+        }))
     }
 
     pub fn apply_force(&mut self, force: Vector3<f64>, timestep: f64) {
-        info!("Applying Force: {:#?}", force);
         if self.mass == 0.0 {
             return;
         }

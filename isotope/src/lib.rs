@@ -10,6 +10,7 @@ use boson::Boson;
 pub use boson::{BosonBody, BosonObject, PointMass, RigidBody, StaticCollider};
 pub use cgmath::*;
 pub use compound::Compound;
+pub use compound::Entity;
 pub use elements::*;
 pub use gpu_controller::Instance;
 use gpu_controller::{
@@ -39,6 +40,9 @@ mod model;
 mod rendering_window;
 mod state;
 mod texture;
+
+// Structs for bookkeeping in ecs
+struct BosonCompliant;
 
 pub struct Isotope {
     // GPU
@@ -133,12 +137,24 @@ impl Isotope {
                 }
 
                 // Add any new boson objects
-                state_ecs.iter_mol_mod(|_entity, boson_object: &BosonObject| {
-                    if let Ok(mut boson) = state_boson.write() {
-                        info!("Adding Boson Object");
-                        boson.add_object(boson_object);
+                {
+                    let mut to_add_as_boson_compliant: Vec<Entity> = Vec::new();
+
+                    state_ecs.iter_without_mol_mod::<BosonCompliant, _, _>(
+                        |entity, boson_object: &BosonObject| {
+                            if let Ok(mut boson) = state_boson.write() {
+                                info!("Adding Boson Object");
+                                boson.add_object(boson_object);
+                                to_add_as_boson_compliant.push(entity);
+                            }
+                        },
+                    );
+
+                    for entity in to_add_as_boson_compliant.into_iter() {
+                        state_ecs.add_molecule(entity, BosonCompliant);
+                        info!("Added Boson Object");
                     }
-                });
+                }
 
                 if let Ok(running) = state_state_running.read() {
                     if !*running {
@@ -302,6 +318,15 @@ impl ApplicationHandler for IsotopeApplication {
                                         }
                                     },
                                 );
+                            }
+
+                            // Update the model with the transform if it has been modified
+                            {
+                                self.isotope.compound.iter_mut_duo_mod(
+                                    |_entity, transform: &mut Transform3D, model: &mut Model| {
+                                        model.set_transform(transform);
+                                    },
+                                )
                             }
 
                             // Render to the display

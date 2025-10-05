@@ -32,10 +32,7 @@ impl IsotopeState for GameState {
 
         match Model::from_obj("test_files/monkey.obj", assets, Some(&instances)) {
             Ok(model) => {
-                ecs.spawn((
-                    model,
-                    BosonObject::new(BosonBody::PointMass(PointMass::new(20.0))),
-                ));
+                ecs.spawn((model, Transform3D::default(), PointMass::new(20.0)));
             }
             Err(err) => {
                 error!("Failed to load model: {}", err);
@@ -81,6 +78,13 @@ impl IsotopeState for GameState {
                             Quaternion::from_axis_angle(Vector3::unit_y(), Deg((20.0 - pos.x) * t));
                     });
                 }
+            });
+        });
+
+        ecs.iter_mut_duo(|_entity, _model: &mut Model, transform: &mut Transform3D| {
+            transform.position(|pos| {
+                pos.x = t.sin();
+                pos.y = t.cos();
             });
         });
 
