@@ -2,3 +2,4 @@
 /test_files
 **/.DS_Store
 **/.zed
+**/.rustc_info.json
