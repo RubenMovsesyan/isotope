@@ -1,33 +1,36 @@
-use boson::{BosonBody, BosonObject};
+use boson::{BosonBody, BosonObject, RigidBody};
+use cgmath::Vector3;
 
 use crate::Transform3D;
 
-pub trait BosonTransform {
-    fn modify_transform<F, R>(&mut self, callback: F) -> R
+pub trait BosonCompat {
+    fn write_transform(&self, transform: &Transform3D);
+    fn read_position<F, R>(&self, callback: F) -> R
     where
-        F: FnOnce(&mut Transform3D) -> R;
-
-    fn get_transform<F, R>(&self, callback: F) -> R
-    where
-        F: FnOnce(&Transform3D) -> R;
+        F: FnOnce(&Vector3<f64>) -> R;
 }
 
-impl BosonTransform for BosonObject {
-    fn modify_transform<F, R>(&self, callback: F) -> R
+impl BosonCompat for BosonObject {
+    fn write_transform(&self, transform: &Transform3D) {
+        self.modify_body(|body| match body {
+            BosonBody::PointMass(point_mass) => transform.get_position(|pos| {
+                point_mass.position.x = pos.x as f64;
+                point_mass.position.y = pos.y as f64;
+                point_mass.position.z = pos.z as f64;
+            }),
+            _ => {}
+        });
+    }
+
+    fn read_position<F, R>(&self, callback: F) -> R
     where
-        F: FnOnce(&mut Transform3D) -> R,
+        F: FnOnce(&Vector3<f64>) -> R,
     {
-        self.modify_body(|boson_body| match boson_body {
-            BosonBody::PointMass(point_mass) => {}
+        self.read_body(|body| match body {
+            BosonBody::PointMass(point_mass) => callback(&point_mass.position),
             _ => {
                 todo!()
             }
         })
-    }
-
-    fn get_transform<F, R>(&self, callback: F) -> R
-    where
-        F: FnOnce(&Transform3D) -> R,
-    {
     }
 }

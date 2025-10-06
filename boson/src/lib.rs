@@ -1,5 +1,6 @@
+use parking_lot::RwLock;
 use std::{
-    sync::{Arc, RwLock, atomic::AtomicU32},
+    sync::{Arc, atomic::AtomicU32},
     thread::JoinHandle,
     time::{Duration, Instant},
 };
@@ -36,6 +37,20 @@ impl BosonObject {
     }
 
     pub fn resolve_collisions(&self, other: &BosonObject, timestep: f32) {}
+
+    pub fn modify_body<F, R>(&self, callback: F) -> R
+    where
+        F: FnOnce(&mut BosonBody) -> R,
+    {
+        callback(&mut self.0.write())
+    }
+
+    pub fn read_body<F, R>(&self, callback: F) -> R
+    where
+        F: FnOnce(&BosonBody) -> R,
+    {
+        callback(&self.0.read())
+    }
 }
 
 pub enum BosonBody {
@@ -75,17 +90,15 @@ impl Boson {
                 let dt = now.duration_since(last_frame_time).as_secs_f64();
                 last_frame_time = now;
 
-                if let Ok(objects) = thread_objects.read() {
-                    for object in objects.iter() {
-                        if let Ok(mut object) = object.0.write() {
-                            match *object {
-                                BosonBody::PointMass(ref mut point_mass) => {
-                                    point_mass.apply_gravity(&gravity, dt);
-                                }
-                                BosonBody::RigidBody(ref mut rigid_body) => {}
-                                BosonBody::StaticCollider(ref mut static_collider) => {}
-                            }
+                let objects = thread_objects.read();
+                for object in objects.iter() {
+                    let mut object = object.0.write();
+
+                    match *object {
+                        BosonBody::PointMass(ref mut point_mass) => {
+                            point_mass.apply_gravity(&gravity, dt);
                         }
+                        _ => {}
                     }
                 }
 
@@ -107,9 +120,10 @@ impl Boson {
             .objects_count
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
 
-        if let Ok(mut objects) = self.objects.write() {
-            objects.push(object.clone());
-        }
+        // if let Ok(mut objects) = self.objects.write() {
+        //     objects.push(object.clone());
+        // }
+        self.objects.write().push(object.clone());
 
         object_id
     }

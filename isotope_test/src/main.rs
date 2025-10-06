@@ -83,12 +83,12 @@ impl IsotopeState for GameState {
             });
         });
 
-        ecs.iter_mut_duo(|_entity, _model: &mut Model, transform: &mut Transform3D| {
-            transform.position(|pos| {
-                pos.x = t.sin();
-                pos.y = t.cos();
-            });
-        });
+        // ecs.iter_mut_duo(|_entity, _model: &mut Model, transform: &mut Transform3D| {
+        //     transform.position(|pos| {
+        //         pos.x = t.sin();
+        //         pos.y = t.cos();
+        //     });
+        // });
 
         if self.window_focused {
             ecs.iter_mut_duo(

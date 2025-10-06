@@ -22,6 +22,7 @@ use matter_vault::MatterVault;
 pub use model::Model;
 pub use photon::Light;
 use photon::renderer::Renderer;
+use physics::BosonCompat;
 use rendering_window::{RenderingWindow, WindowInitializer};
 use smol::block_on;
 pub use state::IsotopeState;
@@ -160,7 +161,10 @@ impl Isotope {
                 // Update boson objects with any changed transforms first
                 {
                     state_ecs.iter_mut_duo_mod(
-                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {},
+                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {
+                            debug!("Writing Transform");
+                            boson_object.write_transform(transform);
+                        },
                     );
                 }
 
@@ -168,7 +172,15 @@ impl Isotope {
                 {
                     // Unmodified so the transform update is not triggered at the next goaround
                     state_ecs.iter_mut_duo_unmod(
-                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {},
+                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {
+                            boson_object.read_position(|boson_pos| {
+                                transform.position(|transform_pos| {
+                                    transform_pos.x = boson_pos.x as f32;
+                                    transform_pos.y = boson_pos.y as f32;
+                                    transform_pos.z = boson_pos.z as f32;
+                                })
+                            })
+                        },
                     );
                 }
 
@@ -338,11 +350,19 @@ impl ApplicationHandler for IsotopeApplication {
 
                             // Update the model with the transform if it has been modified
                             {
+                                // Update Modified Transforms
                                 self.isotope.compound.iter_mut_duo_mod(
                                     |_entity, transform: &mut Transform3D, model: &mut Model| {
                                         model.set_transform(transform);
                                     },
-                                )
+                                );
+
+                                // Update All BosonCompliant Objects
+                                self.isotope.compound.iter_mut_trio_unmod(
+                                    |_entity, transform: &mut Transform3D, model: &mut Model, _boson_compliant: &mut BosonCompliant| {
+                                        model.set_transform(transform);
+                                    }
+                                );
                             }
 
                             // Render to the display

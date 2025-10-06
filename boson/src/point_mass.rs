@@ -1,5 +1,5 @@
 use cgmath::{InnerSpace, MetricSpace, Vector3};
-use log::info;
+use log::{debug, info};
 
 use crate::{
     BosonBody, BosonObject,
