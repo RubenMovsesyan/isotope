@@ -7,3 +7,4 @@ edition = "2024"
 cgmath = "0.18.0"
 gpu_controller = { path = "../gpu_controller" }
 log = "0.4.28"
+parking_lot = "0.12.5"

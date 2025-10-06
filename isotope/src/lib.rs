@@ -37,6 +37,7 @@ mod asset_server;
 mod elements;
 mod material;
 mod model;
+mod physics;
 mod rendering_window;
 mod state;
 mod texture;
@@ -154,6 +155,21 @@ impl Isotope {
                         state_ecs.add_molecule(entity, BosonCompliant);
                         info!("Added Boson Object");
                     }
+                }
+
+                // Update boson objects with any changed transforms first
+                {
+                    state_ecs.iter_mut_duo_mod(
+                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {},
+                    );
+                }
+
+                // Update transforms with the new boson values
+                {
+                    // Unmodified so the transform update is not triggered at the next goaround
+                    state_ecs.iter_mut_duo_unmod(
+                        |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {},
+                    );
                 }
 
                 if let Ok(running) = state_state_running.read() {

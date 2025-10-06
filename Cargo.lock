@@ -407,6 +407,7 @@ dependencies = [
  "cgmath",
  "gpu_controller",
  "log",
+ "parking_lot",
 ]
 
 [[package]]

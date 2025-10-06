@@ -10,9 +10,83 @@
 //! - **Compound**: The main ECS world that manages all entities and their molecules
 //! - **MoleculeBundle**: A collection of molecules that can be added to an entity together
 //!
+//! ## Change Detection
+//! Compound includes built-in change detection through automatic modified flag management:
+//! - **Standard iterators** (`iter_mut_*`) automatically mark entities as modified
+//! - **Modified-only iterators** (`*_mod`) only process entities that have been marked as modified
+//! - **Unmodified iterators** (`*_unmod`) provide mutable access without affecting the modified flag
+//!
+//! ## Iterator Variants
+//! All query patterns support multiple variants:
+//! - Read-only access: `iter_mol`, `iter_duo`, `iter_trio`
+//! - Mutable access: `iter_mut_mol`, `iter_mut_duo`, `iter_mut_trio`
+//! - Modified-only: `*_mod` variants for reactive systems
+//! - Unmodified: `*_unmod` variants for internal maintenance
+//! - Exclusion filters: `*_without_*` variants to filter out specific components
+//!
 //! ## Thread Safety
 //! All operations in this ECS are thread-safe through the use of `RwLock`s and atomic operations.
 //! Multiple threads can read/write different component types simultaneously without blocking each other.
+//!
+//! ## Example
+//! ```ignore
+//! use compound::Compound;
+//!
+//! // Define components (molecules)
+//! #[derive(Debug)]
+//! struct Position { x: f32, y: f32 }
+//!
+//! #[derive(Debug)]
+//! struct Velocity { dx: f32, dy: f32 }
+//!
+//! #[derive(Debug)]
+//! struct Health { current: i32, max: i32 }
+//!
+//! fn main() {
+//!     let compound = Compound::new();
+//!
+//!     // Spawn entities with component bundles
+//!     let player = compound.spawn((
+//!         Position { x: 0.0, y: 0.0 },
+//!         Velocity { dx: 1.0, dy: 0.5 },
+//!         Health { current: 100, max: 100 },
+//!     ));
+//!
+//!     let enemy = compound.spawn((
+//!         Position { x: 10.0, y: 10.0 },
+//!         Health { current: 50, max: 50 },
+//!     ));
+//!
+//!     // Standard iteration - read-only access
+//!     compound.iter_duo::<Position, Health, _>(|entity, pos, health| {
+//!         println!("Entity {} at ({}, {}) has {}/{} health",
+//!                  entity, pos.x, pos.y, health.current, health.max);
+//!     });
+//!
+//!     // Mutable iteration - automatically marks entities as modified
+//!     compound.iter_mut_duo::<Position, Velocity, _>(|entity, pos, vel| {
+//!         pos.x += vel.dx;
+//!         pos.y += vel.dy;
+//!     });
+//!
+//!     // Modified-only iteration - only processes entities that changed
+//!     compound.iter_duo_mod::<Position, Velocity, _>(|entity, pos, vel| {
+//!         println!("Entity {} moved to ({}, {})", entity, pos.x, pos.y);
+//!     });
+//!
+//!     // Unmodified iteration - mutable access without triggering change detection
+//!     compound.iter_mut_mol_unmod::<Position, _>(|entity, pos| {
+//!         // Snap to grid without marking as "changed"
+//!         pos.x = pos.x.round();
+//!         pos.y = pos.y.round();
+//!     });
+//!
+//!     // Filtered iteration - entities with Position but without Velocity (static objects)
+//!     compound.iter_without_mol::<Velocity, Position, _>(|entity, pos| {
+//!         println!("Static entity {} at ({}, {})", entity, pos.x, pos.y);
+//!     });
+//! }
+//! ```
 
 const MAX_LOCK_TIMEOUT: Duration = Duration::from_millis(50);
 const SECOND_ATTEMPT_MAX_LOCK_TIMEOUT: Duration = Duration::from_secs(1);
@@ -710,6 +784,51 @@ impl Compound {
         }
     }
 
+    /// Iterates over all entities with a component, providing mutable access without setting the modified flag.
+    ///
+    /// This method provides exclusive write access to each component, similar to `iter_mut_mol`,
+    /// but does NOT automatically set the modified flag for processed entities. This is useful
+    /// for systems that need to modify components but don't want to trigger change detection
+    /// systems, such as internal maintenance operations or systems that perform modifications
+    /// that shouldn't be considered "changes" from a gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `T`: The component type to iterate over
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a mutable reference to the component
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_mol` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal cleanup without triggering change detection
+    /// compound.iter_mut_mol_unmod::<InternalState, _>(|entity, state| {
+    ///     state.cleanup_temporary_data(); // This won't mark the entity as "changed"
+    /// });
+    /// ```
+    pub fn iter_mut_mol_unmod<T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let storage = self.get_or_create_storage::<T>();
+        let storage_guard = storage.read();
+
+        for (entity, cell) in &storage_guard.compounds {
+            let mut data = cell.write();
+            f(*entity, &mut *data);
+        }
+    }
+
     /// Iterates over modified entities with mutable access to a specific component.
     ///
     /// This method provides mutable access to components of entities that have been marked
@@ -809,6 +928,60 @@ impl Compound {
                     modified_flag.write().set_modified();
                 }
 
+                let mut t_data = t_cell.write();
+                f(*entity, &mut *t_data);
+            }
+        }
+    }
+
+    /// Iterates over entities with component T but without W, with mutable access but without setting the modified flag.
+    ///
+    /// This method provides mutable access to component T for entities that have T but don't have W,
+    /// similar to `iter_mut_without_mol`, but does NOT automatically set the modified flag for
+    /// processed entities. This is useful for systems that need to modify components but don't
+    /// want to trigger change detection systems, such as internal maintenance operations or
+    /// systems that perform modifications that shouldn't be considered "changes" from a
+    /// gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T`: The component type to iterate over with mutable access
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and a mutable reference to component T
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_without_mol` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal cleanup on entities without triggering change detection
+    /// compound.iter_mut_without_mol_unmod::<Processed, TempData, _>(|entity, temp| {
+    ///     temp.cleanup_internal_state(); // This won't mark the entity as "changed"
+    /// });
+    /// ```
+    pub fn iter_mut_without_mol_unmod<W, T, F>(&self, mut f: F)
+    where
+        T: Send + Sync + 'static,
+        W: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T) + Send + Sync,
+    {
+        let t_storage = self.get_or_create_storage::<T>();
+        let t_storage_guard = t_storage.read();
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = w_storage.read();
+
+        for (entity, t_cell) in &t_storage_guard.compounds {
+            if let Some(_) = w_storage_guard.compounds.get(entity) {
+            } else {
                 let mut t_data = t_cell.write();
                 f(*entity, &mut *t_data);
             }
@@ -1158,6 +1331,78 @@ impl Compound {
         }
     }
 
+    /// Iterates over entities with two components, providing mutable access without setting the modified flag.
+    ///
+    /// This method provides exclusive write access to both components simultaneously,
+    /// similar to `iter_mut_duo`, but does NOT automatically set the modified flag for
+    /// processed entities. This is useful for systems that need to modify components
+    /// but don't want to trigger change detection systems, such as internal maintenance
+    /// operations or systems that perform modifications that shouldn't be considered
+    /// "changes" from a gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to both components
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_duo` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal cleanup without triggering change detection
+    /// compound.iter_mut_duo_unmod::<InternalState, TempData, _>(|entity, state, temp| {
+    ///     state.cleanup_temporary_data();
+    ///     temp.reset_cache();
+    /// });
+    /// ```
+    pub fn iter_mut_duo_unmod<T1, T2, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = t1_storage.read();
+
+        let t2_storage_guard = t2_storage.read();
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                // Lock aquisition ordering to prevent deadlocks
+                let (mut t1_data, mut t2_data) = {
+                    let t1_id = TypeId::of::<T1>();
+                    let t2_id = TypeId::of::<T2>();
+
+                    if t1_id <= t2_id {
+                        let t1_data = t1_cell.write();
+                        let t2_data = t2_cell.write();
+
+                        (t1_data, t2_data)
+                    } else {
+                        let t2_data = t2_cell.write();
+                        let t1_data = t1_cell.write();
+
+                        (t1_data, t2_data)
+                    }
+                };
+
+                f(*entity, &mut *t1_data, &mut *t2_data);
+            }
+        }
+    }
+
     /// Iterates over modified entities with mutable access to two components.
     ///
     /// This method provides mutable access to both components for entities that have
@@ -1235,6 +1480,89 @@ impl Compound {
         }
     }
 
+    /// Iterates over entities with T1 and T2 but without W, with mutable access but without setting the modified flag.
+    ///
+    /// This method provides mutable access to components T1 and T2 for entities that have both
+    /// required components but do not have the excluded component W, similar to
+    /// `iter_mut_without_duo`, but does NOT automatically set the modified flag for processed
+    /// entities. This is useful for systems that need to modify components but don't want to
+    /// trigger change detection systems, such as internal maintenance operations or systems
+    /// that perform modifications that shouldn't be considered "changes" from a gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T1`: The first component type (mutable access)
+    /// - `T2`: The second component type (mutable access)
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to T1 and T2
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_without_duo` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal cleanup on non-processed entities without triggering change detection
+    /// compound.iter_mut_without_duo_unmod::<Processed, InternalState, TempData, _>(
+    ///     |entity, state, temp| {
+    ///         state.cleanup_internal_state();
+    ///         temp.reset_temporary_data();
+    ///     }
+    /// );
+    /// ```
+    pub fn iter_mut_without_duo_unmod<W, T1, T2, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+
+        let t1_storage_guard = t1_storage.read();
+
+        let t2_storage_guard = t2_storage.read();
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = w_storage.read();
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(_) = w_storage_guard.compounds.get(entity) {
+                } else {
+                    // Lock aquisition ordering to prevent deadlocks
+                    let (mut t1_data, mut t2_data) = {
+                        let t1_id = TypeId::of::<T1>();
+                        let t2_id = TypeId::of::<T2>();
+
+                        if t1_id <= t2_id {
+                            let t1_data = t1_cell.write();
+                            let t2_data = t2_cell.write();
+
+                            (t1_data, t2_data)
+                        } else {
+                            let t2_data = t2_cell.write();
+                            let t1_data = t1_cell.write();
+
+                            (t1_data, t2_data)
+                        }
+                    };
+
+                    f(*entity, &mut *t1_data, &mut *t2_data);
+                }
+            }
+        }
+    }
+
+    // Trio Molecule accessors ================================
     /// Iterates over entities with T1 and T2 but without W, with mutable access.
     ///
     /// Provides mutable access to components T1 and T2 for entities that don't have W.
@@ -1703,6 +2031,114 @@ impl Compound {
         }
     }
 
+    /// Iterates over entities with three components, providing mutable access without setting the modified flag.
+    ///
+    /// This method provides exclusive write access to all three components simultaneously,
+    /// similar to `iter_mut_trio`, but does NOT automatically set the modified flag for
+    /// processed entities. This is useful for systems that need to modify components but
+    /// don't want to trigger change detection systems, such as internal maintenance
+    /// operations or systems that perform modifications that shouldn't be considered
+    /// "changes" from a gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `T1`: The first component type
+    /// - `T2`: The second component type
+    /// - `T3`: The third component type
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to all three components
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_trio` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal physics cleanup without triggering change detection
+    /// compound.iter_mut_trio_unmod::<Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         // Normalize internal state without marking as "changed"
+    ///         vel.normalize_if_too_small();
+    ///         acc.clamp_to_reasonable_bounds();
+    ///         pos.snap_to_grid_if_close();
+    ///     }
+    /// );
+    /// ```
+    pub fn iter_mut_trio_unmod<T1, T2, T3, F>(&self, mut f: F)
+    where
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = t1_storage.read();
+
+        let t2_storage_guard = t2_storage.read();
+
+        let t3_storage_guard = t3_storage.read();
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    // Lock aquisition ordering to prevent deadlocks
+                    let (mut t1_data, mut t2_data, mut t3_data) = {
+                        let t1_id = TypeId::of::<T1>();
+                        let t2_id = TypeId::of::<T2>();
+                        let t3_id = TypeId::of::<T3>();
+
+                        let total_min = min(t1_id, min(t2_id, t3_id));
+                        if t1_id == total_min {
+                            let t1_data = t1_cell.write();
+                            if t2_id == min(t2_id, t3_id) {
+                                let t2_data = t2_cell.write();
+                                let t3_data = t3_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t3_data = t3_cell.write();
+                                let t2_data = t2_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        } else if t2_id == total_min {
+                            let t2_data = t2_cell.write();
+                            if t3_id == min(t1_id, t3_id) {
+                                let t3_data = t3_cell.write();
+                                let t1_data = t1_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t1_data = t1_cell.write();
+                                let t3_data = t3_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        } else {
+                            let t3_data = t3_cell.write();
+                            if t1_id == min(t1_id, t2_id) {
+                                let t1_data = t1_cell.write();
+                                let t2_data = t2_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            } else {
+                                let t2_data = t2_cell.write();
+                                let t1_data = t1_cell.write();
+                                (t1_data, t2_data, t3_data)
+                            }
+                        }
+                    };
+
+                    f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
+                }
+            }
+        }
+    }
+
     /// Iterates over modified entities with mutable access to three components.
     ///
     /// This method provides mutable access to all three components for entities that have
@@ -1814,6 +2250,120 @@ impl Compound {
                             f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                             modified_flag.clear_modified();
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Iterates over entities with T1, T2, and T3 but without W, with mutable access but without setting the modified flag.
+    ///
+    /// This method provides mutable access to components T1, T2, and T3 for entities that have all
+    /// three required components but do not have the excluded component W, similar to
+    /// `iter_mut_without_trio`, but does NOT automatically set the modified flag for processed
+    /// entities. This is useful for systems that need to modify components but don't want to
+    /// trigger change detection systems, such as internal maintenance operations or systems
+    /// that perform modifications that shouldn't be considered "changes" from a gameplay perspective.
+    ///
+    /// # Type Parameters
+    /// - `W`: The component type that entities should NOT have
+    /// - `T1`: The first component type (mutable access)
+    /// - `T2`: The second component type (mutable access)
+    /// - `T3`: The third component type (mutable access)
+    /// - `F`: The closure type
+    ///
+    /// # Arguments
+    /// - `f`: A closure that receives the entity ID and mutable references to T1, T2, and T3
+    ///
+    /// # Modified Flag Behavior
+    /// - Does NOT set the modified flag for processed entities
+    /// - Entities will only be marked as modified if they were already modified before this iteration
+    /// - Use `iter_mut_without_trio` if you want to automatically mark entities as modified
+    ///
+    /// # Thread Safety
+    /// This method is thread-safe and can be called concurrently for different
+    /// component types or different entities.
+    ///
+    /// # Example
+    /// ```ignore
+    /// // Perform internal maintenance on non-frozen entities without triggering change detection
+    /// compound.iter_mut_without_trio_unmod::<Frozen, Position, Velocity, Acceleration, _>(
+    ///     |entity, pos, vel, acc| {
+    ///         // Clean up numerical errors without marking as "changed"
+    ///         pos.cleanup_floating_point_errors();
+    ///         vel.clamp_to_reasonable_bounds();
+    ///         acc.reset_if_negligible();
+    ///     }
+    /// );
+    /// ```
+    pub fn iter_mut_without_trio_unmod<W, T1, T2, T3, F>(&self, mut f: F)
+    where
+        W: Send + Sync + 'static,
+        T1: Send + Sync + 'static,
+        T2: Send + Sync + 'static,
+        T3: Send + Sync + 'static,
+        F: FnMut(Entity, &mut T1, &mut T2, &mut T3),
+    {
+        let t1_storage = self.get_or_create_storage::<T1>();
+        let t2_storage = self.get_or_create_storage::<T2>();
+        let t3_storage = self.get_or_create_storage::<T3>();
+
+        let t1_storage_guard = t1_storage.read();
+        let t2_storage_guard = t2_storage.read();
+        let t3_storage_guard = t3_storage.read();
+
+        let w_storage = self.get_or_create_storage::<W>();
+        let w_storage_guard = w_storage.read();
+
+        for (entity, t1_cell) in &t1_storage_guard.compounds {
+            if let Some(t2_cell) = t2_storage_guard.compounds.get(entity) {
+                if let Some(t3_cell) = t3_storage_guard.compounds.get(entity) {
+                    if let Some(_) = w_storage_guard.compounds.get(entity) {
+                    } else {
+                        // Lock aquisition ordering to prevent deadlocks
+                        let (mut t1_data, mut t2_data, mut t3_data) = {
+                            let t1_id = TypeId::of::<T1>();
+                            let t2_id = TypeId::of::<T2>();
+                            let t3_id = TypeId::of::<T3>();
+
+                            let total_min = min(t1_id, min(t2_id, t3_id));
+                            if t1_id == total_min {
+                                let t1_data = t1_cell.write();
+                                if t2_id == min(t2_id, t3_id) {
+                                    let t2_data = t2_cell.write();
+                                    let t3_data = t3_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t3_data = t3_cell.write();
+                                    let t2_data = t2_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            } else if t2_id == total_min {
+                                let t2_data = t2_cell.write();
+                                if t3_id == min(t1_id, t3_id) {
+                                    let t3_data = t3_cell.write();
+                                    let t1_data = t1_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t1_data = t1_cell.write();
+                                    let t3_data = t3_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            } else {
+                                let t3_data = t3_cell.write();
+                                if t1_id == min(t1_id, t2_id) {
+                                    let t1_data = t1_cell.write();
+                                    let t2_data = t2_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                } else {
+                                    let t2_data = t2_cell.write();
+                                    let t1_data = t1_cell.write();
+                                    (t1_data, t2_data, t3_data)
+                                }
+                            }
+                        };
+
+                        f(*entity, &mut *t1_data, &mut *t2_data, &mut *t3_data);
                     }
                 }
             }

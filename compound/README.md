@@ -13,7 +13,7 @@ Compound is a modern ECS implementation that provides safe concurrent access to 
 - 🧪 **Chemistry-Inspired API** - Intuitive naming with molecules (components) and compounds (worlds)
 - 🔄 **Flexible Iteration** - Multiple query patterns for iterating over entities with specific component combinations
 - 📦 **Bundle Support** - Group related components together for easy entity spawning
-- 🔍 **Change Detection** - Built-in modified flag system for efficient change tracking and reactive systems
+- 🔍 **Change Detection** - Built-in modified flag system with modified, unmodified, and change-detection variants for all iterators
 - 🛡️ **Poison Recovery** - Automatic recovery from poisoned locks with logging
 
 ## Installation
@@ -118,6 +118,7 @@ Compound includes a built-in change detection system that automatically tracks w
 The system works through:
 - **Modified Flag**: Each entity has an internal `Modified` component that tracks whether it has been changed
 - **Modified Iterators**: Special `*_mod` iterator variants that only process entities marked as modified
+- **Unmodified Iterators**: Special `*_unmod` iterator variants that provide mutable access without setting the modified flag
 - **Automatic Management**: The system automatically sets/clears modified flags during iterations
 
 ```rust
@@ -137,6 +138,85 @@ world.iter_mol_mod(|entity, pos: &Position| {
     println!("Modified entity {} at ({}, {})", entity, pos.x, pos.y);
 });
 ```
+
+## Iterator Variants
+
+Compound provides three types of iterator variants for each query pattern, giving you fine-grained control over change detection and performance:
+
+### Standard Iterators
+- **Read-only**: `iter_mol`, `iter_duo`, `iter_trio` - Read-only access to components
+- **Mutable**: `iter_mut_mol`, `iter_mut_duo`, `iter_mut_trio` - Mutable access that **automatically sets** the modified flag
+
+These are the most common iterators. Mutable variants mark entities as changed, triggering change detection systems.
+
+### Modified-Only Iterators (`*_mod`)
+- **Read-only**: `iter_mol_mod`, `iter_duo_mod`, `iter_trio_mod` - Only process entities that have been marked as modified
+- **Mutable**: `iter_mut_mol_mod`, `iter_mut_duo_mod`, `iter_mut_trio_mod` - Mutable access to only modified entities, **clears** the modified flag after processing
+
+These iterators enable reactive systems that only run when data actually changes, providing excellent performance for expensive operations.
+
+### Unmodified Iterators (`*_unmod`)
+- **Mutable**: `iter_mut_mol_unmod`, `iter_mut_duo_unmod`, `iter_mut_trio_unmod` - Mutable access that **does NOT affect** the modified flag
+
+These iterators are perfect for:
+- Internal maintenance operations (cleanup, normalization)
+- Systems that shouldn't trigger change detection
+- Performance-critical code that needs to avoid flag overhead
+
+### Without Variants
+All iterator types also support "without" variants that filter out entities with specific components:
+- `iter_without_mol::<Without, Component>`
+- `iter_mut_without_duo::<Without, Comp1, Comp2>`
+- `iter_mut_without_trio_unmod::<Without, Comp1, Comp2, Comp3>`
+
+### Performance Characteristics
+
+| Iterator Type | Modified Flag | Use Case | Performance |
+|--------------|---------------|----------|-------------|
+| Standard | Sets on write | General gameplay logic | Fast |
+| Modified-only | Reads & clears | Reactive systems | Very fast (sparse) |
+| Unmodified | No interaction | Internal maintenance | Fastest |
+
+```rust
+// Standard: marks entities as modified
+world.iter_mut_mol(|entity, pos: &mut Position| {
+    pos.x += 1.0; // This will trigger change detection
+});
+
+// Modified-only: processes only changed entities
+world.iter_mut_mol_mod(|entity, vel: &mut Velocity| {
+    // Only runs for entities modified since last call
+    vel.normalize();
+});
+
+// Unmodified: invisible to change detection
+world.iter_mut_mol_unmod(|entity, pos: &mut Position| {
+    // Clean up floating point errors without triggering systems
+    pos.x = pos.x.round();
+});
+```
+
+### When to Use Each Iterator Type
+
+**Standard Iterators** - Use for general gameplay logic:
+- Movement systems that update position based on velocity
+- Combat systems that modify health/damage
+- AI systems that change entity behavior
+- Any system where modifications should trigger dependent systems
+
+**Modified-Only Iterators** - Use for expensive reactive systems:
+- Graphics systems that only re-render changed objects
+- Physics systems that recalculate collisions for moved entities
+- Audio systems that update 3D positioned sounds
+- Networking systems that only sync changed entities
+- Any system that's expensive and should only run when needed
+
+**Unmodified Iterators** - Use for maintenance and optimization:
+- Floating-point error correction and normalization
+- Memory cleanup and garbage collection
+- Debug systems that shouldn't affect gameplay
+- Performance monitoring and profiling
+- Internal state synchronization between frames
 
 ## API Reference
 
@@ -177,6 +257,10 @@ world.add_molecule(entity, Velocity { dx: 1.0, dy: 0.0 });
 - `iter_mut_mol_mod(f)` - Mutable iteration over only modified entities
 - `iter_without_mol_mod::<W, T>(f)` - Modified entities with T but without W
 
+**Unmodified Iterators:**
+- `iter_mut_mol_unmod(f)` - Mutable iteration without setting the modified flag
+- `iter_mut_without_mol_unmod::<W, T>(f)` - Mutable iteration with T but without W, without setting modified flag
+
 ```rust
 // Read-only iteration
 world.iter_mol(|entity, pos: &Position| {
@@ -198,6 +282,12 @@ world.iter_mut_mol_mod(|entity, vel: &mut Velocity| {
     // Only process velocities that were already modified
     vel.dx = vel.dx.clamp(-10.0, 10.0);
 });
+
+// Mutable iteration without triggering change detection
+world.iter_mut_mol_unmod(|entity, vel: &mut Velocity| {
+    // Internal cleanup that shouldn't mark entities as "changed"
+    vel.normalize_if_too_small();
+});
 ```
 
 #### Two Component Queries
@@ -211,6 +301,10 @@ world.iter_mut_mol_mod(|entity, vel: &mut Velocity| {
 - `iter_duo_mod(f)` - Iterate over only modified entities with two components
 - `iter_mut_duo_mod(f)` - Mutable iteration over modified entities with two components
 - `iter_without_duo_mod::<W, T1, T2>(f)` - Modified entities with T1, T2 but without W
+
+**Unmodified Iterators:**
+- `iter_mut_duo_unmod(f)` - Mutable iteration over two components without setting modified flag
+- `iter_mut_without_duo_unmod::<W, T1, T2>(f)` - Mutable iteration with T1, T2 but without W, without setting modified flag
 
 ```rust
 // Update physics for entities with position and velocity
@@ -236,6 +330,10 @@ world.iter_duo_mod(|entity, pos: &Position, vel: &Velocity| {
 - `iter_trio_mod(f)` - Iterate over only modified entities with three components
 - `iter_mut_trio_mod(f)` - Mutable iteration over modified entities with three components
 - `iter_without_trio_mod::<W, T1, T2, T3>(f)` - Modified entities with T1, T2, T3 but without W
+
+**Unmodified Iterators:**
+- `iter_mut_trio_unmod(f)` - Mutable iteration over three components without setting modified flag
+- `iter_mut_without_trio_unmod::<W, T1, T2, T3>(f)` - Mutable iteration with T1, T2, T3 but without W, without setting modified flag
 
 ```rust
 world.iter_trio(|entity, pos: &Position, vel: &Velocity, health: &Health| {
@@ -423,6 +521,18 @@ impl System for RenderSystem {
         // Only render entities that have moved since last frame
         world.iter_duo_mod(|_entity, pos: &Position, sprite: &Sprite| {
             render_sprite_at_position(sprite, pos);
+        });
+    }
+}
+
+struct CleanupSystem;
+impl System for CleanupSystem {
+    fn update(&self, world: &Compound) {
+        // Perform internal maintenance without triggering change detection
+        world.iter_mut_mol_unmod(|_entity, vel: &mut Velocity| {
+            // Clean up floating point errors without marking as "changed"
+            vel.dx = if vel.dx.abs() < 0.001 { 0.0 } else { vel.dx };
+            vel.dy = if vel.dy.abs() < 0.001 { 0.0 } else { vel.dy };
         });
     }
 }
