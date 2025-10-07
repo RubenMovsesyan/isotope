@@ -20,7 +20,7 @@ impl Gravitational for PointMass {
         match gravity {
             Gravity::None => {}
             Gravity::World(gravity_vector) => {
-                self.apply_force(*gravity_vector, timestep);
+                self.apply_acceleration(*gravity_vector, timestep);
             }
             Gravity::Point(location, mass) => {
                 let distance = self.position.distance(*location);
@@ -49,18 +49,33 @@ impl PointMass {
         }))
     }
 
+    #[inline]
+    fn update_with_acceleration(&mut self, timestep: f64) {
+        // v = v_0 + a * t
+        self.velocity += self.acceleration * timestep;
+
+        // x = x_0 + v * t
+        self.position += self.velocity * timestep;
+    }
+
+    pub fn apply_acceleration(&mut self, acceleration: Vector3<f64>, timestep: f64) {
+        if self.mass == 0.0 {
+            return;
+        }
+
+        self.acceleration = acceleration;
+
+        self.update_with_acceleration(timestep);
+    }
+
     pub fn apply_force(&mut self, force: Vector3<f64>, timestep: f64) {
         if self.mass == 0.0 {
             return;
         }
 
         // a = F / m
-        self.acceleration = force / self.mass;
+        self.acceleration = force * self.inv_mass;
 
-        // v = v_0 + a * t
-        self.velocity += self.acceleration * timestep;
-
-        // x = x_0 + v * t
-        self.position += self.velocity * timestep;
+        self.update_with_acceleration(timestep);
     }
 }
