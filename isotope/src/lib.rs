@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, RwLock},
+    sync::Arc,
     thread::JoinHandle,
     time::{Duration, Instant},
 };
@@ -7,7 +7,9 @@ use std::{
 use anyhow::Result;
 pub use asset_server::AssetServer;
 use boson::Boson;
-pub use boson::{BosonBody, BosonObject, PointMass, RigidBody, StaticCollider};
+pub use boson::{
+    BosonBody, BosonBuilder, BosonObject, Gravity, RigidBody, RigidBodyBuilder, StaticCollider,
+};
 pub use cgmath::*;
 pub use compound::Compound;
 pub use compound::Entity;
@@ -20,6 +22,7 @@ use gpu_controller::{
 pub use log::*;
 use matter_vault::MatterVault;
 pub use model::Model;
+use parking_lot::RwLock;
 pub use photon::Light;
 use photon::renderer::Renderer;
 use physics::BosonCompat;
@@ -46,6 +49,23 @@ mod texture;
 // Structs for bookkeeping in ecs
 struct BosonCompliant;
 
+// Struct for Isotope initial startup
+#[derive(Default)]
+pub struct IsotopeBuilder {
+    boson: Option<BosonBuilder>,
+}
+
+impl IsotopeBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn boson(mut self, boson_builder: BosonBuilder) -> Self {
+        self.boson = Some(boson_builder);
+        self
+    }
+}
+
 pub struct Isotope {
     // GPU
     gpu_controller: Arc<GpuController>,
@@ -63,7 +83,7 @@ pub struct Isotope {
     state: Arc<RwLock<dyn IsotopeState>>,
 
     // Physics Engine
-    boson: Arc<RwLock<Boson>>,
+    boson: Arc<Option<RwLock<Boson>>>,
 
     // ============== Multi-Threading ==============
     state_thread: (Arc<RwLock<bool>>, JoinHandle<()>),
@@ -77,7 +97,11 @@ pub struct Isotope {
 }
 
 impl Isotope {
-    pub fn new<I>(gpu_controller: Arc<GpuController>, mut state: I) -> Result<Self>
+    pub fn new<I>(
+        gpu_controller: Arc<GpuController>,
+        builder: IsotopeBuilder,
+        mut state: I,
+    ) -> Result<Self>
     where
         I: IsotopeState,
     {
@@ -92,7 +116,11 @@ impl Isotope {
         let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
 
         // Initialize the physics engine
-        let boson = Arc::new(RwLock::new(Boson::new(gpu_controller.clone())));
+        let boson = Arc::new(if let Some(boson_builder) = builder.boson {
+            Some(RwLock::new(boson_builder.build(gpu_controller.clone())))
+        } else {
+            None
+        });
 
         // Initialize the game state and start the update thread
         state.init(&compound, &asset_server);
@@ -110,17 +138,12 @@ impl Isotope {
         let state_thread_handle = std::thread::spawn(move || {
             info!("Running State Update Thread");
 
-            if let Ok(running) = state_isotope_running.read() {
-                if !*running {
-                    debug!("Isotope not running. Waiting for initialization...");
-                }
+            if !*state_isotope_running.read() {
+                debug!("Isotope not running. Waiting for initialization...");
             }
 
-            // Wait for Isotope to start running
-            while let Ok(running) = state_isotope_running.read() {
-                if *running {
-                    break;
-                }
+            while *state_isotope_running.read() {
+                break;
             }
 
             debug!("Isotope has started running! Starting State Thread...");
@@ -132,23 +155,22 @@ impl Isotope {
                 let dt = now.duration_since(last_frame_time).as_secs_f32();
                 last_frame_time = now;
 
-                if let Ok(mut state) = state_state.write() {
-                    let t = state_time.elapsed().as_secs_f32();
-
-                    state.update(&state_ecs, &state_asset_server, dt, t);
-                }
+                state_state.write().update(
+                    &state_ecs,
+                    &state_asset_server,
+                    dt,
+                    state_time.elapsed().as_secs_f32(),
+                );
 
                 // Add any new boson objects
-                {
+                if let Some(boson) = state_boson.as_ref() {
                     let mut to_add_as_boson_compliant: Vec<Entity> = Vec::new();
 
                     state_ecs.iter_without_mol_mod::<BosonCompliant, _, _>(
                         |entity, boson_object: &BosonObject| {
-                            if let Ok(mut boson) = state_boson.write() {
-                                info!("Adding Boson Object");
-                                boson.add_object(boson_object);
-                                to_add_as_boson_compliant.push(entity);
-                            }
+                            info!("Adding Boson Object");
+                            boson.write().add_object(boson_object);
+                            to_add_as_boson_compliant.push(entity);
                         },
                     );
 
@@ -184,11 +206,10 @@ impl Isotope {
                     );
                 }
 
-                if let Ok(running) = state_state_running.read() {
-                    if !*running {
-                        warn!("State Update Thread Exiting....");
-                        break;
-                    }
+                // If we are not running the engine anymore we should stop this thread
+                if !*state_state_running.read() {
+                    warn!("State Update Thread Exiting....");
+                    break;
                 }
 
                 // TODO: make tick rate dependent on how long update takes
@@ -218,7 +239,7 @@ pub struct IsotopeApplication {
 }
 
 impl IsotopeApplication {
-    pub fn new<I>(state: I) -> Result<Self>
+    pub fn new<I>(builder: IsotopeBuilder, state: I) -> Result<Self>
     where
         I: IsotopeState,
     {
@@ -240,7 +261,7 @@ impl IsotopeApplication {
 
         Ok(Self {
             window: None,
-            isotope: Isotope::new(gpu_controller, state)?,
+            isotope: Isotope::new(gpu_controller, builder, state)?,
         })
     }
 }
@@ -275,10 +296,7 @@ impl ApplicationHandler for IsotopeApplication {
                 };
         }
 
-        _ = self.isotope.running.write().and_then(|mut running| {
-            *running = true;
-            Ok(())
-        });
+        *self.isotope.running.write() = true;
     }
 
     fn about_to_wait(&mut self, _event_loop: &winit::event_loop::ActiveEventLoop) {
@@ -299,10 +317,7 @@ impl ApplicationHandler for IsotopeApplication {
                     WindowEvent::CloseRequested => {
                         info!("Shutting Down Isotope...");
 
-                        _ = self.isotope.running.write().and_then(|mut running| {
-                            *running = false;
-                            Ok(())
-                        });
+                        *self.isotope.running.write() = false;
 
                         event_loop.exit();
                     }
@@ -428,50 +443,35 @@ impl ApplicationHandler for IsotopeApplication {
                         } => match state {
                             ElementState::Pressed => match physical_key {
                                 winit::keyboard::PhysicalKey::Code(code) => {
-                                    self.isotope.state.write().and_then(|mut state| {
-                                        state.key_is_pressed(
-                                            &self.isotope.compound,
-                                            &self.isotope.asset_server,
-                                            code,
-                                            self.isotope.time.elapsed().as_secs_f32(),
-                                        );
-                                        Ok(())
-                                    }).unwrap_or_else(|err| {
-                                        warn!("Failed to update game state with key: {} continuing...", err);
-                                    });
+                                    self.isotope.state.write().key_is_pressed(
+                                        &self.isotope.compound,
+                                        &self.isotope.asset_server,
+                                        code,
+                                        self.isotope.time.elapsed().as_secs_f32(),
+                                    );
                                 }
                                 _ => {}
                             },
                             ElementState::Released => match physical_key {
                                 winit::keyboard::PhysicalKey::Code(code) => {
-                                    self.isotope.state.write().and_then(|mut state| {
-                                        state.key_is_released(
-                                            &self.isotope.compound,
-                                            &self.isotope.asset_server,
-                                            code,
-                                            self.isotope.time.elapsed().as_secs_f32(),
-                                        );
-                                        Ok(())
-                                    }).unwrap_or_else(|err| {
-                                        warn!("Failed to update game state with key: {} continuing...", err);
-                                    });
+                                    self.isotope.state.write().key_is_released(
+                                        &self.isotope.compound,
+                                        &self.isotope.asset_server,
+                                        code,
+                                        self.isotope.time.elapsed().as_secs_f32(),
+                                    );
                                 }
                                 _ => {}
                             },
                         },
                     },
                     WindowEvent::CursorMoved { position, .. } => {
-                        self.isotope.state.write().and_then(|mut state| {
-                            state.cursor_moved(
-                                &self.isotope.compound,
-                                &self.isotope.asset_server,
-                                position.into(),
-                                self.isotope.time.elapsed().as_secs_f32(),
-                            );
-                            Ok(())
-                        }).unwrap_or_else(|err| {
-                            warn!("Failed to update game state with cursor position: {} continuing...", err);
-                        });
+                        self.isotope.state.write().cursor_moved(
+                            &self.isotope.compound,
+                            &self.isotope.asset_server,
+                            position.into(),
+                            self.isotope.time.elapsed().as_secs_f32(),
+                        );
                     }
                     _ => {}
                 }
@@ -487,24 +487,12 @@ impl ApplicationHandler for IsotopeApplication {
     ) {
         match event {
             DeviceEvent::MouseMotion { delta } => {
-                self.isotope
-                    .state
-                    .write()
-                    .and_then(|mut state| {
-                        state.mouse_is_moved(
-                            &self.isotope.compound,
-                            &self.isotope.asset_server,
-                            delta,
-                            self.isotope.time.elapsed().as_secs_f32(),
-                        );
-                        Ok(())
-                    })
-                    .unwrap_or_else(|err| {
-                        warn!(
-                            "Failed to update game state with mouse movement: {} continuing...",
-                            err
-                        );
-                    });
+                self.isotope.state.write().mouse_is_moved(
+                    &self.isotope.compound,
+                    &self.isotope.asset_server,
+                    delta,
+                    self.isotope.time.elapsed().as_secs_f32(),
+                );
             }
             _ => {}
         }

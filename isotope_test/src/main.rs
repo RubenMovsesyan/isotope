@@ -34,7 +34,12 @@ impl IsotopeState for GameState {
 
         match Model::from_obj("test_files/monkey.obj", assets, Some(&instances)) {
             Ok(model) => {
-                ecs.spawn((model, Transform3D::default(), PointMass::new(20.0)));
+                // ecs.spawn((model, Transform3D::default(), PointMass::new(20.0)));
+                ecs.spawn((
+                    model,
+                    Transform3D::default(),
+                    RigidBodyBuilder::new().mass(100.0).build(),
+                ));
             }
             Err(err) => {
                 error!("Failed to load model: {}", err);
@@ -239,7 +244,13 @@ fn main() {
 
     let game_state = GameState::default();
 
-    let mut isotope = IsotopeApplication::new(game_state).unwrap();
+    let mut isotope = IsotopeApplication::new(
+        IsotopeBuilder::new().boson(BosonBuilder::new().gravity(Gravity::World {
+            gravitational_acceleration: Vector3::unit_y() * -9.81,
+        })),
+        game_state,
+    )
+    .unwrap();
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);

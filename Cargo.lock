@@ -1149,6 +1149,7 @@ dependencies = [
  "image",
  "log",
  "matter_vault",
+ "parking_lot",
  "photon",
  "smol",
  "winit",
