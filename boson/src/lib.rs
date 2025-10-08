@@ -83,7 +83,13 @@ impl Boson {
             info!("Starting Boson Thread");
             let mut last_frame_time = Instant::now();
 
-            let gravity = Gravity::World(Vector3::unit_y() * -9.81);
+            // let gravity = Gravity::World(Vector3::unit_y() * -9.81);
+            // let gravity = Gravity::Point(Vector3::new(20.0, 6378137.0, 400.0), 5.972e24);
+            let gravity = Gravity::WorldPoint(
+                Vector3::unit_y() * -9.81,
+                Vector3::new(0.0, 6378137.0, 0.0),
+                5.972e24,
+            );
 
             loop {
                 let now = Instant::now();

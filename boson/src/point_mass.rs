@@ -1,4 +1,4 @@
-use cgmath::{InnerSpace, MetricSpace, Vector3};
+use cgmath::{InnerSpace, MetricSpace, Vector3, Zero};
 use log::{debug, info};
 
 use crate::{
@@ -24,14 +24,28 @@ impl Gravitational for PointMass {
             }
             Gravity::Point(location, mass) => {
                 let distance = self.position.distance(*location);
+                if distance < 1e-6 {
+                    return; // Avoid division by zero
+                }
+
                 let force = GRAVITATIONAL_CONSTANT * self.mass * mass / distance.powi(2);
-                self.apply_force((self.position - location).normalize_to(force), timestep);
+                self.apply_force((location - self.position).normalize_to(force), timestep);
             }
             Gravity::WorldPoint(gravity_vector, location, mass) => {
+                let world_accel = *gravity_vector;
+
                 let distance = self.position.distance(*location);
-                let force = GRAVITATIONAL_CONSTANT * self.mass * mass / distance.powi(2);
-                let point_force = (self.position - location).normalize_to(force);
-                self.apply_force(point_force + *gravity_vector, timestep);
+
+                let point_accel = if distance >= 1e-6 {
+                    let force = GRAVITATIONAL_CONSTANT * mass / distance.powi(2);
+                    (location - self.position).normalize_to(force)
+                } else {
+                    Vector3::zero()
+                };
+
+                let total_acceleration = world_accel + point_accel;
+
+                self.apply_acceleration(total_acceleration, timestep);
             }
         }
     }
