@@ -161,7 +161,7 @@ impl GpuController {
 
         // Initialize WGPU
         let instance = wgpu::Instance::new(&InstanceDescriptor {
-            backends: Backends::all(),
+            backends: Backends::VULKAN | Backends::DX12 | Backends::METAL,
             ..Default::default()
         });
 
