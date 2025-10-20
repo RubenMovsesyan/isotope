@@ -339,7 +339,7 @@ impl DeferedRenderer3D {
                     targets: &[
                         // Surface Texture output
                         Some(ColorTargetState {
-                            format: TextureFormat::Bgra8UnormSrgb,
+                            format: TextureFormat::Rgba8UnormSrgb,
                             blend: Some(BlendState {
                                 color: BlendComponent {
                                     src_factor: BlendFactor::SrcAlpha,
