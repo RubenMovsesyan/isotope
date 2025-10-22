@@ -184,6 +184,15 @@ impl Isotope {
                     );
                 }
 
+                // Run the instancer on any objects that have an instancer
+                {
+                    state_ecs.iter_mut_duo(
+                        |_entity, model: &mut Model, instancer: &mut Instancer| {
+                            model.apply_instancer(instancer);
+                        },
+                    )
+                }
+
                 if let Ok(running) = state_state_running.read() {
                     if !*running {
                         warn!("State Update Thread Exiting....");
