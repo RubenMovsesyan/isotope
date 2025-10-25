@@ -137,16 +137,16 @@ impl Isotope {
 
                     state.update(&state_ecs, &state_asset_server, dt, t);
 
-                    // Run the instancer on any objects that have an instancer
-                    {
-                        state_ecs.iter_mut_duo(
-                            |_entity, model: &mut Model, instancer: &mut Instancer| {
-                                if let Err(err) = model.apply_instancer(instancer, dt, t) {
-                                    error!("Failed To Apply Instancer: {}", err);
-                                }
-                            },
-                        )
-                    }
+                    // // Run the instancer on any objects that have an instancer
+                    // {
+                    //     state_ecs.iter_mut_duo(
+                    //         |_entity, model: &mut Model, instancer: &mut Instancer| {
+                    //             if let Err(err) = model.apply_instancer(instancer, dt, t) {
+                    //                 error!("Failed To Apply Instancer: {}", err);
+                    //             }
+                    //         },
+                    //     )
+                    // }
                 }
 
                 // Add any new boson objects
@@ -335,6 +335,19 @@ impl ApplicationHandler for IsotopeApplication {
                                     });
                                     self.isotope.photon.update_lights(&lights);
                                 }
+                            }
+
+                            // Run the instancer on any objects that have an instancer
+                            {
+                                let t = self.isotope.time.elapsed().as_secs_f32();
+
+                                self.isotope.compound.iter_mut_duo(
+                                    |_entity, model: &mut Model, instancer: &mut Instancer| {
+                                        if let Err(err) = model.apply_instancer(instancer, 0.0, t) {
+                                            error!("Failed To Apply Instancer: {}", err);
+                                        }
+                                    },
+                                )
                             }
 
                             // Update the camera if there are any modifications

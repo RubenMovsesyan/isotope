@@ -4,7 +4,6 @@ use std::{
     ops::Range,
     path::Path,
     sync::Arc,
-    time::Instant,
 };
 
 use anyhow::{Result, anyhow};
@@ -395,7 +394,6 @@ impl Model {
 
     pub(crate) fn apply_instancer(&self, instancer: &mut Instancer, dt: f32, t: f32) -> Result<()> {
         // Create the bind group if needed first
-        debug!("Preparing for instancing");
         _ = instancer.prepare_for_instancing(&self.instance_buffer, &self.gpu_controller, dt, t);
 
         match &instancer.instancer_kind {

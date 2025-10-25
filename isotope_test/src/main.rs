@@ -66,6 +66,13 @@ impl IsotopeState for GameState {
                             }
                         })
                     },
+                    // Instancer::new_serial(None, |instances, delta_t, t| {
+                    //     for instance in instances {
+                    //         instance.pos(|position| {
+                    //             *position += Vector3::new(f32::sin(t), f32::cos(t), 0.0) * 0.01;
+                    //         })
+                    //     }
+                    // }),
                 ));
             }
             Err(err) => {
