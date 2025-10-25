@@ -18,5 +18,5 @@ fn main(
 ) {
     let index = global_id.x;
 
-    instances[index].position += delta_t * vec3<f32>(sin(t), cos(t), 0.0);
+    instances[index].position += vec3<f32>(sin(t), cos(t), 0.0) * 0.0001;
 }

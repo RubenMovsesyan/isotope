@@ -71,6 +71,25 @@ impl InstancerBinding {
 
 pub type SerialModifier = fn(&mut [Instance], f32, f32);
 
+/// An instancer for managing and updating collections of instances.
+///
+/// **RECOMMENDATION: Use the serial instancer for production code.**
+///
+/// While this struct provides both serial and parallel instancing capabilities,
+/// the parallel (GPU compute shader) instancer is currently in an unstable state
+/// and suffers from significant performance issues. The parallel implementation
+/// has not been fully optimized and may cause performance degradation compared
+/// to the serial CPU-based approach.
+///
+/// The serial instancer, while running on the CPU, provides reliable and
+/// predictable performance characteristics. It processes instances sequentially
+/// using a provided modifier function and is the recommended approach until
+/// the parallel instancer implementation is stabilized and optimized.
+///
+/// Use `Instancer::new_serial()` for stable, production-ready instancing,
+/// and only consider `Instancer::new_parallel()` for experimental purposes
+/// or if you specifically need GPU compute shader functionality and can
+/// tolerate the current performance limitations.
 pub struct Instancer {
     pub(crate) range: Option<Range<u64>>,
     pub(crate) instancer_kind: InstancerKind,
