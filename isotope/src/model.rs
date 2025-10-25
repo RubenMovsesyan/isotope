@@ -474,6 +474,7 @@ impl Model {
                 }
 
                 self.gpu_controller.submit(command_encoder);
+                _ = self.gpu_controller.poll(MaintainBase::Wait);
 
                 Ok(())
             }
