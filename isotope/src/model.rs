@@ -4,14 +4,15 @@ use std::{
     ops::Range,
     path::Path,
     sync::Arc,
+    time::Instant,
 };
 
 use anyhow::{Result, anyhow};
 use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferInitDescriptor,
-    BufferUsages, GpuController, INSTANCE_BUFFER_INDEX, Instance, MaintainBase, MapMode, Mesh,
-    RenderPass, Vertex,
+    BufferUsages, ComputePassDescriptor, GpuController, INSTANCE_BUFFER_INDEX, Instance,
+    MaintainBase, MapMode, Mesh, RenderPass, Vertex,
 };
 use log::{debug, info};
 use matter_vault::SharedMatter;
@@ -238,6 +239,7 @@ impl Model {
                     .create_buffer_init(&BufferInitDescriptor {
                         label: Some("Model Instance Buffer"),
                         usage: BufferUsages::VERTEX
+                            | BufferUsages::STORAGE
                             | BufferUsages::COPY_DST
                             | BufferUsages::COPY_SRC,
                         contents: bytemuck::cast_slice(&instances),
@@ -391,7 +393,11 @@ impl Model {
         Ok(())
     }
 
-    pub(crate) fn apply_instancer(&self, instancer: &Instancer) -> Result<()> {
+    pub(crate) fn apply_instancer(&self, instancer: &mut Instancer, dt: f32, t: f32) -> Result<()> {
+        // Create the bind group if needed first
+        debug!("Preparing for instancing");
+        _ = instancer.prepare_for_instancing(&self.instance_buffer, &self.gpu_controller, dt, t);
+
         match &instancer.instancer_kind {
             InstancerKind::Serial { serial_modifier } => {
                 let range = instancer
@@ -422,7 +428,7 @@ impl Model {
                 {
                     let mut mapped_data = buffer_slice.get_mapped_range_mut();
                     let instances = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data);
-                    serial_modifier(instances);
+                    serial_modifier(instances, dt, t);
                 }
 
                 self.instance_staging_buffer.unmap();
@@ -442,7 +448,35 @@ impl Model {
 
                 Ok(())
             }
-            InstancerKind::Parallel { shader } => Ok(()),
+            InstancerKind::Parallel {
+                pipeline,
+                bind_group,
+                ..
+            } => {
+                let mut command_encoder = self
+                    .gpu_controller
+                    .create_command_encoder("Instancer Command Encoder");
+
+                {
+                    let dispatch_size = 256;
+
+                    let mut compute_pass =
+                        command_encoder.begin_compute_pass(&ComputePassDescriptor {
+                            label: Some("Instancer Compute Pass"),
+                            timestamp_writes: None,
+                        });
+
+                    compute_pass.set_pipeline(pipeline);
+
+                    compute_pass.set_bind_group(0, bind_group, &[]);
+
+                    compute_pass.dispatch_workgroups(dispatch_size, 1, 1);
+                }
+
+                self.gpu_controller.submit(command_encoder);
+
+                Ok(())
+            }
         }
     }
 }

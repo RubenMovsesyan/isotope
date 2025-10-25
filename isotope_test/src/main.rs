@@ -34,7 +34,39 @@ impl IsotopeState for GameState {
 
         match Model::from_obj("test_files/monkey.obj", assets, Some(&instances)) {
             Ok(model) => {
-                ecs.spawn((model, Transform3D::default(), PointMass::new(20.0)));
+                ecs.spawn((
+                    model,
+                    Transform3D::default(),
+                    PointMass::new(20.0),
+                    if let Ok(instancer) = Instancer::new_parallel(
+                        None,
+                        assets,
+                        vec![],
+                        include_str!("instancer.wgsl"),
+                    ) {
+                        instancer
+                    } else {
+                        Instancer::new_serial(None, |instances, delta_t, t| {
+                            for instance in instances {
+                                instance.pos(|position| {
+                                    if position.y >= 20.0 {
+                                        position.y = -20.0;
+                                    }
+
+                                    position.y +=
+                                        (f32::abs(position.x) + f32::abs(position.z)) * delta_t;
+                                });
+
+                                instance.transform(|pos, orient, _scale| {
+                                    *orient = Quaternion::from_axis_angle(
+                                        Vector3::unit_y(),
+                                        Deg((20.0 - pos.x) * t),
+                                    );
+                                })
+                            }
+                        })
+                    },
+                ));
             }
             Err(err) => {
                 error!("Failed to load model: {}", err);
@@ -64,24 +96,24 @@ impl IsotopeState for GameState {
             });
         });
 
-        ecs.iter_mol(|_entity, model: &Model| {
-            _ = model.modify_instances(None, |model_instance| {
-                for instance in model_instance.iter_mut() {
-                    instance.pos(|pos| {
-                        if pos.y >= 20.0 {
-                            pos.y = -20.0;
-                        }
+        // ecs.iter_mol(|_entity, model: &Model| {
+        //     _ = model.modify_instances(None, |model_instance| {
+        //         for instance in model_instance.iter_mut() {
+        //             instance.pos(|pos| {
+        //                 if pos.y >= 20.0 {
+        //                     pos.y = -20.0;
+        //                 }
 
-                        pos.y += (f32::abs(pos.x) + f32::abs(pos.z)) * delta_t;
-                    });
+        //                 pos.y += (f32::abs(pos.x) + f32::abs(pos.z)) * delta_t;
+        //             });
 
-                    instance.transform(|pos, orient, _scale| {
-                        *orient =
-                            Quaternion::from_axis_angle(Vector3::unit_y(), Deg((20.0 - pos.x) * t));
-                    });
-                }
-            });
-        });
+        //             instance.transform(|pos, orient, _scale| {
+        //                 *orient =
+        //                     Quaternion::from_axis_angle(Vector3::unit_y(), Deg((20.0 - pos.x) * t));
+        //             });
+        //         }
+        //     });
+        // });
 
         // ecs.iter_mut_duo(|_entity, _model: &mut Model, transform: &mut Transform3D| {
         //     transform.position(|pos| {

@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 photon = { path = "../photon" }
+isotope_utils = { path = "../isotope_utils" }
 gpu_controller = { path = "../gpu_controller" }
 matter_vault = { path = "../matter_vault" }
 compound = { path = "../compound" }

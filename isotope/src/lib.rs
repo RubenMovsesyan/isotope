@@ -136,6 +136,17 @@ impl Isotope {
                     let t = state_time.elapsed().as_secs_f32();
 
                     state.update(&state_ecs, &state_asset_server, dt, t);
+
+                    // Run the instancer on any objects that have an instancer
+                    {
+                        state_ecs.iter_mut_duo(
+                            |_entity, model: &mut Model, instancer: &mut Instancer| {
+                                if let Err(err) = model.apply_instancer(instancer, dt, t) {
+                                    error!("Failed To Apply Instancer: {}", err);
+                                }
+                            },
+                        )
+                    }
                 }
 
                 // Add any new boson objects
@@ -162,7 +173,6 @@ impl Isotope {
                 {
                     state_ecs.iter_mut_duo_mod(
                         |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {
-                            debug!("Writing Transform");
                             boson_object.write_transform(transform);
                         },
                     );
@@ -182,15 +192,6 @@ impl Isotope {
                             })
                         },
                     );
-                }
-
-                // Run the instancer on any objects that have an instancer
-                {
-                    state_ecs.iter_mut_duo(
-                        |_entity, model: &mut Model, instancer: &mut Instancer| {
-                            model.apply_instancer(instancer);
-                        },
-                    )
                 }
 
                 if let Ok(running) = state_state_running.read() {
