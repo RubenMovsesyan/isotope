@@ -13,11 +13,11 @@ pub trait BosonCompat {
 impl BosonCompat for BosonObject {
     fn write_transform(&self, transform: &Transform3D) {
         self.modify_body(|body| match body {
-            BosonBody::PointMass(point_mass) => transform.get_position(|pos| {
-                point_mass.position.x = pos.x as f64;
-                point_mass.position.y = pos.y as f64;
-                point_mass.position.z = pos.z as f64;
-            }),
+            // BosonBody::PointMass(point_mass) => transform.get_position(|pos| {
+            //     point_mass.position.x = pos.x as f64;
+            //     point_mass.position.y = pos.y as f64;
+            //     point_mass.position.z = pos.z as f64;
+            // }),
             _ => {}
         });
     }
@@ -27,7 +27,8 @@ impl BosonCompat for BosonObject {
         F: FnOnce(&Vector3<f64>) -> R,
     {
         self.read_body(|body| match body {
-            BosonBody::PointMass(point_mass) => callback(&point_mass.position),
+            // BosonBody::PointMass(point_mass) => callback(&point_mass.position),
+            BosonBody::RigidBody(rigid_body) => callback(&rigid_body.position),
             _ => {
                 todo!()
             }

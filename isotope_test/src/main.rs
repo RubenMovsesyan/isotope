@@ -256,7 +256,13 @@ fn main() {
 
     let game_state = GameState::default();
 
-    let mut isotope = IsotopeApplication::new(game_state).unwrap();
+    let mut isotope = IsotopeApplication::new(
+        IsotopeBuilder::new().boson(BosonBuilder::new().gravity(Gravity::World {
+            gravitational_acceleration: Vector3::unit_y() * -9.81,
+        })),
+        game_state,
+    )
+    .unwrap();
 
     let event_loop = EventLoop::new().unwrap();
     event_loop.set_control_flow(ControlFlow::Poll);

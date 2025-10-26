@@ -1150,6 +1150,7 @@ dependencies = [
  "isotope_utils",
  "log",
  "matter_vault",
+ "parking_lot",
  "photon",
  "smol",
  "winit",

@@ -4,7 +4,9 @@
         "env": {
             "RUST_LOG": "debug"
         },
-        "command": "cargo run --bin isotope_test"
+        "command": "cargo run --bin isotope_test",
+        "use_new_terminal": false,
+        "reveal": "always"
     },
     {
         "label": "Run",
@@ -20,7 +22,9 @@
         "env": {
             "RUST_BACKTRACE": "1"
         },
-        "command": "cargo run"
+        "command": "cargo run",
+        "use_new_terminal": false,
+        "reveal": "always"
     },
     {
         "label": "Run With Deadlock Detection",
@@ -28,6 +32,8 @@
             "RUST_LOG": "debug",
             "RUST_BACKTRACE": "1"
         },
-        "command": "cargo run --features deadlock_detection"
+        "command": "cargo run --features deadlock_detection",
+        "use_new_terminal": false,
+        "reveal": "always"
     }
 ]
