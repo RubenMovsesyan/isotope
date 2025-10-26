@@ -37,3 +37,7 @@ impl ToHash for &str {
         hash.to_base64()
     }
 }
+
+pub fn compute_work_group_count(size: u32, work_group_size: u32) -> u32 {
+    (size + work_group_size - 1) / work_group_size
+}

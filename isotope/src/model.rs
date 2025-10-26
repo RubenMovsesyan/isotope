@@ -13,6 +13,7 @@ use gpu_controller::{
     BufferUsages, ComputePassDescriptor, GpuController, INSTANCE_BUFFER_INDEX, Instance,
     MaintainBase, MapMode, Mesh, RenderPass, Vertex,
 };
+use isotope_utils::compute_work_group_count;
 use log::{debug, info};
 use matter_vault::SharedMatter;
 use photon::{MATERIALS_BIND_GROUP, renderer::GLOBAL_TRANSFORM_BIND_GROUP};
@@ -401,7 +402,7 @@ impl Model {
                 let range = instancer
                     .range
                     .clone()
-                    .unwrap_or(0..self.num_instances as u64);
+                    .unwrap_or_else(|| 0..self.num_instances as u64);
                 let byte_range = (range.start * INSTANCE_SIZE)..(range.end * INSTANCE_SIZE);
 
                 // Copy the instance buffer to mappable buffer
@@ -456,7 +457,7 @@ impl Model {
                     .create_command_encoder("Instancer Command Encoder");
 
                 {
-                    let dispatch_size = 256;
+                    let dispatch_size = compute_work_group_count(self.num_instances, 256);
 
                     let mut compute_pass =
                         command_encoder.begin_compute_pass(&ComputePassDescriptor {

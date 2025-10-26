@@ -37,35 +37,13 @@ impl IsotopeState for GameState {
                 ecs.spawn((
                     model,
                     Transform3D::default(),
-                    PointMass::new(20.0),
-                    if let Ok(instancer) = Instancer::new_parallel(
-                        None,
+                    // PointMass::new(20.0),
+                    Instancer::new_parallel(
+                        Some(0..20),
                         assets,
                         vec![],
                         include_str!("instancer.wgsl"),
-                    ) {
-                        instancer
-                    } else {
-                        Instancer::new_serial(None, |instances, delta_t, t| {
-                            for instance in instances {
-                                instance.pos(|position| {
-                                    if position.y >= 20.0 {
-                                        position.y = -20.0;
-                                    }
-
-                                    position.y +=
-                                        (f32::abs(position.x) + f32::abs(position.z)) * delta_t;
-                                });
-
-                                instance.transform(|pos, orient, _scale| {
-                                    *orient = Quaternion::from_axis_angle(
-                                        Vector3::unit_y(),
-                                        Deg((20.0 - pos.x) * t),
-                                    );
-                                })
-                            }
-                        })
-                    },
+                    ),
                     // Instancer::new_serial(None, |instances, delta_t, t| {
                     //     for instance in instances {
                     //         instance.pos(|position| {

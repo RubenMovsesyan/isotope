@@ -3,11 +3,12 @@ use std::{ops::Range, time::Instant};
 use anyhow::{Result, anyhow};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor,
-    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor, BufferUsages,
-    ComputePipeline, ComputePipelineDescriptor, GpuController, Instance,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, ShaderModule, ShaderStages,
+    BindGroupLayoutEntry, BindingType, Buffer, BufferBindingType, BufferDescriptor,
+    BufferInitDescriptor, BufferUsages, ComputePipeline, ComputePipelineDescriptor, GpuController,
+    Instance, PipelineCompilationOptions, PipelineLayoutDescriptor, ShaderModule, ShaderStages,
 };
 use isotope_utils::ToHash;
+use log::error;
 
 use crate::AssetServer;
 
@@ -121,7 +122,7 @@ impl Instancer {
         asset_server: &AssetServer,
         bindings: Vec<InstancerBinding>,
         shader: &str,
-    ) -> Result<Self> {
+    ) -> Self {
         let shader_module = asset_server.gpu_controller.create_shader(shader);
         let shader_hash = shader.to_hash();
 
@@ -144,13 +145,29 @@ impl Instancer {
             );
         }
 
+        let range_i32 = if let Some(range) = range.as_ref() {
+            (range.start as i32)..(range.end as i32)
+        } else {
+            -1..-1
+        };
+
+        buffers.push(
+            asset_server
+                .gpu_controller
+                .create_buffer_init(&BufferInitDescriptor {
+                    label: Some("Instance Buffer Binding: range"),
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                    contents: bytemuck::cast_slice(&[range_i32.start, range_i32.end]),
+                }),
+        );
+
         // Create the buffers first
         for (binding_count, binding) in bindings.iter().enumerate() {
             buffers.push(
                 asset_server
                     .gpu_controller
                     .create_buffer(&BufferDescriptor {
-                        label: Some(&format!("Instancer Buffer Binding: {}", binding_count + 3)),
+                        label: Some(&format!("Instancer Buffer Binding: {}", binding_count + 4)),
                         mapped_at_creation: false,
                         size: binding.data().len() as u64,
                         usage: binding.buffer_usages(),
@@ -195,6 +212,17 @@ impl Instancer {
                     min_binding_size: None,
                 },
             },
+            // Range
+            BindGroupLayoutEntry {
+                binding: 3,
+                visibility: ShaderStages::COMPUTE,
+                count: None,
+                ty: BindingType::Buffer {
+                    ty: BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+            },
         ]);
 
         let mut binding_count = 1; // The first bindings is going to be the instance buffer and time buffers
@@ -214,53 +242,68 @@ impl Instancer {
         });
 
         // Add the Bind group layout to the layouts manager
-        asset_server.gpu_controller.write_layouts(|layouts| {
-            layouts.insert(
-                shader_hash.clone(),
-                asset_server
-                    .gpu_controller
-                    .create_bind_group_layout(&BindGroupLayoutDescriptor {
-                        label: Some("Instancer"),
-                        entries: &bind_group_layout_entries,
-                    }),
-            );
-        })?;
+        asset_server
+            .gpu_controller
+            .write_layouts(|layouts| {
+                layouts.insert(
+                    shader_hash.clone(),
+                    asset_server.gpu_controller.create_bind_group_layout(
+                        &BindGroupLayoutDescriptor {
+                            label: Some("Instancer"),
+                            entries: &bind_group_layout_entries,
+                        },
+                    ),
+                );
+            })
+            .unwrap_or_else(|err| {
+                error!("Failed to write Instancer Layouts: {err}");
+            });
 
         // Create the pipeline based on the new layout
-        let pipeline =
-            asset_server
-                .gpu_controller
-                .read_layouts(|layouts| -> Result<ComputePipeline> {
-                    let bind_group_layout = if let Some(layout) = layouts.get(&shader_hash) {
-                        Ok(layout)
-                    } else {
-                        Err(anyhow!(
-                            "Failed To get Bind Group Layout with hash: {}",
-                            shader_hash
-                        ))
-                    }?;
+        let pipeline = asset_server
+            .gpu_controller
+            .read_layouts(|layouts| -> Result<ComputePipeline> {
+                let bind_group_layout = if let Some(layout) = layouts.get(&shader_hash) {
+                    Ok(layout)
+                } else {
+                    Err(anyhow!(
+                        "Failed To get Bind Group Layout with hash: {}",
+                        shader_hash
+                    ))
+                }?;
 
-                    let pipeline_layout = asset_server.gpu_controller.create_pipeline_layout(
-                        &PipelineLayoutDescriptor {
+                let pipeline_layout =
+                    asset_server
+                        .gpu_controller
+                        .create_pipeline_layout(&PipelineLayoutDescriptor {
                             label: Some("Instancer Pipeline Layout"),
                             bind_group_layouts: &[bind_group_layout],
                             push_constant_ranges: &[],
-                        },
-                    );
+                        });
 
-                    Ok(asset_server.gpu_controller.create_compute_pipeline(
-                        &ComputePipelineDescriptor {
-                            label: Some("Instancer"),
-                            cache: None,
-                            compilation_options: PipelineCompilationOptions::default(),
-                            entry_point: Some("main"),
-                            layout: Some(&pipeline_layout),
-                            module: &shader_module,
-                        },
-                    ))
-                })??;
+                Ok(asset_server.gpu_controller.create_compute_pipeline(
+                    &ComputePipelineDescriptor {
+                        label: Some("Instancer"),
+                        cache: None,
+                        compilation_options: PipelineCompilationOptions::default(),
+                        entry_point: Some("main"),
+                        layout: Some(&pipeline_layout),
+                        module: &shader_module,
+                    },
+                ))
+            })
+            .and_then(|res| {
+                Ok(res.unwrap_or_else(|err| {
+                    error!("Failed to create pipeline: {err}");
+                    panic!();
+                }))
+            })
+            .unwrap_or_else(|err| {
+                error!("Failed to create pipeline: {err}");
+                panic!();
+            });
 
-        Ok(Self {
+        Self {
             range,
             instancer_kind: InstancerKind::Parallel {
                 shader_hash,
@@ -269,7 +312,7 @@ impl Instancer {
                 bind_group: None,
                 buffers,
             },
-        })
+        }
     }
 
     pub(crate) fn prepare_for_instancing(

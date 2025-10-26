@@ -1,4 +1,4 @@
-use cgmath::{Matrix4, Quaternion, Vector3};
+use cgmath::{Quaternion, Vector3};
 use wgpu::{BufferAddress, VertexAttribute, VertexBufferLayout, VertexFormat, VertexStepMode};
 
 use crate::Buffered;
