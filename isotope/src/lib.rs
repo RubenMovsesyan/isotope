@@ -155,12 +155,22 @@ impl Isotope {
                 let dt = now.duration_since(last_frame_time).as_secs_f32();
                 last_frame_time = now;
 
-                state_state.write().update(
-                    &state_ecs,
-                    &state_asset_server,
-                    dt,
-                    state_time.elapsed().as_secs_f32(),
-                );
+                if let Ok(mut state) = state_state.write() {
+                    let t = state_time.elapsed().as_secs_f32();
+
+                    state.update(&state_ecs, &state_asset_server, dt, t);
+
+                    // // Run the instancer on any objects that have an instancer
+                    // {
+                    //     state_ecs.iter_mut_duo(
+                    //         |_entity, model: &mut Model, instancer: &mut Instancer| {
+                    //             if let Err(err) = model.apply_instancer(instancer, dt, t) {
+                    //                 error!("Failed To Apply Instancer: {}", err);
+                    //             }
+                    //         },
+                    //     )
+                    // }
+                }
 
                 // Add any new boson objects
                 if let Some(boson) = state_boson.as_ref() {
@@ -184,7 +194,6 @@ impl Isotope {
                 {
                     state_ecs.iter_mut_duo_mod(
                         |_entity, transform: &mut Transform3D, boson_object: &mut BosonObject| {
-                            debug!("Writing Transform");
                             boson_object.write_transform(transform);
                         },
                     );
@@ -340,6 +349,19 @@ impl ApplicationHandler for IsotopeApplication {
                                     });
                                     self.isotope.photon.update_lights(&lights);
                                 }
+                            }
+
+                            // Run the instancer on any objects that have an instancer
+                            {
+                                let t = self.isotope.time.elapsed().as_secs_f32();
+
+                                self.isotope.compound.iter_mut_duo(
+                                    |_entity, model: &mut Model, instancer: &mut Instancer| {
+                                        if let Err(err) = model.apply_instancer(instancer, 0.0, t) {
+                                            error!("Failed To Apply Instancer: {}", err);
+                                        }
+                                    },
+                                )
                             }
 
                             // Update the camera if there are any modifications

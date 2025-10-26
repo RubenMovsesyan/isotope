@@ -10,15 +10,16 @@ use anyhow::{Result, anyhow};
 use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferInitDescriptor,
-    BufferUsages, GpuController, INSTANCE_BUFFER_INDEX, Instance, MaintainBase, MapMode, Mesh,
-    RenderPass, Vertex,
+    BufferUsages, ComputePassDescriptor, GpuController, INSTANCE_BUFFER_INDEX, Instance,
+    MaintainBase, MapMode, Mesh, RenderPass, Vertex,
 };
+use isotope_utils::compute_work_group_count;
 use log::{debug, info};
 use matter_vault::SharedMatter;
 use photon::{MATERIALS_BIND_GROUP, renderer::GLOBAL_TRANSFORM_BIND_GROUP};
 
 use crate::{
-    Transform3D,
+    Instancer, InstancerKind, Transform3D,
     asset_server::AssetServer,
     material::{Material, load_materials},
 };
@@ -238,6 +239,7 @@ impl Model {
                     .create_buffer_init(&BufferInitDescriptor {
                         label: Some("Model Instance Buffer"),
                         usage: BufferUsages::VERTEX
+                            | BufferUsages::STORAGE
                             | BufferUsages::COPY_DST
                             | BufferUsages::COPY_SRC,
                         contents: bytemuck::cast_slice(&instances),
@@ -389,5 +391,92 @@ impl Model {
         self.gpu_controller.submit(encoder);
 
         Ok(())
+    }
+
+    pub(crate) fn apply_instancer(&self, instancer: &mut Instancer, dt: f32, t: f32) -> Result<()> {
+        // Create the bind group if needed first
+        _ = instancer.prepare_for_instancing(&self.instance_buffer, &self.gpu_controller, dt, t);
+
+        match &instancer.instancer_kind {
+            InstancerKind::Serial { serial_modifier } => {
+                let range = instancer
+                    .range
+                    .clone()
+                    .unwrap_or_else(|| 0..self.num_instances as u64);
+                let byte_range = (range.start * INSTANCE_SIZE)..(range.end * INSTANCE_SIZE);
+
+                // Copy the instance buffer to mappable buffer
+                let mut encoder = self
+                    .gpu_controller
+                    .create_command_encoder("Instance Update Copy To");
+                encoder.copy_buffer_to_buffer(
+                    &self.instance_buffer,
+                    byte_range.start,
+                    &self.instance_staging_buffer,
+                    byte_range.start,
+                    byte_range.end - byte_range.start,
+                );
+                self.gpu_controller.submit(encoder);
+                self.gpu_controller.poll(MaintainBase::Wait)?;
+
+                // Map the buffer for the CPU to read
+                let buffer_slice = self.instance_staging_buffer.slice(byte_range.clone());
+                buffer_slice.map_async(MapMode::Write, |_| {});
+                self.gpu_controller.poll(MaintainBase::Wait)?;
+
+                {
+                    let mut mapped_data = buffer_slice.get_mapped_range_mut();
+                    let instances = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data);
+                    serial_modifier(instances, dt, t);
+                }
+
+                self.instance_staging_buffer.unmap();
+
+                // Copy the data back
+                let mut encoder = self
+                    .gpu_controller
+                    .create_command_encoder("Instance Update Copy Back");
+                encoder.copy_buffer_to_buffer(
+                    &self.instance_staging_buffer,
+                    byte_range.start,
+                    &self.instance_buffer,
+                    byte_range.start,
+                    byte_range.end - byte_range.start,
+                );
+                self.gpu_controller.submit(encoder);
+
+                Ok(())
+            }
+            InstancerKind::Parallel {
+                pipeline,
+                bind_group,
+                ..
+            } => {
+                let mut command_encoder = self
+                    .gpu_controller
+                    .create_command_encoder("Instancer Command Encoder");
+
+                {
+                    let dispatch_size = compute_work_group_count(self.num_instances, 256);
+
+                    let mut compute_pass =
+                        command_encoder.begin_compute_pass(&ComputePassDescriptor {
+                            label: Some("Instancer Compute Pass"),
+                            timestamp_writes: None,
+                        });
+
+                    compute_pass.set_pipeline(pipeline);
+
+                    compute_pass.set_bind_group(0, bind_group, &[]);
+
+                    compute_pass.dispatch_workgroups(dispatch_size, 1, 1);
+                }
+
+                self.gpu_controller.submit(command_encoder);
+                _ = self.gpu_controller.poll(MaintainBase::Wait);
+
+                Ok(())
+            }
+        }
     }
 }

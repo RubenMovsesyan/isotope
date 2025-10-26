@@ -20,7 +20,7 @@ pub struct AssetServer {
 impl AssetServer {
     pub fn new(asset_manager: Arc<MatterVault>, gpu_controller: Arc<GpuController>) -> Self {
         // let mut layouts = HashMap::new();
-        gpu_controller.write_layouts(|layouts| {
+        _ = gpu_controller.write_layouts(|layouts| {
             layouts.insert(
                 "Material".to_string(),
                 gpu_controller.create_bind_group_layout(&BindGroupLayoutDescriptor {
