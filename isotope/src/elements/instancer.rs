@@ -378,21 +378,16 @@ impl Instancer {
         let mut buffers: Vec<Buffer> = Vec::new();
 
         // Create the delta_t and t buffers first
-        for i in 0..2 {
-            buffers.push(
-                asset_server
-                    .gpu_controller
-                    .create_buffer(&BufferDescriptor {
-                        label: Some(&format!(
-                            "Instancer Buffer Binding: {}",
-                            if i == 0 { "delta_t" } else { "t" }
-                        )),
-                        mapped_at_creation: false,
-                        size: std::mem::size_of::<f32>() as u64,
-                        usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
-                    }),
-            );
-        }
+        buffers.push(
+            asset_server
+                .gpu_controller
+                .create_buffer(&BufferDescriptor {
+                    label: Some("Instancer Buffer Binding: time"),
+                    mapped_at_creation: false,
+                    size: std::mem::size_of::<[f32; 2]>() as u64,
+                    usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
+                }),
+        );
 
         let range_i32 = if let Some(range) = range.as_ref() {
             (range.start as i32)..(range.end as i32)
@@ -442,7 +437,7 @@ impl Instancer {
                     min_binding_size: None,
                 },
             },
-            // Delta t
+            // Time
             BindGroupLayoutEntry {
                 binding: 1,
                 visibility: ShaderStages::COMPUTE,
@@ -453,20 +448,9 @@ impl Instancer {
                     min_binding_size: None,
                 },
             },
-            // Time
-            BindGroupLayoutEntry {
-                binding: 2,
-                visibility: ShaderStages::COMPUTE,
-                count: None,
-                ty: BindingType::Buffer {
-                    ty: BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-            },
             // Range
             BindGroupLayoutEntry {
-                binding: 3,
+                binding: 2,
                 visibility: ShaderStages::COMPUTE,
                 count: None,
                 ty: BindingType::Buffer {
@@ -601,8 +585,7 @@ impl Instancer {
                 ..
             } => {
                 // Write the dt and t values to the buffers
-                gpu_controller.write_buffer(&buffers[0], 0, bytemuck::cast_slice(&[dt]));
-                gpu_controller.write_buffer(&buffers[1], 0, bytemuck::cast_slice(&[t]));
+                gpu_controller.write_buffer(&buffers[0], 0, bytemuck::cast_slice(&[dt, t]));
 
                 if bind_group.is_none() {
                     let mut bind_group_entries: Vec<BindGroupEntry> = Vec::new();
