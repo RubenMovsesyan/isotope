@@ -10,8 +10,8 @@ use anyhow::{Result, anyhow};
 use cgmath::{Matrix4, Quaternion, SquareMatrix, Vector3, Zero};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferDescriptor, BufferInitDescriptor,
-    BufferUsages, ComputePassDescriptor, GpuController, INSTANCE_BUFFER_INDEX, Instance,
-    MaintainBase, MapMode, Mesh, RenderPass, Vertex,
+    BufferUsages, CommandEncoder, ComputePassDescriptor, GpuController, INSTANCE_BUFFER_INDEX,
+    Instance, MaintainBase, MapMode, Mesh, RenderPass, Vertex,
 };
 use isotope_utils::compute_work_group_count;
 use log::{debug, info};
@@ -393,7 +393,13 @@ impl Model {
         Ok(())
     }
 
-    pub(crate) fn apply_instancer(&self, instancer: &mut Instancer, dt: f32, t: f32) -> Result<()> {
+    pub(crate) fn apply_instancer(
+        &self,
+        instancer: &mut Instancer,
+        command_encoder: &mut CommandEncoder,
+        dt: f32,
+        t: f32,
+    ) -> Result<()> {
         // Create the bind group if needed first
         _ = instancer.prepare_for_instancing(&self.instance_buffer, &self.gpu_controller, dt, t);
 
@@ -452,28 +458,18 @@ impl Model {
                 bind_group,
                 ..
             } => {
-                let mut command_encoder = self
-                    .gpu_controller
-                    .create_command_encoder("Instancer Command Encoder");
+                let dispatch_size = compute_work_group_count(self.num_instances, 256);
 
-                {
-                    let dispatch_size = compute_work_group_count(self.num_instances, 256);
+                let mut compute_pass = command_encoder.begin_compute_pass(&ComputePassDescriptor {
+                    label: Some("Instancer Compute Pass"),
+                    timestamp_writes: None,
+                });
 
-                    let mut compute_pass =
-                        command_encoder.begin_compute_pass(&ComputePassDescriptor {
-                            label: Some("Instancer Compute Pass"),
-                            timestamp_writes: None,
-                        });
+                compute_pass.set_pipeline(pipeline);
 
-                    compute_pass.set_pipeline(pipeline);
+                compute_pass.set_bind_group(0, bind_group, &[]);
 
-                    compute_pass.set_bind_group(0, bind_group, &[]);
-
-                    compute_pass.dispatch_workgroups(dispatch_size, 1, 1);
-                }
-
-                self.gpu_controller.submit(command_encoder);
-                _ = self.gpu_controller.poll(MaintainBase::Wait);
+                compute_pass.dispatch_workgroups(dispatch_size, 1, 1);
 
                 Ok(())
             }

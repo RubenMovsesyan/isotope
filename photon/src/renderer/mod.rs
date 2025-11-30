@@ -2,7 +2,7 @@ use std::{collections::HashMap, sync::Arc};
 
 use anyhow::Result;
 use defered_renderer::DeferedRenderer3D;
-use gpu_controller::{BindGroupLayout, GpuController, RenderPass, Texture};
+use gpu_controller::{BindGroupLayout, CommandEncoder, GpuController, RenderPass, Texture};
 
 use crate::{Light, camera::PhotonCamera};
 
@@ -30,13 +30,21 @@ impl Renderer {
         }
     }
 
-    pub fn render<C, G>(&self, camera: &C, output: &Texture, geometry_callback: G)
-    where
+    pub fn render<C, CE, G>(
+        &self,
+        camera: &C,
+        output: &Texture,
+        command_encoder_callback: CE,
+        geometry_callback: G,
+    ) where
         C: PhotonCamera,
+        CE: FnOnce(&mut CommandEncoder),
         G: FnOnce(&mut RenderPass),
     {
         match self {
-            Self::Defered3D(renderer) => _ = renderer.render(camera, output, geometry_callback),
+            Self::Defered3D(renderer) => {
+                _ = renderer.render(camera, output, command_encoder_callback, geometry_callback)
+            }
         }
     }
 

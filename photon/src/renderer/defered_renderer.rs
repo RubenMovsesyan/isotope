@@ -7,14 +7,14 @@ use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, BindGroupLayout, BindGroupLayoutDescriptor,
     BindGroupLayoutEntry, BindingResource, BindingType, BlendComponent, BlendFactor,
     BlendOperation, BlendState, Buffer, BufferInitDescriptor, BufferUsages, Color,
-    ColorTargetState, ColorWrites, CompareFunction, DepthBiasState, DepthStencilState, Extent3d,
-    Face, FragmentState, FrontFace, IndexFormat, LoadOp, MultisampleState, Operations,
-    PipelineCompilationOptions, PipelineLayoutDescriptor, PolygonMode, PrimitiveState,
-    PrimitiveTopology, RenderPass, RenderPassColorAttachment, RenderPassDepthStencilAttachment,
-    RenderPassDescriptor, RenderPipeline, RenderPipelineDescriptor, Sampler, SamplerBindingType,
-    SamplerDescriptor, ShaderStages, StencilState, StoreOp, Texture, TextureDescriptor,
-    TextureDimension, TextureFormat, TextureSampleType, TextureUsages, TextureViewDescriptor,
-    TextureViewDimension, VertexState,
+    ColorTargetState, ColorWrites, CommandEncoder, CompareFunction, DepthBiasState,
+    DepthStencilState, Extent3d, Face, FragmentState, FrontFace, IndexFormat, LoadOp,
+    MultisampleState, Operations, PipelineCompilationOptions, PipelineLayoutDescriptor,
+    PolygonMode, PrimitiveState, PrimitiveTopology, RenderPass, RenderPassColorAttachment,
+    RenderPassDepthStencilAttachment, RenderPassDescriptor, RenderPipeline,
+    RenderPipelineDescriptor, Sampler, SamplerBindingType, SamplerDescriptor, ShaderStages,
+    StencilState, StoreOp, Texture, TextureDescriptor, TextureDimension, TextureFormat,
+    TextureSampleType, TextureUsages, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 use gpu_controller::{BufferBindingType, Buffered, GpuController, Instance, Vertex};
 use log::error;
@@ -416,14 +416,16 @@ impl DeferedRenderer3D {
         })
     }
 
-    pub(crate) fn render<C, F>(
+    pub(crate) fn render<C, CE, F>(
         &self,
         camera: &C,
         output: &Texture,
+        command_encoder_callback: CE,
         geometry_callback: F,
     ) -> Result<()>
     where
         C: PhotonCamera,
+        CE: FnOnce(&mut CommandEncoder),
         F: FnOnce(&mut RenderPass),
     {
         // Get the output texture for the renderer
@@ -432,6 +434,9 @@ impl DeferedRenderer3D {
         let mut encoder = self
             .gpu_controller
             .create_command_encoder("Defered Render 3D Encoder");
+
+        // Run any pre render command encoder updates here
+        command_encoder_callback(&mut encoder);
 
         // Create views for G-Buffer
         let albedo_view = self
