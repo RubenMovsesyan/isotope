@@ -44,7 +44,7 @@ impl IsotopeState for GameState {
                         vec![],
                         include_str!("instancer.wgsl"),
                     ),
-                    // Instancer::new_serial(None, |instances, delta_t, t| {
+                    // Instancer::new_serial(Some(0..20), |instances, delta_t, t| {
                     //     for instance in instances {
                     //         instance.pos(|position| {
                     //             *position += Vector3::new(f32::sin(t), f32::cos(t), 0.0) * 0.01;

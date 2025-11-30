@@ -375,6 +375,8 @@ impl ApplicationHandler for IsotopeApplication {
                                 );
                             }
 
+                            let t = self.isotope.time.elapsed().as_secs_f32();
+
                             // Render to the display
                             self.isotope.compound.iter_mol(|_entity, camera: &Camera| {
                                 self.isotope.photon.render(
@@ -383,8 +385,7 @@ impl ApplicationHandler for IsotopeApplication {
                                     // Pre render command encoder here
                                     |command_encoder| {
                                         // Run the instancer on any objects that have an instancer
-                                        let t = self.isotope.time.elapsed().as_secs_f32();
-
+                                        // FIXME: Instancer doesn't work so well on macOS
                                         self.isotope.compound.iter_mut_duo(
                                             |_entity, model: &mut Model, instancer: &mut Instancer| {
                                                 if let Err(err) = model.apply_instancer(instancer, command_encoder, 0.0, t) {
