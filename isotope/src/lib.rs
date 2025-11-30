@@ -234,7 +234,10 @@ impl IsotopeApplication {
     {
         info!("Creating Gpu Controller");
         let gpu_controller = block_on(GpuController::new(
+            #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
             Some(Features::MAPPABLE_PRIMARY_BUFFERS),
+            #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+            None,
             None,
             Some(SurfaceConfiguration {
                 usage: TextureUsages::RENDER_ATTACHMENT,

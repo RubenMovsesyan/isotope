@@ -265,6 +265,7 @@ impl Model {
             )
         };
 
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
         let instance_staging_buffer =
             asset_server
                 .gpu_controller
@@ -275,6 +276,17 @@ impl Model {
                         | BufferUsages::MAP_WRITE
                         | BufferUsages::COPY_SRC
                         | BufferUsages::COPY_DST,
+                    mapped_at_creation: false,
+                });
+
+        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
+        let instance_staging_buffer =
+            asset_server
+                .gpu_controller
+                .create_buffer(&BufferDescriptor {
+                    label: Some("Model Instance Staging Buffer"),
+                    size: num_instances as u64 * INSTANCE_SIZE,
+                    usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
 
