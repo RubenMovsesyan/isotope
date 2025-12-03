@@ -381,7 +381,12 @@ impl ApplicationHandler for IsotopeApplication {
                                 );
                             }
 
-                            let t = self.isotope.time.elapsed().as_secs_f32();
+                            let t = self
+                                .isotope
+                                .time
+                                .elapsed()
+                                .expect("Failed to get System time")
+                                .as_secs_f32();
 
                             // Render to the display
                             self.isotope.compound.iter_mol(|_entity, camera: &Camera| {
