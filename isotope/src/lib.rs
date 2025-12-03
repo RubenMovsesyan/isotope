@@ -1,7 +1,7 @@
 use std::{
     sync::{Arc, RwLock},
     thread::JoinHandle,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime},
 };
 
 use anyhow::Result;
@@ -69,7 +69,7 @@ pub struct Isotope {
     state_thread: (Arc<RwLock<bool>>, JoinHandle<()>),
 
     // Timing
-    time: Arc<Instant>,
+    time: Arc<SystemTime>,
     tick_rate: Duration,
 
     // Master Running state
@@ -88,7 +88,7 @@ impl Isotope {
         let photon = Renderer::new_defered_3d(gpu_controller.clone())?;
         let compound = Arc::new(Compound::new());
         let running = Arc::new(RwLock::new(false));
-        let time = Arc::new(Instant::now());
+        let time = Arc::new(SystemTime::now());
         let tick_rate = ISOTOPE_DEFAULT_TICK_RATE;
 
         // Initialize the physics engine
@@ -133,7 +133,10 @@ impl Isotope {
                 last_frame_time = now;
 
                 if let Ok(mut state) = state_state.write() {
-                    let t = state_time.elapsed().as_secs_f32();
+                    let t = state_time
+                        .elapsed()
+                        .expect("Failed to get System time")
+                        .as_secs_f32();
 
                     state.update(&state_ecs, &state_asset_server, dt, t);
 
@@ -389,6 +392,8 @@ impl ApplicationHandler for IsotopeApplication {
                                     |command_encoder| {
                                         // Run the instancer on any objects that have an instancer
                                         // FIXME: Instancer doesn't work so well on macOS
+                                        let t = self.isotope.time.elapsed().expect("Failed to get System time").as_secs_f32();
+
                                         self.isotope.compound.iter_mut_duo(
                                             |_entity, model: &mut Model, instancer: &mut Instancer| {
                                                 if let Err(err) = model.apply_instancer(instancer, command_encoder, 0.0, t) {
@@ -460,7 +465,7 @@ impl ApplicationHandler for IsotopeApplication {
                                             &self.isotope.compound,
                                             &self.isotope.asset_server,
                                             code,
-                                            self.isotope.time.elapsed().as_secs_f32(),
+                                            self.isotope.time.elapsed().expect("Failed to get System time").as_secs_f32(),
                                         );
                                         Ok(())
                                     }).unwrap_or_else(|err| {
@@ -476,7 +481,7 @@ impl ApplicationHandler for IsotopeApplication {
                                             &self.isotope.compound,
                                             &self.isotope.asset_server,
                                             code,
-                                            self.isotope.time.elapsed().as_secs_f32(),
+                                            self.isotope.time.elapsed().expect("Failed to get System time").as_secs_f32(),
                                         );
                                         Ok(())
                                     }).unwrap_or_else(|err| {
@@ -493,7 +498,7 @@ impl ApplicationHandler for IsotopeApplication {
                                 &self.isotope.compound,
                                 &self.isotope.asset_server,
                                 position.into(),
-                                self.isotope.time.elapsed().as_secs_f32(),
+                                self.isotope.time.elapsed().expect("Failed to get System time").as_secs_f32(),
                             );
                             Ok(())
                         }).unwrap_or_else(|err| {
@@ -522,7 +527,11 @@ impl ApplicationHandler for IsotopeApplication {
                             &self.isotope.compound,
                             &self.isotope.asset_server,
                             delta,
-                            self.isotope.time.elapsed().as_secs_f32(),
+                            self.isotope
+                                .time
+                                .elapsed()
+                                .expect("Failed to get System time")
+                                .as_secs_f32(),
                         );
                         Ok(())
                     })
