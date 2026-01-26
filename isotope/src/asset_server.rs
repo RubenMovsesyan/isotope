@@ -6,7 +6,7 @@ use gpu_controller::{
 };
 use matter_vault::MatterVault;
 use photon::renderer::defered_renderer::{
-    ALBEDO_BINDING, MATERIAL_BINDING, NORMAL_BINDING, POSITION_BINDING, SAMPLER_BINDING,
+    ALBEDO_BINDING, DEPTH_BINDING, MATERIAL_BINDING, NORMAL_BINDING, SAMPLER_BINDING,
 };
 
 unsafe impl Send for AssetServer {}
@@ -93,15 +93,25 @@ impl AssetServer {
                             },
                         },
                         BindGroupLayoutEntry {
-                            binding: POSITION_BINDING,
+                            binding: DEPTH_BINDING,
                             count: None,
                             visibility: ShaderStages::FRAGMENT,
                             ty: BindingType::Texture {
                                 multisampled: false,
-                                sample_type: TextureSampleType::Float { filterable: true },
+                                sample_type: TextureSampleType::Depth,
                                 view_dimension: TextureViewDimension::D2,
                             },
                         },
+                        // BindGroupLayoutEntry {
+                        //     binding: POSITION_BINDING,
+                        //     count: None,
+                        //     visibility: ShaderStages::FRAGMENT,
+                        //     ty: BindingType::Texture {
+                        //         multisampled: false,
+                        //         sample_type: TextureSampleType::Float { filterable: false },
+                        //         view_dimension: TextureViewDimension::D2,
+                        //     },
+                        // },
                         // Normal
                         BindGroupLayoutEntry {
                             binding: NORMAL_BINDING,
@@ -109,7 +119,7 @@ impl AssetServer {
                             visibility: ShaderStages::FRAGMENT,
                             ty: BindingType::Texture {
                                 multisampled: false,
-                                sample_type: TextureSampleType::Float { filterable: true },
+                                sample_type: TextureSampleType::Float { filterable: false },
                                 view_dimension: TextureViewDimension::D2,
                             },
                         },
@@ -129,7 +139,7 @@ impl AssetServer {
                             binding: SAMPLER_BINDING,
                             count: None,
                             visibility: ShaderStages::FRAGMENT,
-                            ty: BindingType::Sampler(SamplerBindingType::Filtering),
+                            ty: BindingType::Sampler(SamplerBindingType::NonFiltering),
                         },
                     ],
                 }),

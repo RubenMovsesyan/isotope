@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use cgmath::{Deg, InnerSpace, Matrix4, Point3, Vector3, perspective};
+use cgmath::{Deg, InnerSpace, Matrix4, Point3, SquareMatrix, Vector3, perspective};
 use gpu_controller::{
     BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferInitDescriptor, BufferUsages,
     GpuController,
@@ -17,6 +17,7 @@ const MAX_UP_DOT: f32 = 0.99;
 pub struct PerspectiveCam3DUniform {
     view_position: [f32; 4],
     view_projection: [[f32; 4]; 4],
+    inv_view_projection: [[f32; 4]; 4],
 }
 
 pub struct PerspectiveCamera3D {
@@ -55,6 +56,10 @@ impl PerspectiveCamera3D {
         let camera_uniform = PerspectiveCam3DUniform {
             view_position: eye.to_homogeneous().into(),
             view_projection: view_proj.into(),
+            inv_view_projection: view_proj
+                .invert()
+                .unwrap_or_else(|| Matrix4::identity())
+                .into(),
         };
 
         let buffer = gpu_controller.create_buffer_init(&BufferInitDescriptor {
@@ -100,6 +105,10 @@ impl PerspectiveCamera3D {
         self.camera_uniform = PerspectiveCam3DUniform {
             view_position: self.eye.to_homogeneous().into(),
             view_projection: view_proj.into(),
+            inv_view_projection: view_proj
+                .invert()
+                .unwrap_or_else(|| Matrix4::identity())
+                .into(),
         };
 
         self.gpu_controller.write_buffer(

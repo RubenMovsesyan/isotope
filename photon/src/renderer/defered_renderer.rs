@@ -63,7 +63,8 @@ use super::CAMERA_BIND_GROUP;
 use super::LIGHTS_BIND_GROUP;
 
 pub const ALBEDO_BINDING: u32 = 0;
-pub const POSITION_BINDING: u32 = 1;
+pub const DEPTH_BINDING: u32 = 1;
+// pub const POSITION_BINDING: u32 = 1;
 pub const NORMAL_BINDING: u32 = 2;
 pub const MATERIAL_BINDING: u32 = 3;
 pub const SAMPLER_BINDING: u32 = 4;
@@ -80,7 +81,6 @@ pub struct DeferedRenderer3D {
 
     // G-buffer textures
     albedo_texture: Texture,
-    position_texture: Texture,
     normal_texture: Texture,
     material_texture: Texture,
     // G-buffer bind group for lighting pass
@@ -112,24 +112,13 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
-        let position_texture = gpu_controller.create_texture(&TextureDescriptor {
-            label: Some("G-Buffer Position"),
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
         let normal_texture = gpu_controller.create_texture(&TextureDescriptor {
             label: Some("G-Buffer Normal"),
             size: texture_size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
+            format: TextureFormat::Rgba32Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -173,9 +162,9 @@ impl DeferedRenderer3D {
                         ),
                     },
                     BindGroupEntry {
-                        binding: POSITION_BINDING,
+                        binding: DEPTH_BINDING,
                         resource: BindingResource::TextureView(
-                            &position_texture.create_view(&TextureViewDescriptor::default()),
+                            &depth_texture.create_view(&TextureViewDescriptor::default()),
                         ),
                     },
                     BindGroupEntry {
@@ -256,30 +245,10 @@ impl DeferedRenderer3D {
                             }),
                             write_mask: ColorWrites::ALL,
                         }),
-                        // Position
-                        Some(ColorTargetState {
-                            format: TextureFormat::Rgba16Float,
-                            blend: Some(BlendState {
-                                color: BlendComponent {
-                                    src_factor: BlendFactor::SrcAlpha,
-                                    dst_factor: BlendFactor::OneMinusSrcAlpha,
-                                    operation: BlendOperation::Add,
-                                },
-                                alpha: BlendComponent::OVER,
-                            }),
-                            write_mask: ColorWrites::ALL,
-                        }),
                         // Normals
                         Some(ColorTargetState {
-                            format: TextureFormat::Rgba16Float,
-                            blend: Some(BlendState {
-                                color: BlendComponent {
-                                    src_factor: BlendFactor::SrcAlpha,
-                                    dst_factor: BlendFactor::OneMinusSrcAlpha,
-                                    operation: BlendOperation::Add,
-                                },
-                                alpha: BlendComponent::OVER,
-                            }),
+                            format: TextureFormat::Rgba32Float,
+                            blend: None,
                             write_mask: ColorWrites::ALL,
                         }),
                         // Material
@@ -400,7 +369,6 @@ impl DeferedRenderer3D {
 
         Ok(Self {
             albedo_texture,
-            position_texture,
             normal_texture,
             material_texture,
             depth_texture,
@@ -442,9 +410,6 @@ impl DeferedRenderer3D {
         let albedo_view = self
             .albedo_texture
             .create_view(&TextureViewDescriptor::default());
-        let position_view = self
-            .position_texture
-            .create_view(&TextureViewDescriptor::default());
         let normal_view = self
             .normal_texture
             .create_view(&TextureViewDescriptor::default());
@@ -461,14 +426,6 @@ impl DeferedRenderer3D {
                 color_attachments: &[
                     Some(RenderPassColorAttachment {
                         view: &albedo_view,
-                        resolve_target: None,
-                        ops: Operations {
-                            load: LoadOp::Clear(Color::TRANSPARENT),
-                            store: StoreOp::Store,
-                        },
-                    }),
-                    Some(RenderPassColorAttachment {
-                        view: &position_view,
                         resolve_target: None,
                         ops: Operations {
                             load: LoadOp::Clear(Color::TRANSPARENT),
@@ -580,24 +537,13 @@ impl DeferedRenderer3D {
             view_formats: &[],
         });
 
-        self.position_texture = self.gpu_controller.create_texture(&TextureDescriptor {
-            label: Some("G-Buffer Position"),
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
-            usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
-            view_formats: &[],
-        });
-
         self.normal_texture = self.gpu_controller.create_texture(&TextureDescriptor {
             label: Some("G-Buffer Normal"),
             size: texture_size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: TextureDimension::D2,
-            format: TextureFormat::Rgba16Float,
+            format: TextureFormat::Rgba32Float,
             usage: TextureUsages::RENDER_ATTACHMENT | TextureUsages::TEXTURE_BINDING,
             view_formats: &[],
         });
@@ -637,10 +583,10 @@ impl DeferedRenderer3D {
                     ),
                 },
                 BindGroupEntry {
-                    binding: POSITION_BINDING,
+                    binding: DEPTH_BINDING,
                     resource: BindingResource::TextureView(
                         &self
-                            .position_texture
+                            .depth_texture
                             .create_view(&TextureViewDescriptor::default()),
                     ),
                 },

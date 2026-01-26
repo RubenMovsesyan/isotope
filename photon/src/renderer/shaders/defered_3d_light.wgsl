@@ -10,6 +10,7 @@ struct FragmentOutput {
 struct CameraUniform {
     view_position: vec4<f32>,
     view_proj: mat4x4<f32>,
+    inv_view_proj: mat4x4<f32>,
 }
 
 struct Light {
@@ -41,7 +42,7 @@ var<uniform> lights_len: u32;
 var albedo_texture: texture_2d<f32>;
 
 @group(G_BUFFER_BIND_GROUP) @binding(1)
-var position_texture: texture_2d<f32>;
+var depth_texture: texture_depth_2d;
 
 @group(G_BUFFER_BIND_GROUP) @binding(2)
 var normal_texture: texture_2d<f32>;
@@ -71,7 +72,13 @@ fn fs_main(input: VertexOutput) -> FragmentOutput {
 
     let albedo = textureSample(albedo_texture, g_buffer_sampler, input.uv);
     let normal = textureSample(normal_texture, g_buffer_sampler, input.uv);
-    let position = textureSample(position_texture, g_buffer_sampler, input.uv);
+    // let position = textureSample(position_texture, g_buffer_sampler, input.uv);
+    let depth = textureSample(depth_texture, g_buffer_sampler, input.uv);
+
+    // Reconstruct world position from depth
+    let ndc = vec4<f32>(input.uv.x * 2.0 - 1.0, (1.0 - input.uv.y) * 2.0 - 1.0, depth, 1.0);
+    let world_pos = camera.inv_view_proj * ndc;
+    let position = world_pos.xyz / world_pos.w;
 
     var result: vec3<f32> = vec3<f32>(0.0, 0.0, 0.0);
 
