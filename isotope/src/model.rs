@@ -40,7 +40,8 @@ pub struct Model {
     instance_buffer: Buffer,
     num_instances: u32,
 
-    instance_staging_buffer: Buffer,
+    instance_read_staging_buffer: Buffer,
+    instance_write_staging_buffer: Buffer,
 }
 
 impl Model {
@@ -265,28 +266,23 @@ impl Model {
             )
         };
 
-        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-        let instance_staging_buffer =
+        let instance_read_staging_buffer =
             asset_server
                 .gpu_controller
                 .create_buffer(&BufferDescriptor {
-                    label: Some("Model Instance Staging Buffer"),
+                    label: Some("Model Instance Read Staging Buffer"),
                     size: num_instances as u64 * INSTANCE_SIZE,
-                    usage: BufferUsages::MAP_READ
-                        | BufferUsages::MAP_WRITE
-                        | BufferUsages::COPY_SRC
-                        | BufferUsages::COPY_DST,
+                    usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
                     mapped_at_creation: false,
                 });
 
-        #[cfg(not(all(target_os = "macos", target_arch = "aarch64")))]
-        let instance_staging_buffer =
+        let instance_write_staging_buffer =
             asset_server
                 .gpu_controller
                 .create_buffer(&BufferDescriptor {
-                    label: Some("Model Instance Staging Buffer"),
+                    label: Some("Model Instance Write Staging Buffer"),
                     size: num_instances as u64 * INSTANCE_SIZE,
-                    usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+                    usage: BufferUsages::MAP_WRITE | BufferUsages::COPY_SRC,
                     mapped_at_creation: false,
                 });
 
@@ -320,7 +316,8 @@ impl Model {
             global_transform_bind_group,
             global_transformation_buffer,
             num_instances,
-            instance_staging_buffer,
+            instance_read_staging_buffer,
+            instance_write_staging_buffer,
         })
     }
 
@@ -369,7 +366,7 @@ impl Model {
         encoder.copy_buffer_to_buffer(
             &self.instance_buffer,
             byte_range.start,
-            &self.instance_staging_buffer,
+            &self.instance_read_staging_buffer,
             byte_range.start,
             byte_range.end - byte_range.start,
         );
@@ -377,24 +374,36 @@ impl Model {
         self.gpu_controller.poll(MaintainBase::Wait)?;
 
         // Map the buffer for the CPU to read
-        let buffer_slice = self.instance_staging_buffer.slice(byte_range.clone());
-        buffer_slice.map_async(MapMode::Write, |_| {});
+        let buffer_slice = self.instance_read_staging_buffer.slice(byte_range.clone());
+        buffer_slice.map_async(MapMode::Read, |_| {});
+        self.gpu_controller.poll(MaintainBase::Wait)?;
+
+        let mut instances_copy: Vec<Instance>;
+        {
+            let mut mapped_data = buffer_slice.get_mapped_range_mut();
+            instances_copy = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data).to_vec();
+        }
+
+        self.instance_read_staging_buffer.unmap();
+
+        callback(&mut instances_copy);
+
+        let write_slice = self.instance_write_staging_buffer.slice(byte_range.clone());
+        write_slice.map_async(MapMode::Write, |_| {});
         self.gpu_controller.poll(MaintainBase::Wait)?;
 
         {
-            let mut mapped_data = buffer_slice.get_mapped_range_mut();
-            let instances = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data);
-            callback(instances);
+            let mut mapped_data = write_slice.get_mapped_range_mut();
+            mapped_data.copy_from_slice(bytemuck::cast_slice(&instances_copy));
         }
-
-        self.instance_staging_buffer.unmap();
+        self.instance_write_staging_buffer.unmap();
 
         // Copy the data back
         let mut encoder = self
             .gpu_controller
             .create_command_encoder("Instance Update Copy Back");
         encoder.copy_buffer_to_buffer(
-            &self.instance_staging_buffer,
+            &self.instance_write_staging_buffer,
             byte_range.start,
             &self.instance_buffer,
             byte_range.start,
@@ -430,7 +439,7 @@ impl Model {
                 encoder.copy_buffer_to_buffer(
                     &self.instance_buffer,
                     byte_range.start,
-                    &self.instance_staging_buffer,
+                    &self.instance_read_staging_buffer,
                     byte_range.start,
                     byte_range.end - byte_range.start,
                 );
@@ -438,24 +447,36 @@ impl Model {
                 self.gpu_controller.poll(MaintainBase::Wait)?;
 
                 // Map the buffer for the CPU to read
-                let buffer_slice = self.instance_staging_buffer.slice(byte_range.clone());
-                buffer_slice.map_async(MapMode::Write, |_| {});
+                let buffer_slice = self.instance_read_staging_buffer.slice(byte_range.clone());
+                buffer_slice.map_async(MapMode::Read, |_| {});
+                self.gpu_controller.poll(MaintainBase::Wait)?;
+
+                let mut instances_copy: Vec<Instance>;
+                {
+                    let mut mapped_data = buffer_slice.get_mapped_range_mut();
+                    instances_copy =
+                        bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data).to_vec();
+                }
+                self.instance_read_staging_buffer.unmap();
+
+                serial_modifier(&mut instances_copy, dt, t);
+
+                let write_slice = self.instance_write_staging_buffer.slice(byte_range.clone());
+                write_slice.map_async(MapMode::Write, |_| {});
                 self.gpu_controller.poll(MaintainBase::Wait)?;
 
                 {
-                    let mut mapped_data = buffer_slice.get_mapped_range_mut();
-                    let instances = bytemuck::cast_slice_mut::<u8, Instance>(&mut *mapped_data);
-                    serial_modifier(instances, dt, t);
+                    let mut mapped_data = write_slice.get_mapped_range_mut();
+                    mapped_data.copy_from_slice(bytemuck::cast_slice(&instances_copy));
                 }
-
-                self.instance_staging_buffer.unmap();
+                self.instance_write_staging_buffer.unmap();
 
                 // Copy the data back
                 let mut encoder = self
                     .gpu_controller
                     .create_command_encoder("Instance Update Copy Back");
                 encoder.copy_buffer_to_buffer(
-                    &self.instance_staging_buffer,
+                    &self.instance_write_staging_buffer,
                     byte_range.start,
                     &self.instance_buffer,
                     byte_range.start,
